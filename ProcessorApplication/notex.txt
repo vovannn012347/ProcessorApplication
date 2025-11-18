@@ -1,0 +1,140 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- IMPORTANT: Embed views + wwwroot -->
+    <CopyRazorFilesToPublishDirectory>true</CopyRazorFilesToPublishDirectory>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Embed views -->
+    <EmbeddedResource Include="Views\**\*.cshtml" />
+    <!-- Embed static files -->
+    <EmbeddedResource Include="wwwroot\**\*" />
+  </ItemGroup>
+
+</Project>
+
+7. Run on Any PC (No IIS, No EXE UI), Kestrel execution
+Publish as self-contained
+bashdotnet publish -c Release -r win-x64 --self-contained true
+# or linux-x64, osx-x64
+
+9. Bonus: Auto-copy on build (VS / csproj)
+xml<Target Name="CopyModule" AfterTargets="Build">
+  <Copy SourceFiles="$(TargetPath);$(TargetDir)Views\*;$(TargetDir)wwwroot\**\*"
+        DestinationFolder="..\MyApp\Modules\OrderModule\" 
+        SkipUnchangedFiles="true" />
+</Target>
+
+
+    <PackageReference Include="MongoDB.Driver" Version="2.28.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="6.0.35" />
+
+    @* <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"> *@
+
+    <!--
+      CDN Dependencies
+      NOTE: Bootstrap.min.css and jquery/bootstrap.bundle.js have been removed
+      as they conflict with Tailwind.
+    -->
+    <!-- 3. Font -->
+    @* <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"> *@
+
+
+    <!-- 1. Tailwind CSS -->
+    @* <script src="https://cdn.tailwindcss.com"></script> *@
+  @*   <style>
+        @@font-face {
+            font-family: 'Inter';
+            font-style: normal;
+            /* Supports all weights from 100 to 900 */
+            font-weight: 100 900;
+            font-display: swap; /* Helps with fast loading */
+            /* This path points to your 'wwwroot/fonts/Inter-VariableFont.ttf' file.
+                  If your file is named differently (e.g., 'Inter.ttf'),
+                  you must change the filename here.
+                */
+            src: url('/fonts/Inter-VariableFont.ttf') format('truetype');
+        }
+    </style> *@
+    @* <script>
+        // Configure Tailwind
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                },
+            },
+        }
+    </script> *@
+
+
+    
+/*
+  You can add any other custom CSS here, e.g., your loader styles
+*/
+/*#content-loader {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3498db;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  position: absolute;
+}
+    /* ... (and your other custom styles from the <style> block) ... */
+
+3.  **Run the Compiler (The Final Command):**
+    Go back to your terminal (still in the project root) and run this command:
+
+    ```bash
+    npx tailwindcss -i ./wwwroot/css/input.css -o ./wwwroot/css/output.css --watch
+    ```
+
+    * `-i`: Specifies your **input** file.
+    * `-o`: Specifies the **output** file. This is the *only* CSS file you'll need in your layout.
+    * `--watch`: This is the best part. It keeps the command running and automatically re-compiles your `output.css` file *every time you save a change* to your `input.css` or any of your `.cshtml` files.
+
+You should see it build successfully. A new file, `wwwroot/css/output.css`, will be created. **Leave this terminal window open while you are coding.**
+
+---
+
+## Phase 4: Update Your `_Layout.cshtml`
+
+Now you just need to clean up your `_Layout.cshtml` to use your new, locally compiled file.
+
+1.  Open `_Layout.cshtml`.
+2.  **REMOVE** all of these:
+    * The Tailwind CDN `<script src="https://cdn.tailwindcss.com"></script>`.
+    * The Google Font `<link>` tags.
+    * The `<script>` block with `tailwind.config = { ... }`.
+    * The entire `<style>` block with `@font-face` (you moved it to `input.css`).
+    * The entire `<style>` block with the loader/sidebar CSS (you also moved this to `input.css`).
+3.  **ADD** this single line to link your *new* compiled CSS file:
+
+    ```html
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>@ViewData["Title"] - ProcessorApplication</title>
+        
+        <!-- Your other local CSS (if any) -->
+        <link rel="stylesheet" href="~/ProcessorApplication.styles.css" asp-append-version="true" />
+    
+        <!-- 
+          *** YOUR NEW COMPILED TAILWIND FILE ***
+          This single file now contains Tailwind, your local "Inter" font,
+          and all your custom styles.
+        -->
+        <link rel="stylesheet" href="~/css/output.css" asp-append-version="true" />
+        
+        <!-- Your local Font Awesome (this is correct) -->
+        <link rel="stylesheet" href="~/lib/font-awesome/css/all.min.css" />
+    </head>

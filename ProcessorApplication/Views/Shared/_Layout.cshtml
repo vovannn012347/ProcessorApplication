@@ -1,0 +1,421 @@
+﻿<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-100">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - ProcessorApplication</title>
+    
+    <!-- Local & ASP.NET Styles -->
+    <link rel="stylesheet" href="~/css/output.css" asp-append-version="true" />
+    @* <link rel="stylesheet" href="~/ProcessorApplication.styles.css" asp-append-version="true" /> *@
+
+    
+    <!-- Icons (for hamburger menu) -->
+    <link rel="stylesheet" href="~/lib/font-awesome/css/all.min.css" />
+    <link rel="stylesheet" href="~/css/output.css" asp-append-version="true" />
+    
+</head>
+<body class="h-full font-sans">
+    <div class="flex h-full">
+        <!-- 
+          LEFT SIDEBAR (Contextual Module Menu)
+        -->
+        <aside 
+            id="sidebar" 
+            class="sidebar sidebar-hidden-mobile fixed inset-y-0 left-0 z-30 flex h-full w-64 flex-col bg-gray-800 shadow-lg md:relative md:translate-x-0">
+            
+            <!-- Sidebar Header (Optional) -->
+            <div class="flex h-16 shrink-0 items-center justify-between px-4 bg-gray-900">
+                <span class="text-lg font-semibold text-white">Navigation</span>
+                 <!-- Mobile Close Button -->
+                 <button id="sidebar-close-btn" class="text-gray-400 hover:text-white md:hidden">
+                    <i class="fa-solid fa-xmark fa-lg"></i>
+                </button>
+            </div>
+
+            <!-- 
+              Sidebar Navigation
+            -->
+            <div class="flex h-16 shrink-0 items-center justify-between px-4 bg-gray-900">
+                <span class="text-lg font-semibold text-white">Navigation</span>
+                <button id="sidebar-close-btn" class="text-gray-400 hover:text-white md:hidden">
+                    <i class="fa-solid fa-xmark fa-lg"></i>
+                </button>
+            </div>
+
+            <nav class="sidebar-nav flex-1 space-y-1 overflow-y-auto p-4">
+                <!--
+                  MODULES (Mobile Only)
+                  This will be built by JavaScript
+                -->
+                <div class="md:hidden">
+                    <span class="px-3 text-xs font-semibold uppercase text-gray-500">Modules</span>
+                    <div class="mt-1 space-y-1" id="mobile-module-nav-container">
+                        <!-- JS will populate this -->
+                    </div>
+                </div>
+
+                <!-- CONTEXTUAL MENU -->
+                <div class="mt-4">
+                    <span class="px-3 text-xs font-semibold uppercase text-gray-500">Module Menu</span>
+                    <div class="mt-1 space-y-1" id="contextual-menu-container">
+                        <!-- JS will populate this -->
+                    </div>
+                </div>
+            </nav>
+            @* <nav class="sidebar-nav flex-1 space-y-1 overflow-y-auto p-4">
+
+                <!-- 
+                  *** MODULES (Mobile Only) ***
+                  This div is hidden on medium screens and up (md:hidden)
+                -->
+                <div class="md:hidden">
+                    <span class="px-3 text-xs font-semibold uppercase text-gray-500">Modules</span>
+                    <div class="mt-1 space-y-1">
+                         <a href="#" class="nav-link-main group flex items-center rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white">Main</a>
+                         <a href="#" class="nav-link-main group flex items-center rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white">P2P Module</a>
+                         <a href="#" class="nav-link-main group flex items-center rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white">Processor (Renamed)</a>
+                         <a href="#" class="nav-link-main group flex items-center rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white">+ Add Module</a>
+                    </div>
+                </div>
+
+                <!-- 
+                  CONTEXTUAL MENU
+                -->
+                <div class="mt-4"> <!-- Added margin-top for separation -->
+                    <span class="px-3 text-xs font-semibold uppercase text-gray-500">Module Menu</span>
+                    <div class="mt-1 space-y-1" id="contextual-menu-container">
+                        <!-- 
+                          This container will be filled by JavaScript.
+                          The content below is just the default for the "Main" module.
+                        -->
+                        <a href="#" 
+                           class="nav-link-sidebar ajax-link group flex items-center rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white" 
+                           data-content-key="dashboard">
+                            <i class="fa-solid fa-gauge-high mr-3 h-5 w-5 shrink-0"></i>
+                            Dashboard
+                        </a>
+                        <a href="#" 
+                           class="nav-link-sidebar ajax-link group flex items-center rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white"
+                           data-content-key="global-settings">
+                            <i class="fa-solid fa-cog mr-3 h-5 w-5 shrink-0"></i>
+                            Global Settings
+                        </a>
+                        <a href="#" 
+                           class="nav-link-sidebar ajax-link group flex items-center rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white"
+                           data-content-key="logs">
+                            <i class="fa-solid fa-clipboard-list mr-3 h-5 w-5 shrink-0"></i>
+                            System Logs
+                        </a>
+                    </div>
+                </div>
+            </nav> *@
+        </aside>
+
+        <div class="flex-1 flex flex-col">
+            <header class="main-navbar sticky top-0 z-20 flex h-16 w-full shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 shadow-sm">
+
+                <button id="sidebar-open-btn" class="text-gray-700 hover:text-gray-900 md:hidden">
+                    <i class="fa-solid fa-bars fa-lg"></i>
+                </button>
+
+                <!--
+                  Desktop Module Nav
+                  This will be built by JavaScript
+                -->
+                <div class="hidden md:flex md:items-center md:space-x-2" id="desktop-module-nav-container">
+                    <!-- JS will populate this -->
+                </div>
+
+                <div class="flex items-center space-x-4">
+                    <span class="text-sm text-gray-700">status: <span class="font-semibold text-green-600">Connected</span></span>
+                    <button class="rounded-full h-8 w-8 bg-gray-700 text-white flex items-center justify-center text-sm font-semibold">U</button>
+                </div>
+            </header>
+
+            <main class="flex-1 overflow-y-auto p-6 md:p-8">
+                <div id="content-container" class="main-content relative min-h-[300px]">
+                    <div id="content-loader"></div>
+                    @RenderBody()
+                </div>
+            </main>
+
+            <footer class="border-t border-gray-200 bg-white py-4">
+                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-sm text-gray-500">
+                    &copy; 2025 - ProcessorApplication - <a asp-area="" asp-controller="Home" asp-action="Privacy" class="text-blue-600 hover:underline">Privacy</a>
+                </div>
+            </footer>
+        </div>
+    </div>
+
+    <!-- 
+      Removed jQuery and Bootstrap, but keeping site.js in case of custom logic.
+    -->
+    <script src="~/js/site.js" asp-append-version="true"></script>
+
+    <!-- Full v2 JavaScript for Sidebar and AJAX -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+
+            const contentContainer = document.getElementById('content-container');
+            const contextualMenuContainer = document.getElementById('contextual-menu-container');
+            const desktopModuleNav = document.getElementById('desktop-module-nav-container');
+            const mobileModuleNav = document.getElementById('mobile-module-nav-container');
+            const loader = document.getElementById('content-loader');
+            const sidebar = document.getElementById('sidebar');
+            const openBtn = document.getElementById('sidebar-open-btn');
+            const closeBtn = document.getElementById('sidebar-close-btn');
+
+            function showError(container, message) {
+                if (container) {
+                    container.innerHTML = `<p class="p-4 text-red-300">${message}</p>`;
+                }
+                console.error(message);
+            }
+
+            function loadContent(url, container, callback) {
+                if (!url || !container) return;
+
+                let currentLoader;
+                if (container === contentContainer) {
+                    loader.style.display = 'block';
+                    container.innerHTML = '';
+                    container.appendChild(loader);
+                    currentLoader = loader;
+                } else {
+                    container.innerHTML = '<div class="flex justify-center items-center h-24"><div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div></div>';
+                    currentLoader = container.firstElementChild;
+                }
+
+                fetch(url, 
+                    {
+                        headers:
+                        {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    })
+                    .then(response => {
+                        if (!response.ok) throw new Error(`Network error: ${response.status}`);
+                        return response.text();
+                    })
+                    .then(html => {
+                        if (currentLoader && currentLoader.style) currentLoader.style.display = 'none';
+                        container.innerHTML = html;
+
+                        if (container === contextualMenuContainer) {
+                            attachAjaxListeners();
+                        }
+                        if (callback) callback(); // Run callback after content is loaded
+                    })
+                    .catch(error => {
+                        showError(container, `Error loading content from ${url}. ${error.message}`);
+                    });
+            }
+
+            function attachAjaxListeners() {
+                if (!contextualMenuContainer) return;
+
+                contextualMenuContainer.querySelectorAll('.ajax-link').forEach(link => {
+                    const newLink = link.cloneNode(true);
+                    link.parentNode.replaceChild(newLink, link);
+
+                    newLink.addEventListener('click', function(event) {
+                        event.preventDefault();
+                        const url = this.href;
+                        loadContent(url, contentContainer);
+
+                        if (window.innerWidth < 768 && sidebar) {
+                            sidebar.classList.add('sidebar-hidden-mobile');
+                        }
+                    });
+                });
+            }
+
+            function attachModuleListeners() {
+                // We use event delegation on the containers
+                [desktopModuleNav, mobileModuleNav].forEach(container => {
+                    if(container) {
+                        container.addEventListener('click', function(event) {
+                            const link = event.target.closest('.nav-link-main');
+                            if (!link) return;
+
+                            event.preventDefault();
+                            const moduleId = link.dataset.moduleId;
+                            if (!moduleId) return;
+
+                            // De-activate all module links
+                            document.querySelectorAll('.nav-link-main').forEach(l => {
+                                l.classList.remove('bg-gray-900', 'text-white');
+                                l.classList.add('text-gray-300', 'hover:bg-gray-700', 'hover:text-white');
+                            });
+
+                            // Activate the clicked link (both desktop and mobile)
+                            document.querySelectorAll(`.nav-link-main[data-module-id="${moduleId}"]`).forEach(l => {
+                                l.classList.add('bg-gray-900', 'text-white');
+                                l.classList.remove('text-gray-300', 'hover:bg-gray-700', 'hover:text-white');
+                            });
+
+                            // Load the new contextual menu
+                            const menuUrl = `/Navigation/GetModuleMenu?moduleId=${moduleId}`;
+                            loadContent(menuUrl, contextualMenuContainer);
+
+                            if (window.innerWidth < 768 && sidebar) {
+                                sidebar.classList.add('sidebar-hidden-mobile');
+                            }
+                        });
+                    }
+                });
+            }
+
+            // --- NEW: Function to build the module nav bars ---
+            function buildModuleNav(modules) {
+                if (!desktopModuleNav || !mobileModuleNav) return;
+
+                desktopModuleNav.innerHTML = '';
+                mobileModuleNav.innerHTML = '';
+
+                modules.forEach((module, index) => {
+                    const isMain = module.moduleId === 'main' || index === 0;
+                    const activeClasses = 'bg-gray-900 text-white';
+                    const inactiveClasses = 'text-gray-300 hover:bg-gray-700 hover:text-white';
+                    const desktopInactiveClasses = 'text-gray-600 hover:bg-gray-100 hover:text-gray-900';
+
+                    // Build Desktop Link
+                    const desktopLink = document.createElement('a');
+                    desktopLink.href = "#";
+                    desktopLink.className = `nav-link-main rounded-md px-3 py-2 text-sm font-medium ${isMain ? activeClasses : desktopInactiveClasses}`;
+                    desktopLink.dataset.moduleId = module.moduleId;
+                    desktopLink.textContent = module.name;
+                    desktopModuleNav.appendChild(desktopLink);
+
+                    // Build Mobile Link
+                    const mobileLink = document.createElement('a');
+                    mobileLink.href = "#";
+                    mobileLink.className = `nav-link-main group flex items-center rounded-md px-3 py-2 text-sm font-medium ${isMain ? activeClasses : inactiveClasses}`;
+                    mobileLink.dataset.moduleId = module.moduleId;
+                    mobileLink.textContent = module.name;
+                    mobileModuleNav.appendChild(mobileLink);
+                });
+
+                // After building, attach listeners
+                attachModuleListeners();
+            }
+
+            // --- Mobile Sidebar Toggle Logic ---
+            if(openBtn) openBtn.addEventListener('click', () => { if (sidebar) sidebar.classList.remove('sidebar-hidden-mobile'); });
+            if(closeBtn) closeBtn.addEventListener('click', () => { if (sidebar) sidebar.classList.add('sidebar-hidden-mobile'); });
+
+            // --- Initial Setup ---
+
+            // 1. Fetch the list of modules to build the top nav
+            fetch('/Navigation/GetModules')
+                .then(res => res.json())
+                .then(modules => {
+                    buildModuleNav(modules);
+
+                    // 2. After nav is built, load the default 'main' menu
+                    // We also want to load the main content, but only if @RenderBody() is empty
+                    // For now, just load the menu.
+                    loadContent('/Navigation/GetModuleMenu?moduleId=main', contextualMenuContainer);
+                })
+                .catch(err => {
+                    showError(desktopModuleNav, 'Could not load modules.');
+                });
+
+        });
+    </script>
+
+    <!-- ASP.NET Script Section -->
+    @* @await RenderSectionAsync("Scripts", required: false) *@
+</body>
+</html>
+
+
+@* <!-- Main content area (Top nav + Content) -->
+<div class="flex-1 flex flex-col">
+
+    <!--
+      TOP NAVBAR (Global Module Selection)
+    -->
+    <header class="main-navbar sticky top-0 z-20 flex h-16 w-full shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 shadow-sm">
+
+        <!-- Mobile Open Button -->
+        <button id="sidebar-open-btn" class="text-gray-700 hover:text-gray-900 md:hidden">
+            <i class="fa-solid fa-bars fa-lg"></i>
+        </button>
+
+        <!--
+          Desktop Module Nav
+          This is hidden on mobile, matching the 'hidden' class
+        -->
+        <div class="hidden md:flex md:items-center md:space-x-2">
+            <a href="#" class="nav-link-main rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white">Main</a>
+            <a href="#" class="nav-link-main rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">P2P Module</a>
+            <a href="#" class="nav-link-main rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">Processor (Renamed)</a>
+            <a href="#" class="nav-link-main rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900">+ Add Module</a>
+        </div>
+
+        <!-- Right-side items (e.g., User) -->
+        <div class="flex items-center space-x-4">
+            <span class="text-sm text-gray-700">status: <span class="font-semibold text-green-600">Connected</span></span>
+            <button class="rounded-full h-8 w-8 bg-gray-700 text-white flex items-center justify-center text-sm font-semibold">U</button>
+        </div>
+    </header>
+
+    <!--
+      MAIN CONTENT
+    -->
+    <main class="flex-1 overflow-y-auto p-6 md:p-8">
+        <!--
+          This is the container that will be reloaded
+        -->
+        <div id="content-container" class="main-content relative min-h-[300px]">
+
+            <!-- Loading Spinner -->
+            <div id="content-loader"></div>
+            @RenderBody()
+
+        </div>
+    </main>
+
+    <!-- Footer converted to Tailwind -->
+    <footer class="border-t border-gray-200 bg-white py-4">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-sm text-gray-500">
+            &copy; 2025 - ProcessorApplication - <a asp-area="" asp-controller="Home" asp-action="Privacy" class="text-blue-600 hover:underline">Privacy</a>
+        </div>
+    </footer>
+</div> *@
+
+@* <header>
+                <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
+                    <div class="container-fluid">
+                        <a class="navbar-brand" asp-area="" asp-controller="Home" asp-action="Index">ProcessorApplication</a>
+                        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
+                                aria-expanded="false" aria-label="Toggle navigation">
+                            <span class="navbar-toggler-icon"></span>
+                        </button>
+                        <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
+                            <ul class="navbar-nav flex-grow-1">
+                                <li class="nav-item">
+                                    <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Index">Home</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </nav>
+            @* </header> *@
+
+@* <!DOCTYPE html>
+<html lang="en">
+<body>
+    <div class="container">
+        <main role="main" class="pb-3">
+            @RenderBody()
+        </main>
+    </div>
+</body>
+</html> *@
+

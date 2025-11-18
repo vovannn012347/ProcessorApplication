@@ -1,0 +1,51 @@
+<Project>
+
+  <PropertyGroup>
+    <!-- Force copy of non-transitive deps -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <!-- Define ItemGroup: Collect module outputs (automatic, no manual addition) -->
+  <ItemGroup>
+    <!-- DLL + PDB -->
+    <ModuleOutput Include="$(TargetDir)$(MSBuildProjectName).dll" />
+    <ModuleOutput Include="$(TargetDir)$(MSBuildProjectName).pdb" Condition="Exists('$(TargetDir)$(MSBuildProjectName).pdb')" />
+
+    <!-- Non-transitive deps (all copied DLLs, exclude system/Microsoft) -->
+    <ModuleOutput Include="$(TargetDir)*.dll" 
+                  Exclude="$(TargetDir)$(MSBuildProjectName).dll;$(TargetDir)System.*.dll;$(TargetDir)Microsoft.*.dll" />
+
+    <!-- Views (loose CSHTML) -->
+    <ModuleOutput Include="$(MSBuildProjectDirectory)\Views\**\*" />
+
+    <!-- wwwroot (JS/CSS/etc.) -->
+    <ModuleOutput Include="$(MSBuildProjectDirectory)\wwwroot\**\*" />
+
+    <!-- Config (if exists) -->
+    <ModuleOutput Include="$(MSBuildProjectDirectory)\appsettings.$(MSBuildProjectName).json" 
+                  Condition="Exists('$(MSBuildProjectDirectory)\appsettings.$(MSBuildProjectName).json')" />
+  </ItemGroup>
+
+  <!-- Post-build: Copy ItemGroup to ProcessorApplication/bin/Modules/{ModuleName} -->
+  <Target Name="CopyModuleOutputs" AfterTargets="Build" 
+          Condition="'@(ModuleOutput)' != ''">  <!-- Only if ItemGroup has items (i.e., project built) -->
+
+    <PropertyGroup>
+      <!-- Module name from .csproj -->
+      <ModuleName>$(MSBuildProjectName)</ModuleName>
+      <!-- Main app bin path (adjust if needed) -->
+      <MainAppBinPath>$(SolutionDir)ProcessorApplication\bin\$(Configuration)\$(TargetFramework)</MainAppBinPath>
+      <!-- Target: ProcessorApplication/bin/Modules/{ModuleName} -->
+      <TargetModuleDir>$(MainAppBinPath)\Modules\$(ModuleName)</TargetModuleDir>
+    </PropertyGroup>
+
+    <!-- Create dir if missing -->
+    <MakeDir Directories="$(TargetModuleDir)" />
+
+    <!-- Copy with structure preserved -->
+    <Copy SourceFiles="@(ModuleOutput)" 
+          DestinationFolder="$(TargetModuleDir)\%(RecursiveDir)" 
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

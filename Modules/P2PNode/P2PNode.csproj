@@ -1,0 +1,49 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Code\Attributes\**" />
+    <EmbeddedResource Remove="Code\Attributes\**" />
+    <None Remove="Code\Attributes\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="appsettings.P2PNode.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="LiteNetLib" Version="1.2.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="6.0.35" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="6.0.0" />
+    <PackageReference Include="MongoDB.Driver" Version="2.28.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Interfaces\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Common\Common.csproj" />
+    <ProjectReference Include="..\..\ProcessorApplication\ProcessorApplication.csproj" />
+  </ItemGroup>
+  
+  <Target Name="CopyToMain" AfterTargets="Build">
+    <ItemGroup>
+      <_Files Include="$(TargetPath);$(TargetDir)Views\**\*;$(TargetDir)wwwroot\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_Files)" DestinationFolder="$(SolutionDir)MyApp\Modules\P2PNode\%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
+  
+
+</Project>

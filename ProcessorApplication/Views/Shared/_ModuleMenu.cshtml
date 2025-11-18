@@ -1,0 +1,18 @@
+﻿@using Common.Interfaces.Menu
+@model List<MenuItemViewModel>
+
+@* <p class="px-3 py-2 text-sm text-gray-400">TEST</p> *@
+@if (Model == null || !Model.Any())
+{
+    <p class="px-3 py-2 text-sm text-gray-400">No menu items for this module.</p>
+    return;
+}
+
+@foreach (var item in Model)
+{
+    <a href="@item.Url"
+       class="nav-link-sidebar ajax-link group flex items-center rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white">
+        <i class="@item.IconClass mr-3 h-5 w-5 shrink-0"></i>
+        @item.Name
+    </a>
+}

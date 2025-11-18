@@ -1,0 +1,58 @@
+/*
+  This is where you put your local font definition!
+  It must come BEFORE the @tailwind directives.
+*/
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  /* This path is relative to the wwwroot folder */
+  src: url('/fonts/Inter-VariableFont.ttf') format('truetype');
+}
+
+/* Basic styling for the content loader */
+#content-loader {
+    border: 4px solid #f3f3f3; /* Light grey */
+    border-top: 4px solid #3498db; /* Blue */
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    margin-top: -20px;
+    margin-left: -20px;
+    display: none; /* Hidden by default */
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Smooth transitions for sidebar */
+.sidebar {
+    transition: transform 0.3s ease-in-out;
+}
+
+/* Mobile sidebar hidden state */
+@media (max-width: 768px) {
+    .sidebar-hidden-mobile {
+        transform: translateX(-100%);
+    }
+}
+
+/*
+  These are the placeholders Tailwind will use to
+  generate all of its utility classes.
+*/
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

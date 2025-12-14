@@ -1,23 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <!-- IMPORTANT: Embed views + wwwroot -->
-    <CopyRazorFilesToPublishDirectory>true</CopyRazorFilesToPublishDirectory>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <!-- Embed views -->
-    <EmbeddedResource Include="Views\**\*.cshtml" />
-    <!-- Embed static files -->
-    <EmbeddedResource Include="wwwroot\**\*" />
-  </ItemGroup>
-
-</Project>
-
-7. Run on Any PC (No IIS, No EXE UI), Kestrel execution
+﻿7. Run on Any PC (No IIS, No EXE UI), Kestrel execution
 Publish as self-contained
 bashdotnet publish -c Release -r win-x64 --self-contained true
 # or linux-x64, osx-x64
@@ -28,23 +9,6 @@ xml<Target Name="CopyModule" AfterTargets="Build">
         DestinationFolder="..\MyApp\Modules\OrderModule\" 
         SkipUnchangedFiles="true" />
 </Target>
-
-
-    <PackageReference Include="MongoDB.Driver" Version="2.28.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="6.0.35" />
-
-    @* <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"> *@
-
-    <!--
-      CDN Dependencies
-      NOTE: Bootstrap.min.css and jquery/bootstrap.bundle.js have been removed
-      as they conflict with Tailwind.
-    -->
-    <!-- 3. Font -->
-    @* <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"> *@
-
 
     <!-- 1. Tailwind CSS -->
     @* <script src="https://cdn.tailwindcss.com"></script> *@

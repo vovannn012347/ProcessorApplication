@@ -3,7 +3,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
-using ProcessorApplication.Sqlite;
+using ProcessorApplication.Database;
 
 namespace ProcessorApplication.Database;
 

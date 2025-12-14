@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using ProcessorApplication.Sqlite.Models;
+using ProcessorApplication.Database.Models;
 
 using Microsoft.EntityFrameworkCore;
 

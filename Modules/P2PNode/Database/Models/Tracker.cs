@@ -1,6 +1,6 @@
 ﻿using System.Security.Cryptography.X509Certificates;
 
-namespace ProcessorApplication.Sqlite.Models;
+namespace ProcessorApplication.Database.Models;
 
 /**
  * tracker is public-share node

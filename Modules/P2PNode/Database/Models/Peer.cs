@@ -2,7 +2,7 @@
 
 using ProcessorApplication.Models.Nodes;
 
-namespace ProcessorApplication.Sqlite.Models;
+namespace ProcessorApplication.Database.Models;
 
 /**
  * peer is local node 

@@ -1,0 +1,182 @@
+﻿@model ProcessorApplication.ViewModels.User.ProfileViewModel
+
+<form asp-controller="Profile" asp-action="Update" method="post">
+    <!-- Hidden ID is crucial for the update logic -->
+    <input type="hidden" asp-for="User.Id" />
+
+    <div class="flex justify-between items-center mb-6 border-b pb-3">
+        <h2 class="text-3xl font-bold text-gray-900">
+            @if (Model.IsAuditView)
+            {
+                <span class="text-red-600 flex items-center">
+                    <i class="fa-solid fa-user-secret mr-2"></i> AUDIT VIEW:
+                    <span class="ml-2 text-gray-800 text-xl font-normal">@Model.User.DisplayNickname</span>
+                </span>
+            }
+            else
+            {
+                <span>Your Profile</span>
+            }
+        </h2>
+
+        <a href="/Main/Profile/Download?userName=@Model.User.UserName" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 transition duration-150">
+            <i class="fa-solid fa-download mr-2"></i> Export Identity
+        </a>
+    </div>
+
+    <!-- Global Status Messages -->
+    @if (TempData["StatusMessage"] != null)
+    {
+        <div class="rounded-md bg-green-50 p-4 mb-6">
+            <div class="flex">
+                <div class="flex-shrink-0 text-green-400"><i class="fa-solid fa-check-circle"></i></div>
+                <div class="ml-3"><p class="text-sm font-medium text-green-800">@TempData["StatusMessage"]</p></div>
+            </div>
+        </div>
+    }
+
+    @if (!ViewData.ModelState.IsValid)
+    {
+        <div asp-validation-summary="All" class="rounded-md bg-red-50 p-3 text-sm text-red-700 mb-6 border border-red-300"></div>
+    }
+    @* <div asp-validation-summary="All" class="rounded-md bg-red-50 p-3 text-sm text-red-700 empty:hidden mb-6"></div> *@
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+        <!-- Left Column: Personal Information -->
+        <div class="lg:col-span-2 space-y-6">
+
+            <!-- Core Info Card -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <h3 class="text-xl font-semibold border-b pb-3 mb-4">Personal & Identity</h3>
+
+                <!-- Read-Only Login ID -->
+                <div class="bg-indigo-50 p-3 rounded-md border border-indigo-100 mb-4">
+                    <label class="block text-xs font-medium text-gray-500">Secure Username (Login ID)</label>
+                    <p class="font-mono text-sm text-indigo-700">@Model.User.UserName</p>
+                    <p class="text-xs text-gray-500 mt-1">Your unique, secure identity string. Unchangeable.</p>
+                </div>
+
+                <!-- Editable Fields -->
+                <div class="space-y-4">
+                    <div>
+                        <label asp-for="User.DisplayNickname" class="block text-sm font-medium text-gray-700">Display Nickname</label>
+                        <input asp-for="User.DisplayNickname" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 focus:ring-indigo-500 focus:border-indigo-500" />
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label asp-for="User.Name" class="block text-sm font-medium text-gray-700">Name</label>
+                            <input asp-for="User.Name" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 focus:ring-indigo-500 focus:border-indigo-500" />
+                        </div>
+                        <div>
+                            <label asp-for="User.Surname" class="block text-sm font-medium text-gray-700">Surname</label>
+                            <input asp-for="User.Surname" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 focus:ring-indigo-500 focus:border-indigo-500" />
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Password Change Card -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <h3 class="text-xl font-semibold border-b pb-3 mb-4">Security Credentials</h3>
+                <p class="text-sm text-gray-500 mb-4">Leave these fields blank unless you want to change the password.</p>
+
+                <div class="space-y-4">
+                    @if (!Model.IsAuditView) // Only show current password field for Self-Edit
+                    {
+                        <div>
+                            <label asp-for="CurrentPassword" class="block text-sm font-medium text-gray-700"></label>
+                            <input asp-for="CurrentPassword" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 focus:ring-indigo-500" autocomplete="off" />
+                        </div>
+                    }
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label asp-for="NewPassword" class="block text-sm font-medium text-gray-700"></label>
+                            <input asp-for="NewPassword" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 focus:ring-indigo-500" autocomplete="new-password" />
+                        </div>
+                        <div>
+                            <label asp-for="ConfirmPassword" class="block text-sm font-medium text-gray-700"></label>
+                            <input asp-for="ConfirmPassword" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 focus:ring-indigo-500" autocomplete="new-password" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Right Column: Security & Roles -->
+        <div class="lg:col-span-1 space-y-6">
+
+            <!-- Security Status TODO later, not for now -->
+            @* <div class="bg-yellow-50 rounded-xl shadow-lg p-6 border border-yellow-200">
+                <h3 class="text-lg font-semibold text-yellow-800 border-b border-yellow-300 pb-3 mb-3">Security & Audit</h3>
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm text-yellow-900">Data Integrity:</span>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                        <i class="fa-solid fa-check-circle mr-1"></i> Secured
+                    </span>
+                </div>
+
+                @if (Model.IsAuditView)
+                {
+                    <div class="mt-4 p-3 bg-red-100 border-l-4 border-red-500 rounded-r">
+                        <p class="text-sm font-bold text-red-800">AUDIT ACTIVE</p>
+                        <p class="text-xs text-red-700 mt-1">
+                            Viewing data via Master Audit Key. Access is logged.
+                        </p>
+                    </div>
+                }
+            </div> *@
+
+            <!-- Role Management -->
+            <div class="bg-gray-100 rounded-xl shadow-md p-6">
+                <h3 class="text-lg font-semibold border-b pb-3 mb-3">
+                    @(Model.CanEditRoles ? "Manage Access (Roles)" : "Assigned Roles")
+                </h3>
+
+                @if (Model.CanEditRoles)
+                {
+                    <div class="space-y-3 max-h-60 overflow-y-auto pr-2">
+                        @for (int i = 0; i < Model.RoleSelections.Count; i++)
+                        {
+                            <div class="flex items-start">
+                                <div class="flex items-center h-5">
+                                    <input type="hidden" asp-for="RoleSelections[i].RoleName" />
+                                    <input asp-for="RoleSelections[i].IsSelected" type="checkbox" class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 rounded cursor-pointer">
+                                </div>
+                                <div class="ml-3 text-sm">
+                                    <label asp-for="RoleSelections[i].IsSelected" class="font-medium text-gray-700 select-none cursor-pointer">
+                                        @Model.RoleSelections[i].RoleName
+                                    </label>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="flex flex-wrap gap-2">
+                        @foreach (var role in Model.RoleSelections.Where(r => r.IsSelected))
+                        {
+                            <span class="inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">@role.RoleName</span>
+                        }
+                        @if (!Model.RoleSelections.Any(r => r.IsSelected))
+                        {
+                            <p class="text-sm text-gray-500 italic">No roles assigned.</p>
+                        }
+                    </div>
+                }
+            </div>
+
+            <!-- Save Button -->
+            <div class="pt-2 sticky top-4">
+                <button type="submit" class="w-full inline-flex justify-center items-center rounded-md border border-transparent bg-indigo-600 py-3 px-4 text-sm font-medium text-white shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                    <i class="fa-solid fa-save mr-2"></i> Save Changes
+                </button>
+            </div>
+
+        </div>
+    </div>
+</form>

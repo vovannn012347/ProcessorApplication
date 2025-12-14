@@ -1,28 +1,22 @@
-﻿using System.Reflection;
-
-using Common.Interfaces;
-
-using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
-
-using ProcessorApplication.Sqlite;
-
+﻿using ProcessorApplication;
 using ProcessorApplication.Infrastructure;
 using ProcessorApplication.Services;
-using ProcessorApplication;
+using ProcessorApplication.Utils;
 
 const string ModuleDir = "Modules";
+var modulesRoot = Path.Combine(AppContext.BaseDirectory, ModuleDir);
+if (!Directory.Exists(modulesRoot)) Directory.CreateDirectory(modulesRoot);
 
 var builder = WebApplication.CreateBuilder(args);
 
-// config
+builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
 builder.Configuration
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true);
 
-var modulesRoot = Path.Combine(AppContext.BaseDirectory, ModuleDir);
-
-if (!Directory.Exists(modulesRoot)) Directory.CreateDirectory(modulesRoot);
+// 2. Load Module JSON Files (Prefixed with Area)
+// This adds "Main:SecuritySettings:..." from the file to the config
+builder.Configuration.AddModuleJsonFiles(AppContext.BaseDirectory);
 
 if (Directory.Exists(modulesRoot))
 {
@@ -35,52 +29,54 @@ if (Directory.Exists(modulesRoot))
     }
 }
 
+var modules = ModuleLoader.DiscoverModules(AppContext.BaseDirectory);
+var main = (IModule)Activator.CreateInstance(typeof(MainModule))!;
+modules = modules.Prepend(main);
+
+foreach (var m in modules)
+{
+    foreach (var source in m.GetConfigurationSources(builder.Configuration.GetSection(m.ModuleId)))
+    {
+        ((IConfigurationBuilder)builder.Configuration).Add(source);
+    }
+}
+
 // core services
 builder.Services.AddControllersWithViews()
     .AddRazorRuntimeCompilation(options =>
     {
         // Add the Modules directory to the list of places Razor looks for files
-        var modulesPath = Path.Combine(AppContext.BaseDirectory, "Modules");
-        if (Directory.Exists(modulesPath))
+        if (Directory.Exists(modulesRoot))
         {
             options.FileProviders.Add(
-                new Microsoft.Extensions.FileProviders.PhysicalFileProvider(modulesPath)
+                new Microsoft.Extensions.FileProviders.PhysicalFileProvider(modulesRoot)
             );
         }
     });
 
-// database
-var sqliteCs = builder.Configuration.GetConnectionString("SQLite");
-if (!string.IsNullOrWhiteSpace(sqliteCs))
-{
-    builder.Services.AddDbContext<AppDbContext>(opt =>
-        opt.UseSqlite(sqliteCs, sqliteOptions => sqliteOptions.CommandTimeout(30)));
-}
-
-// identity
-builder.Services.AddIdentity<IdentityUser, IdentityRole>()
-    .AddEntityFrameworkStores<AppDbContext>()
-    .AddDefaultTokenProviders();
-
-// shared settings
-builder.Services.AddScoped<ISettingService, SettingService>();
-builder.Services.AddHostedService<SettingsInitializer>(); 
 builder.Services.AddSingleton<IModuleService, ModuleService>();
+builder.Services.AddMemoryCache();
+builder.Services.AddSession(options =>
+{
+    // Set session timeout (e.g., 20 minutes)
+    options.IdleTimeout = TimeSpan.FromMinutes(20);
+    options.Cookie.IsEssential = true;
+    options.Cookie.MaxAge = TimeSpan.FromMinutes(20);
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+});
 
 // module discovery and registration
-var modules = ModuleLoader.DiscoverModules(AppContext.BaseDirectory);
 foreach (var m in modules)
 {
     builder.Services.AddSingleton(m);
-    m.ConfigureServices(builder.Services, builder.Configuration);
+    m.ConfigureServices(builder.Services, builder.Configuration.GetSection(m.ModuleId));
 }
-builder.Services.AddSingleton<IModule, MainModule>();
 
 // build
 var app = builder.Build();
 
 // prestart init actions
-PrestartInit(app);
 var moduleInstances = app.Services.GetServices<IModule>();
 foreach (var m in moduleInstances)
     m.PrestartInit(app);
@@ -111,182 +107,15 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
-app.UseAuthentication();  // Required for Identity
+app.UseSession();
+app.UseAuthentication();
 app.UseAuthorization();
+app.MapControllerRoute(
+    name: "default",
+    pattern: "{controller=Home}/{action=Index}/{id?}");
 
 // Let modules configure middleware, routes, static files
 foreach (var m in moduleInstances)
     m.Configure(app, app.Environment);
 
-
-// endpoints
-app.MapControllerRoute(
-    name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}");
-
-
-// testing
-//app.MapGet("/diag/modules", () =>
-//    string.Join(", ", moduleInstances.Select(m => m.GetType().Assembly.GetName().Name)));
-
-
 await app.RunAsync();
-
-void PrestartInit(IHost host)
-{
-    using var scope = host.Services.CreateScope();
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-    db.Database.Migrate();
-
-    db.Database.ExecuteSqlRaw("PRAGMA journal_mode = WAL;");
-    db.Database.ExecuteSqlRaw("PRAGMA synchronous = NORMAL;");
-    db.Database.ExecuteSqlRaw("PRAGMA busy_timeout = 5000;");
-}
-
-//this does some bullshit
-//var app = Host.CreateDefaultBuilder(args);
-//var host = 
-//    Host.CreateDefaultBuilder(args)
-//    // configuration
-//    .ConfigureAppConfiguration((ctx, cfg) =>
-//    {
-//        cfg.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-//           .AddJsonFile($"appsettings.{ctx.HostingEnvironment.EnvironmentName}.json",
-//                        optional: true, reloadOnChange: true);
-
-//        // ---- auto-load every module's appsettings.*.json ----
-//        var modulesRoot = Path.Combine(AppContext.BaseDirectory, ModuleDir);
-//        if (Directory.Exists(modulesRoot))
-//        {
-//            foreach (var dir in Directory.GetDirectories(modulesRoot))
-//            {
-//                var file = Path.Combine(dir, $"appsettings.{Path.GetFileName(dir)}.json");
-//                if (File.Exists(file))
-//                    cfg.AddJsonFile(file, optional: true, reloadOnChange: true);
-//            }
-//        }
-//    })
-//    // core services
-//    .ConfigureServices((ctx, services) =>
-//    {
-//        // ----- MVC / Razor -----
-//        services.AddControllersWithViews();
-
-//        // Global SQLite DB (for settings, auth, etc.)
-//        var sqliteCs = ctx.Configuration.GetConnectionString("SQLite");
-//        if (!string.IsNullOrWhiteSpace(sqliteCs))
-//        {
-//            services.AddDbContext<AppDbContext>(opt => opt.UseSqlite(sqliteCs,
-//                sqliteOptions => sqliteOptions.CommandTimeout(30)));
-//        }
-
-//        services.AddIdentity<IdentityUser, IdentityRole>()
-//            .AddEntityFrameworkStores<AppDbContext>()
-//            .AddDefaultTokenProviders();
-
-//        // Shared settings system (DB-first → JSON fallback)
-//        services.AddScoped<ISettingService, SettingService>();
-//        services.AddHostedService<SettingsInitializer>();
-
-//    })
-//    // module discovery
-//    .ConfigureServices((ctx, services) =>
-//    {
-//        var modules = ModuleLoader.DiscoverModules(AppContext.BaseDirectory);
-//        foreach (var m in modules)
-//        {
-//            // Register the module *instance* so its Configure() can resolve services
-//            services.AddSingleton(m);
-//            m.ConfigureServices(services, ctx.Configuration);
-//        }
-//    })
-//    // web host pipeline
-//    .ConfigureWebHostDefaults(webBuilder =>
-//    {
-//        webBuilder.Configure(app =>
-//        {
-//            var env = app.ApplicationServices.GetRequiredService<IWebHostEnvironment>();
-//            var lifetime = app.ApplicationServices.GetRequiredService<IHostApplicationLifetime>();
-
-//            // ---- production safety ----
-//            if (env.IsDevelopment())
-//            {
-//                app.UseDeveloperExceptionPage();
-
-//                var modulesRoot = Path.Combine(env.ContentRootPath, ModuleDir);
-//                if (Directory.Exists(modulesRoot))
-//                {
-//                    var watcher = new FileSystemWatcher(modulesRoot, "*.dll")
-//                    {
-//                        IncludeSubdirectories = true,
-//                        EnableRaisingEvents = true,
-//                        NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite
-//                    };
-
-//                    watcher.Changed += (sender, e) =>
-//                    {
-//                        // Graceful shutdown → dotnet watch / VS will restart
-//                        app.ApplicationServices
-//                           .GetService<ILogger<Program>>()
-//                           ?.LogWarning("Module DLL changed: {File}. Triggering restart...", e.FullPath);
-
-//                        lifetime.StopApplication();
-//                    };
-//                }
-//            }
-//            else
-//            {
-//                app.UseExceptionHandler("/Home/Error");
-//                app.UseHsts();
-//            }
-
-//            app.UseHttpsRedirection();
-//            app.UseStaticFiles();
-//            app.UseRouting();
-//            //app.UseAuthentication();   // <-- ADD if Identity used
-//            //app.UseAuthorization();
-
-//            // ---- let every module add its own routes / static files ----
-//            var modules = app.ApplicationServices.GetServices<IModule>();
-//            foreach (var m in modules)
-//                m.Configure(app, env);
-
-//            // ---- route to settings and main stuff ----
-//            app.UseEndpoints(endpoints =>
-//            {
-//                endpoints.MapControllers(); // attribute-routed controllers
-//                endpoints.MapControllerRoute(
-//                        name: "default",
-//                        pattern: "{controller=Home}/{action=Index}/{id?}",
-//                        defaults: new { controller = "Home", action = "Index" });
-
-//                // Diagnostic route to prove HomeController is discoverable
-//                endpoints.MapGet("/diag/home", ctx =>
-//                    ctx.Response.WriteAsync("HomeController is alive"));
-//            }); 
-//        });
-//    })
-//    .Build();
-
-
-//PrestartInit(host);
-
-//var modules = host.Services.GetServices<IModule>();
-//foreach (var m in modules)
-//    m.PrestartInit(host);
-
-//await host.RunAsync();
-
-//void PrestartInit(IHost host)
-//{
-//    using (var scope = host.Services.CreateScope())
-//    {
-//        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-//        //db.Database.EnsureCreated();
-//        db.Database.Migrate();
-//        db.Database.ExecuteSqlRaw("PRAGMA journal_mode = WAL;");
-//        db.Database.ExecuteSqlRaw("PRAGMA synchronous = NORMAL;");
-//        db.Database.ExecuteSqlRaw("PRAGMA busy_timeout = 5000;");
-//    }
-//}

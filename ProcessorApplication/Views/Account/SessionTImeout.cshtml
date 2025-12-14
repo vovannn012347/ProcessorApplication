@@ -1,0 +1,26 @@
+﻿@model string
+@{
+    ViewData["Title"] = "Session Timeout";
+    Layout = "_LayoutLogin";
+}
+
+<div class="flex items-center justify-center min-h-screen bg-gray-50">
+    <div class="max-w-md w-full p-8 space-y-8 bg-white rounded-xl shadow-2xl border border-gray-200">
+        <div class="text-center">
+            <i class="fa-solid fa-clock-rotate-left text-red-500 fa-3x mb-4"></i>
+            <h1 class="text-3xl font-extrabold text-gray-900">Session Key Expired</h1>
+        </div>
+
+        <div class="mt-6 text-center">
+            <p class="text-gray-600 mb-4">
+                Your secure decryption session key is unavailable.
+            </p>
+            <p class="text-gray-700 font-medium">
+                To continue working, please <a href="@Url.Action("Login", "Account", new { returnUrl = Model })" class="text-indigo-600 hover:text-indigo-800 font-semibold underline transition duration-150">login here</a> to refresh your session.
+            </p>
+            <p class="mt-4 text-xs text-gray-400">
+                You will be redirected back to the page you were trying to access from.
+            </p>
+        </div>
+    </div>
+</div>

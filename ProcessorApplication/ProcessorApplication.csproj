@@ -2,8 +2,8 @@
 
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
-    <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <MvcRazorCompileOnPublish>false</MvcRazorCompileOnPublish>
     <CopyRazorFilesToPublishDirectory>true</CopyRazorFilesToPublishDirectory>
     <RazorCompileOnBuild>false</RazorCompileOnBuild>
@@ -11,9 +11,14 @@
 
   <ItemGroup>
     <PackageReference Include="LiteNetLib" Version="1.2.0" />
+    <PackageReference Include="MailKit" Version="4.14.1" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="6.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation" Version="6.0.35" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="6.0.35" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="6.0.35">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="6.0.35" />
     <PackageReference Include="MongoDB.Driver" Version="2.28.0" />
   </ItemGroup>
@@ -35,6 +40,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="Services\EventBusService.cs" />
+    <Compile Remove="Services\MessageHubService.cs" />
     <Compile Remove="Services\SqliteConfigurationProvider.cs" />
     <Compile Remove="Services\SqliteConfigurationSource.cs" />
   </ItemGroup>

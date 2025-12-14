@@ -1,0 +1,207 @@
+﻿@model SettingsViewModel
+@using Microsoft.AspNetCore.Mvc.ModelBinding
+@using ProcessorApplication.Models
+@using ProcessorApplication.ViewModels
+
+<div id="settings-partial-wrapper">
+
+    <h1 class="text-3xl font-bold text-gray-900 mb-6">Main Module Configuration</h1>
+
+    <div id="global-messages">
+        @{
+            var globalMessage = ViewData["GlobalMessage"] as string;
+            var messageType = ViewData["MessageType"] as string;
+
+            if (!string.IsNullOrEmpty(globalMessage))
+            {
+                var isSuccess = messageType == "Success";
+                var icon = isSuccess ? "fa-check-circle" : "fa-circle-exclamation";
+                var color = isSuccess ? "green" : "red";
+
+                <div class="rounded-md bg-@color-50 p-4 mb-6">
+                    <div class="flex">
+                        <div class="flex-shrink-0 text-@color-400">
+                            <i class="fa-solid @icon"></i>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-@color-800">@(isSuccess ? "Success" : "Error")</h3>
+                            <p class="mt-2 text-sm text-@color-700">@globalMessage</p>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+
+    <div id="validation-messages" class="mb-4" style="@(ViewData.ModelState.IsValid ? "display: none;" : "")">
+
+        @if (!ViewData.ModelState.IsValid)
+        {
+            <div class="rounded-md bg-yellow-50 p-4 border border-yellow-200">
+                <h3 class="text-sm font-medium text-yellow-800 flex items-center mb-2">
+                    <i class="fa-solid fa-triangle-exclamation mr-2 text-yellow-500"></i> Please correct the following errors:
+                </h3>
+                <ul class="list-disc ml-6 text-sm text-yellow-700 space-y-1">
+                    @foreach (var state in ViewData.ModelState.Values)
+                    {
+                        @foreach (var error in state.Errors)
+                        {
+                            <li>@error.ErrorMessage</li>
+                        }
+                    }
+                </ul>
+            </div>
+        }
+    </div>
+
+
+    <!-- wrap all tabs -->
+    <form id="masterSettingsForm" asp-controller="Settings" asp-action="ProcessAllSettings" method="post">
+
+        <div class="flex flex-col md:flex-row space-x-0 md:space-x-8">
+
+            <!-- Tab Navigation -->
+            <div id="settings-tab-nav" class="flex flex-row md:flex-col space-x-2 md:space-x-0 md:space-y-2 mb-4 md:mb-0 pb-2 md:pb-0 overflow-x-auto border-b md:border-b-0 md:border-r border-gray-200 md:w-48 flex-shrink-0">
+
+                <button type="button" data-tab="security" class="tab-button inline-flex items-center px-4 py-2 text-sm font-medium rounded-md transition duration-150 bg-indigo-600 text-white shadow-md" aria-selected="true">
+                    <i class="fa-solid fa-shield-halved mr-2"></i> Security
+                </button>
+
+                <button type="button" data-tab="email" class="tab-button inline-flex items-center px-4 py-2 text-sm font-medium rounded-md transition duration-150 bg-indigo-600 text-white shadow-md" aria-selected="true">
+                    <i class="fa-solid fa-square-envelope mr-2"></i> Email
+                </button>
+
+            </div>
+
+            <!-- Tab Content -->
+            <div class="flex-1 min-w-0 p-2">
+
+                <!-- Tab 1: Security Settings -->
+                <div id="tab-security" class="tab-content space-y-4">
+                    <h2 class="text-xl font-semibold mb-3 border-b pb-2">Security</h2>
+                    <partial name="_SecurityTabPartial" model="Model.Security" view-data='new ViewDataDictionary(ViewData) { { "ModelPrefix", "Security" } }' />
+                </div>
+
+                <div id="tab-email" class="tab-content space-y-4">
+                    <h2 class="text-xl font-semibold mb-3 border-b pb-2">Email</h2>
+                    <partial name="_EmailTabPartial" model="Model.Email" view-data='new ViewDataDictionary(ViewData) { { "ModelPrefix", "Email" } }' />
+                </div>
+
+                @Html.AntiForgeryToken()
+
+            </div>
+        </div>
+
+        <!-- Global Save Button -->
+        <div class="mt-8 pt-4 border-t border-gray-200">
+            <button type="submit" id="masterSaveButton" class="justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition duration-150">
+                <i class="fa-solid fa-save mr-2"></i> Save All
+            </button>
+        </div>
+    </form>
+
+    <script>
+        // --- Tab Management Functions ---
+
+        // Generic function to activate a tab, updating its button and content visibility
+        function activateTab(tabId) {
+            const wrapper = document.getElementById('settings-partial-wrapper');
+            if (!wrapper) return;
+
+            wrapper.querySelectorAll('.tab-button').forEach(btn => {
+                 const isActive = btn.getAttribute('data-tab') === tabId;
+
+                 btn.classList.toggle('bg-indigo-600', isActive);
+                 btn.classList.toggle('text-white', isActive);
+                 btn.classList.toggle('shadow-md', isActive);
+                 btn.classList.toggle('text-gray-600', !isActive);
+                 btn.classList.toggle('hover:bg-gray-100', !isActive);
+            });
+
+            wrapper.querySelectorAll('.tab-content').forEach(content => {
+                const isVisible = content.id === `tab-${tabId}`;
+                content.classList.toggle('hidden', !isVisible);
+            });
+            return tabId;
+        }
+
+        function attachTabListeners() {
+            const wrapper = document.getElementById('settings-partial-wrapper');
+            if (!wrapper) return;
+
+             wrapper.querySelectorAll('.tab-button').forEach(button => {
+                button.addEventListener('click', () => {
+                    activateTab(button.dataset.tab);
+                });
+            });
+        }
+
+        //console.error("Test");
+        // --- Form Submission Logic (Decoupled) ---
+        document.getElementById('masterSettingsForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            const form = event.target;
+            const url = form.action;
+
+            // Get the reliable wrapper container
+            const viewContainer = document.getElementById('settings-partial-wrapper');
+
+            const submitButton = document.getElementById('masterSaveButton');
+
+            const formData = new FormData(form);
+
+            const originalButtonHtml = submitButton.innerHTML;
+            submitButton.innerHTML = '<i class="fa-solid fa-sync fa-spin mr-2"></i> Saving...';
+            submitButton.disabled = true;
+
+            fetch(url, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                     throw new Error(`Server returned status ${response.status}. Check server logs.`);
+                }
+                return response.text();
+            })
+            .then(html => {
+                // 2. Inject the returned PartialView
+                if (viewContainer) {
+                     // Check current active tab to re-activate it after refresh
+                     let activeTab = document.querySelector('#settings-tab-nav .tab-button.bg-indigo-600');
+                     let tabToActivate = (activeTab && activeTab.dataset.tab) || 'security';
+
+                     viewContainer.innerHTML = html;
+
+                    // Re-attach listeners to the newly injected content
+                    attachTabListeners();
+
+                    // Re-select the correct tab
+                    activateTab(tabToActivate);
+                } else {
+                     console.error("Could not find view container to inject response.");
+                }
+            })
+            .catch(error => {
+                submitButton.innerHTML = originalButtonHtml;
+                submitButton.disabled = false;
+
+                const message = `Error processing settings: ${error.message}`;
+                if (viewContainer) {
+                     viewContainer.innerHTML = `<h1 class="text-2xl font-semibold text-red-700">Error</h1><p>${message}</p>`;
+                }
+                console.error(error);
+            });
+        });
+
+        // --- Initializers ---
+        attachTabListeners();
+        // Select the default tab
+        activateTab('security');
+
+    </script>
+</div>

@@ -3,7 +3,7 @@ using System.Text.Json;
 using Common.Models;
 using Common.Models.NodeContext;
 
-using ProcessorApplication.Sqlite.Models;
+using ProcessorApplication.Database.Models;
 
 using LiteNetLib;
 

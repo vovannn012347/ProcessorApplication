@@ -2,8 +2,8 @@
 using System.Text;
 using System.Text.Json;
 
-using ProcessorApplication.Sqlite;
-using ProcessorApplication.Sqlite.Models;
+using ProcessorApplication.Database;
+using ProcessorApplication.Database.Models;
 
 using LiteNetLib;
 

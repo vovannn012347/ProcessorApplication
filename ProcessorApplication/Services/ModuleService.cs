@@ -1,20 +1,18 @@
 ﻿using Common.Interfaces.Menu;
 
+using Microsoft.AspNetCore.Identity;
+
 using ProcessorApplication.Infrastructure;
 
 namespace ProcessorApplication.Services;
-public interface IModuleService
-{
-    IEnumerable<ModuleInfoViewModel> GetModuleInfo();
-    List<MenuItemViewModel> GetMenuItems(string moduleId);
-}
 
 public class ModuleService : IModuleService
 {
-    // We will inject all IModule instances here
+
     private readonly IEnumerable<IModule> _modules;
 
-    public ModuleService(IEnumerable<IModule> modules)
+    public ModuleService(
+        IEnumerable<IModule> modules)
     {
         _modules = modules;
     }
@@ -30,9 +28,10 @@ public class ModuleService : IModuleService
     }
 
     // Gets the sidebar menu for a specific module
-    public List<MenuItemViewModel> GetMenuItems(string moduleId)
+    public List<MenuItemViewModel> GetMenuItems(string moduleId, IServiceProvider services)
     {
-        var module = _modules.FirstOrDefault(m => m.ModuleId == moduleId);
-        return module?.GetMenuItems() ?? new List<MenuItemViewModel>();
+        var module = _modules.FirstOrDefault(m => string.Equals(m.ModuleId, moduleId, StringComparison.OrdinalIgnoreCase));
+        // Pass the container down to the module
+        return module?.GetMenuItems(services) ?? new List<MenuItemViewModel>();
     }
 }

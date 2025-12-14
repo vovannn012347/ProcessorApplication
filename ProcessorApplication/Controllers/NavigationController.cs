@@ -1,38 +1,64 @@
-﻿using System.Diagnostics;
+﻿using System.Security.Claims;
 
+using Common.Interfaces.Menu;
+
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 
-using ProcessorApplication.Models;
-using ProcessorApplication.Services;
+using ProcessorApplication.Database.Models;
+using ProcessorApplication.Infrastructure;
 
 namespace ProcessorApplication.Controllers;
 
+[Route("/Navigation")]
 public class NavigationController : Controller
 {
+    private readonly IServiceProvider _services;
     private readonly IModuleService _moduleService;
+    private ClaimsPrincipal CurrentUser => User;
 
-    public NavigationController(IModuleService moduleService)
+    public NavigationController(
+        IServiceProvider services,
+        IModuleService moduleService)
     {
+        _services = services;
         _moduleService = moduleService;
     }
 
-    // Action to get the TOP NAVBAR modules
-    [HttpGet]
+    [HttpGet("GetModules")]
     public IActionResult GetModules()
     {
         var modules = _moduleService.GetModuleInfo();
         return Json(modules);
     }
 
-    // Action to get the SIDEBAR menu
-    [HttpGet]
+    [HttpGet("GetModuleMenu")]
     public IActionResult GetModuleMenu(string moduleId)
     {
-        var menuItems = _moduleService.GetMenuItems(moduleId);
+        var allMenuItems = _moduleService.GetMenuItems(moduleId, _services);
 
-        // Return the partial view, passing it the list of menu items
-        var view = PartialView("_ModuleMenu", menuItems);
+        var filteredItems = allMenuItems.Where(i => string.IsNullOrEmpty(i.Roles)).ToList();
 
-        return view;
+        if (!CurrentUser.Identity.IsAuthenticated)
+        {
+            return PartialView("_ModuleMenu", filteredItems);
+        }
+
+        foreach (var item in allMenuItems.Where(i => !string.IsNullOrEmpty(i.Roles)).ToList())
+        {
+            var requiredRoles = item.Roles.Split(',')
+                .Select(r => r.Trim())
+                .ToArray();
+
+            // NOTE: use User.IsInRole for simplicity, but if the role claim 
+            // is not loaded - might need to use _userManager.IsInRoleAsync(...) 
+            // which requires getting the IdentityUser first.
+            if (requiredRoles.Any(role => CurrentUser.IsInRole(role)))
+            {
+                filteredItems.Add(item);
+            }
+        }
+
+        return PartialView("_ModuleMenu", filteredItems);
     }
 }

@@ -1,0 +1,206 @@
+﻿@model ProcessorApplication.Models.Settings.EmailSettings
+@using ProcessorApplication.Models.Settings
+
+@{
+    var prefix = ViewData["ModelPrefix"]?.ToString() ?? "Email";
+    // Helper for binding names
+    string Pfx(string prop) => $"{prefix}.{prop}";
+
+    // Group name for radios to ensure only one is selected
+    var modeGroupName = Pfx(nameof(Model.Mode));
+}
+
+<div class="space-y-8">
+
+    <div class="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+        <h3 class="text-lg font-medium leading-6 text-gray-900 border-b pb-2 mb-4">General Configuration</h3>
+
+        <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+            <div class="sm:col-span-3">
+                <label asp-for="Identity.Email" class="block text-sm font-medium text-gray-700"></label>
+                <div class="mt-1 relative rounded-md shadow-sm">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" /></svg>
+                    </div>
+                    <input asp-for="Identity.Email" name="@Pfx(nameof(Model.Identity.Email))" class="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md" placeholder="system@example.com" />
+                </div>
+            </div>
+
+            <div class="sm:col-span-3">
+                <label asp-for="Identity.FromName" class="block text-sm font-medium text-gray-700"></label>
+                <input asp-for="Identity.FromName" name="@Pfx("Identity.FromName")" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md" placeholder="My System Notifier" />
+            </div>
+
+            <div class="sm:col-span-4">
+                <label asp-for="Server.SmtpHost" class="block text-sm font-medium text-gray-700"></label>
+                <input asp-for="Server.SmtpHost" name="@Pfx("Server.SmtpHost")" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md" placeholder="smtp.gmail.com" />
+            </div>
+
+            <div class="sm:col-span-2">
+                <label asp-for="Server.SmtpPort" class="block text-sm font-medium text-gray-700"></label>
+                <input asp-for="Server.SmtpPort" name="@Pfx("Server.SmtpPort")" type="number" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md" />
+            </div>
+
+            <div class="sm:col-span-3 flex items-center h-full pt-4">
+                <input asp-for="Server.UseSsl" name="@Pfx("Server.UseSsl")" type="checkbox" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" />
+                <label asp-for="Server.UseSsl" class="ml-2 block text-sm text-gray-900"></label>
+            </div>
+
+            <div class="sm:col-span-3">
+                <label asp-for="HealthCheckPeriodMinutes" class="block text-sm font-medium text-gray-700"></label>
+                <div class="mt-1 relative rounded-md shadow-sm">
+                    <input asp-for="HealthCheckPeriodMinutes" name="@Pfx(nameof(Model.HealthCheckPeriodMinutes))" type="number" min="1" class="focus:ring-indigo-500 focus:border-indigo-500 block w-full pr-12 sm:text-sm border-gray-300 rounded-md" />
+                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                        <span class="text-gray-500 sm:text-sm">min</span>
+                    </div>
+                </div>
+                <p class="mt-1 text-xs text-gray-500">Frequency of background connectivity pings.</p>
+            </div>
+        </div>
+    </div>
+
+    <div>
+        <h3 class="text-lg font-medium leading-6 text-gray-900 mb-4">Authentication Strategy</h3>
+
+        <div class="space-y-4">
+
+            <div class="relative">
+                <input type="radio" name="@modeGroupName" value="@EmailAuthMode.PasswordAuth" id="mode_password" class="hidden-radio-selector" @(Model.Mode == EmailAuthMode.PasswordAuth ? "checked" : "") />
+                <div class="settings-card rounded-lg p-4 border transition-all bg-gray-50">
+                    <label for="mode_password" class="settings-card-header cursor-pointer flex justify-between items-center select-none">
+                        <div class="flex items-center">
+                            <span class="font-bold text-gray-800 text-sm uppercase tracking-wide">Standard Password</span>
+                        </div>
+                        <span class="indicator-icon text-gray-400"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg></span>
+                    </label>
+                    <div class="mt-4 border-t pt-3">
+                        <label class="block text-xs font-medium text-gray-500 uppercase">Password</label>
+                        <input type="password" name="@Pfx("Auth.PasswordAuth.Password")" value="@Model.Auth.PasswordAuth.Password" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="relative">
+                <input type="radio" name="@modeGroupName" value="@EmailAuthMode.AppPasswordAuth" id="mode_app_password" class="hidden-radio-selector" @(Model.Mode == EmailAuthMode.AppPasswordAuth ? "checked" : "") />
+                <div class="settings-card rounded-lg p-4 border transition-all bg-gray-50">
+                    <label for="mode_app_password" class="settings-card-header cursor-pointer flex justify-between items-center select-none">
+                        <span class="font-bold text-gray-800 text-sm uppercase tracking-wide">App-Specific Password</span>
+                        <span class="indicator-icon text-gray-400"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg></span>
+                    </label>
+                    <div class="mt-4 border-t pt-3">
+                        <label class="block text-xs font-medium text-gray-500 uppercase">Generated App Password</label>
+                        <input type="password" name="@Pfx("Auth.AppPasswordAuth.AppPassword")" value="@Model.Auth.AppPasswordAuth.AppPassword" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+                        <p class="mt-1 text-xs text-gray-500">For Google/Microsoft accounts with 2FA enabled.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="relative">
+                <input type="radio" name="@modeGroupName" value="@EmailAuthMode.OAuthAuth" id="mode_oauth" class="hidden-radio-selector" @(Model.Mode == EmailAuthMode.OAuthAuth ? "checked" : "") />
+                <div class="settings-card rounded-lg p-4 border transition-all bg-gray-50">
+                    <label for="mode_oauth" class="settings-card-header cursor-pointer flex justify-between items-center select-none">
+                        <span class="font-bold text-gray-800 text-sm uppercase tracking-wide">OAuth 2.0</span>
+                        <span class="indicator-icon text-gray-400"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg></span>
+                    </label>
+                    <div class="mt-4 border-t pt-3 grid grid-cols-1 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 uppercase">Access Token</label>
+                            <input type="text" name="@Pfx("Auth.OAuthAuth.AccessToken")" value="@Model.Auth.OAuthAuth.AccessToken" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm font-mono" />
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 uppercase">Refresh Token</label>
+                            <input type="password" name="@Pfx("Auth.OAuthAuth.RefreshToken")" value="@Model.Auth.OAuthAuth.RefreshToken" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm font-mono" />
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500">Tokens do change on successful connection.</p>
+                        <div class="flex space-x-4">
+                            <div class="w-1/2">
+                                <label class="block text-xs font-medium text-gray-500 uppercase">Expires At</label>
+                                <input type="text" name="@Pfx("Auth.OAuthAuth.ExpiresAt")" value="@Model.Auth.OAuthAuth.ExpiresAt" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+                            </div>
+                            <div class="w-1/2">
+                                <label class="block text-xs font-medium text-gray-500 uppercase">Token Type</label>
+                                <input type="text" name="@Pfx("Auth.OAuthAuth.TokenType")" value="@Model.Auth.OAuthAuth.TokenType" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="relative">
+                <input type="radio" name="@modeGroupName" value="@EmailAuthMode.ApiKeyAuth" id="mode_apikey" class="hidden-radio-selector" @(Model.Mode == EmailAuthMode.ApiKeyAuth ? "checked" : "") />
+                <div class="settings-card rounded-lg p-4 border transition-all bg-gray-50">
+                    <label for="mode_apikey" class="settings-card-header cursor-pointer flex justify-between items-center select-none">
+                        <span class="font-bold text-gray-800 text-sm uppercase tracking-wide">API Key</span>
+                        <span class="indicator-icon text-gray-400"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg></span>
+                    </label>
+                    <div class="mt-4 border-t pt-3">
+                        <label class="block text-xs font-medium text-gray-500 uppercase">API Key / Secret</label>
+                        <input type="password" name="@Pfx("Auth.ApiKeyAuth.ApiKey")" value="@Model.Auth.ApiKeyAuth.ApiKey" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm font-mono" />
+                        <p class="mt-1 text-xs text-gray-500">Often used with SendGrid, Mailgun, etc.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="relative">
+                <input type="radio" name="@modeGroupName" value="@EmailAuthMode.ServiceAccountAuth" id="mode_service_account" class="hidden-radio-selector" @(Model.Mode == EmailAuthMode.ServiceAccountAuth ? "checked" : "") />
+                <div class="settings-card rounded-lg p-4 border transition-all bg-gray-50">
+                    <label for="mode_service_account" class="settings-card-header cursor-pointer flex justify-between items-center select-none">
+                        <span class="font-bold text-gray-800 text-sm uppercase tracking-wide">Service Account</span>
+                        <span class="indicator-icon text-gray-400"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg></span>
+                    </label>
+                    <div class="mt-4 border-t pt-3 grid grid-cols-1 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 uppercase">Service Account Key (JSON Path)</label>
+                            <input type="text" name="@Pfx("Auth.ServiceAccountAuth.ServiceAccountKey")" value="@Model.Auth.ServiceAccountAuth.ServiceAccountKey" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm font-mono" />
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 uppercase">Delegated User Email</label>
+                            <input type="text" name="@Pfx("Auth.ServiceAccountAuth.DelegatedUser")" value="@Model.Auth.ServiceAccountAuth.DelegatedUser" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="relative">
+                <input type="radio" name="@modeGroupName" value="@EmailAuthMode.CertificateAuth" id="mode_certificate" class="hidden-radio-selector" @(Model.Mode == EmailAuthMode.CertificateAuth ? "checked" : "") />
+                <div class="settings-card rounded-lg p-4 border transition-all bg-gray-50">
+                    <label for="mode_certificate" class="settings-card-header cursor-pointer flex justify-between items-center select-none">
+                        <span class="font-bold text-gray-800 text-sm uppercase tracking-wide">Client Certificate</span>
+                        <span class="indicator-icon text-gray-400"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg></span>
+                    </label>
+                    <div class="mt-4 border-t pt-3 grid grid-cols-1 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 uppercase">Certificate Path (.pfx)</label>
+                            <input type="text" name="@Pfx("Auth.CertificateAuth.CertificatePath")" value="@Model.Auth.CertificateAuth.CertificatePath" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm font-mono" />
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 uppercase">Certificate Password</label>
+                            <input type="password" name="@Pfx("Auth.CertificateAuth.CertificatePassword")" value="@Model.Auth.CertificateAuth.CertificatePassword" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+            @* 
+            <div class="relative">
+                <input type="radio" name="@modeGroupName" value="@EmailAuthMode.KeyPairAuth" id="mode_keypair" class="hidden-radio-selector" @(Model.Mode == EmailAuthMode.KeyPairAuth ? "checked" : "") />
+                <div class="settings-card rounded-lg p-4 border transition-all bg-gray-50">
+                    <label for="mode_keypair" class="settings-card-header cursor-pointer flex justify-between items-center select-none">
+                        <span class="font-bold text-gray-800 text-sm uppercase tracking-wide">Custom Key Pair</span>
+                        <span class="indicator-icon text-gray-400"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg></span>
+                    </label>
+                    <div class="mt-4 border-t pt-3 grid grid-cols-1 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 uppercase">Private Key Path</label>
+                            <input type="text" name="@Pfx("Auth.KeyPairAuth.PrivateKeyPath")" value="@Model.Auth.KeyPairAuth.PrivateKeyPath" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm font-mono" />
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 uppercase">Key Password (Optional)</label>
+                            <input type="password" name="@Pfx("Auth.KeyPairAuth.PrivateKeyPassword")" value="@Model.Auth.KeyPairAuth.PrivateKeyPassword" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+                        </div>
+                    </div>
+                </div>
+            </div> *@
+
+        </div>
+    </div>
+</div>

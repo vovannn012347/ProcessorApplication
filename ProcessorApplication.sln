@@ -12,6 +12,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "P2PNode", "Modules\P2PNode\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProcessorModule", "Modules\ProcessorModule\ProcessorModule.csproj", "{A53E2C3B-05DA-27F4-6C27-F10962C467F5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PortabilityModule", "Modules\PortabilityModule\PortabilityModule.csproj", "{1918F599-593D-4B7F-961B-4452E2037759}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +35,10 @@ Global
 		{A53E2C3B-05DA-27F4-6C27-F10962C467F5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A53E2C3B-05DA-27F4-6C27-F10962C467F5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A53E2C3B-05DA-27F4-6C27-F10962C467F5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1918F599-593D-4B7F-961B-4452E2037759}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1918F599-593D-4B7F-961B-4452E2037759}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1918F599-593D-4B7F-961B-4452E2037759}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1918F599-593D-4B7F-961B-4452E2037759}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -40,6 +46,7 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{73A5C1FF-9F97-934C-CA6E-49B4B2F9F7BE} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{A53E2C3B-05DA-27F4-6C27-F10962C467F5} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{1918F599-593D-4B7F-961B-4452E2037759} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {51407EE2-11A0-4C2A-8277-1FD995A12419}

@@ -3,7 +3,7 @@ using Common.Models;
 
 using LiteNetLib;
 
-using ProcessorApplication.Sqlite;
+using ProcessorApplication.Database;
 using Common.Interfaces;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;

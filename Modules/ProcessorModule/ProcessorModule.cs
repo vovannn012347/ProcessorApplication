@@ -1,26 +1,49 @@
-﻿using Common.Interfaces.Menu;
+﻿
+
+using Common.Interfaces.Menu;
+using Common.Models;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
+using ProcessorApplication.Configuration;
+using ProcessorApplication.Database;
 using ProcessorApplication.Infrastructure;
 
 namespace ProcessorModule;
 public class ProcessorModule : IModule
 {
     public string Name => "Processor module";
-    public string ModuleId => "processor";
+    public string ModuleId => "Processor";
+
+    public Version Version => new Version("0.0.0.1");
+
+    public ModuleDependency[] Dependencies =>
+        new ModuleDependency[] { 
+            new ModuleDependency {
+                ModuleId = "Main",
+                MinVersion = new Version("1.0.0.0")
+            } 
+        };
 
     public List<MenuItemViewModel> GetMenuItems()
     {
         return new List<MenuItemViewModel>
         {
-            new MenuItemViewModel { Name = "Network Status", IconClass = "fa-solid fa-network-wired", Url = "/P2P/Status" },
-            new MenuItemViewModel { Name = "View Peers", IconClass = "fa-solid fa-users", Url = "/P2P/Peers" },
-            new MenuItemViewModel { Name = "Security", IconClass = "fa-solid fa-shield-halved", Url = "/P2P/Security" }
+            new MenuItemViewModel { 
+                Name = "Processing modules", 
+                IconClass = "fa-solid fa-network-wired", 
+                Url = "Processor/Process" },
+
+            new MenuItemViewModel {
+                Name = "Process status",
+                IconClass = "fa-solid fa-network-wired",
+                Url = "Processor/Process" },
+            new MenuItemViewModel { Name = "Settings", IconClass = "fa-solid fa-shield-halved", Url = "/P2P/Security" }
         };
     }
 
@@ -139,5 +162,24 @@ public class ProcessorModule : IModule
         //    //db.Database.ExecuteSqlRaw("PRAGMA synchronous = NORMAL;");
         //    //db.Database.ExecuteSqlRaw("PRAGMA busy_timeout = 5000;");
         //}
+    }
+
+
+    public IEnumerable<IConfigurationSource> GetConfigurationSources(IConfiguration initialConfig)
+    {
+        var sqliteCs = initialConfig.GetConnectionString("SQLite");
+        if (string.IsNullOrEmpty(sqliteCs))
+            sqliteCs = initialConfig.GetValue<string>("Processor:ConnectionStrings:SQLite");
+
+        if (string.IsNullOrWhiteSpace(sqliteCs))
+        {
+            yield break;
+        }
+
+        var dbContextOptions = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlite(sqliteCs)
+            .Options;
+
+        yield return new DbConfigurationSource(dbContextOptions);
     }
 }

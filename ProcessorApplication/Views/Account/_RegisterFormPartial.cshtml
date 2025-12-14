@@ -1,0 +1,34 @@
+﻿@model ProcessorApplication.ViewModels.Account.RegisterViewModel
+
+<div class="space-y-4">
+
+    <!-- Name and Surname -->
+    <div>
+        <label asp-for="Name" class="block text-sm font-medium text-gray-700"></label>
+        <input asp-for="Name" class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm p-2" />
+        <span asp-validation-for="Name" class="text-sm text-red-600 block mt-1"></span>
+    </div>
+    <div>
+        <label asp-for="Surname" class="block text-sm font-medium text-gray-700"></label>
+        <input asp-for="Surname" class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm p-2" />
+        <span asp-validation-for="Surname" class="text-sm text-red-600 block mt-1"></span>
+    </div>
+
+    <!-- Display Nickname -->
+    <div>
+        <label asp-for="DisplayNickname" class="block text-sm font-medium text-gray-700"></label>
+        <input asp-for="DisplayNickname" class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm p-2" />
+    </div>
+
+    <!-- Passwords -->
+    <div>
+        <label asp-for="Password" class="block text-sm font-medium text-gray-700"></label>
+        <input asp-for="Password" type="password" class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm p-2" />
+        <span asp-validation-for="Password" class="text-sm text-red-600 block mt-1"></span>
+    </div>
+    <div>
+        <label asp-for="ConfirmPassword" class="block text-sm font-medium text-gray-700"></label>
+        <input asp-for="ConfirmPassword" type="password" class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm p-2" />
+        <span asp-validation-for="ConfirmPassword" class="text-sm text-red-600 block mt-1"></span>
+    </div>
+</div>

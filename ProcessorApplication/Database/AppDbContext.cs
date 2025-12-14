@@ -1,31 +1,43 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using Common.Models.Database;
+
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
-using ProcessorApplication.Sqlite.Models;
+using ProcessorApplication.Database.Models;
+using ProcessorApplication.Models;
 
-namespace ProcessorApplication.Sqlite;
+namespace ProcessorApplication.Database;
 
-public class AppDbContext : IdentityDbContext<IdentityUser, IdentityRole, string>
+public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole, string>
 {
-    //public DbSet<Peer> Peers { get; set; }
-    //public DbSet<Tracker> Trackers { get; set; }
     public DbSet<Setting> Settings { get; set; }
+    public DbSet<ServerHashStamp> HashStamps { get; set; }
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {
     }
 
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<DateTime>().HaveConversion<UtcDateTimeConverter>();
+
+        base.ConfigureConventions(configurationBuilder);
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        //modelBuilder.Entity<Peer>()
-        //.HasIndex(p => p.HashKey)
-        //.IsUnique();
 
-        //modelBuilder.Entity<Tracker>()
-        //.HasIndex(t => t.HashKey)
-        //.IsUnique();
+        modelBuilder.Entity<ServerHashStamp>()
+            .HasKey(s => s.Id);
 
+        modelBuilder.Entity<ServerHashStamp>()
+            .HasIndex(s => s.StampTime)
+            .IsUnique();
+
+        modelBuilder.Entity<Setting>()
+            .HasKey(s => s.Id);
 
         modelBuilder.Entity<Setting>()
             .HasIndex(s => new { s.Key, s.Area })
@@ -33,6 +45,13 @@ public class AppDbContext : IdentityDbContext<IdentityUser, IdentityRole, string
 
 
         base.OnModelCreating(modelBuilder);
+    }
+
+    private class UtcDateTimeConverter : ValueConverter<DateTime, DateTime>
+    {
+        public UtcDateTimeConverter() : 
+            base(v => v.Kind == DateTimeKind.Utc ? v : v.ToUniversalTime(),
+                v => DateTime.SpecifyKind(v, DateTimeKind.Utc)) { }
     }
 }
 

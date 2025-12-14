@@ -16,8 +16,8 @@ using Common.Interfaces;
 using Common.Models;
 using Common.Models.NodeContext;
 
-using ProcessorApplication.Sqlite;
-using ProcessorApplication.Sqlite.Models;
+using ProcessorApplication.Database;
+using ProcessorApplication.Database.Models;
 
 using LiteNetLib;
 using LiteNetLib.Utils;

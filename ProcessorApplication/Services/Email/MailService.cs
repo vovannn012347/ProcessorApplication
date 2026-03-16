@@ -5,8 +5,8 @@ using Microsoft.Extensions.Options;
 
 using MimeKit;
 
+using ProcessorApplication.Configuration.Settings;
 using ProcessorApplication.Infrastructure;
-using ProcessorApplication.Models.Settings;
 
 namespace ProcessorApplication.Services.Email;
 

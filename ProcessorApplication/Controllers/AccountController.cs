@@ -10,8 +10,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
 using ProcessorApplication.Attributes;
+using ProcessorApplication.Configuration.Settings;
 using ProcessorApplication.Database.Models;
-using ProcessorApplication.Models.Settings;
 using ProcessorApplication.Models.User;
 using ProcessorApplication.Services;
 using ProcessorApplication.Services.User;
@@ -19,8 +19,9 @@ using ProcessorApplication.ViewModels.Account;
 
 namespace ProcessorApplication.Controllers;
 
-[Route("/Main/Account")]
 [AllowAnonymous]
+[ModuleRoute("Main")]
+[Route("[controller]/[action]/{id?}")]
 public class AccountController : Controller
 {
     private readonly IServiceProvider _serviceProvider;
@@ -43,20 +44,20 @@ public class AccountController : Controller
         _logger = logger;
     }
 
-    [Route("SessionTimeout")]
+    [HttpGet]
     public IActionResult SessionTimeout(string returnUrl)
     {
         return View(model:returnUrl);
     }
 
 
-    [HttpGet("Register")]
+    [HttpGet]
     public IActionResult Register()
     {
         return View(new RegisterViewModel());
     }
 
-    [HttpPost("Register")]
+    [HttpPost]
     public async Task<IActionResult> Register(RegisterViewModel model)
     {
         if (!ModelState.IsValid) { 
@@ -85,6 +86,7 @@ public class AccountController : Controller
             UserName = uniqueUserName,
             Name = model.Name,
             Surname = model.Surname,
+            Email = model.Email,
             DisplayNickname = model.DisplayNickname ?? 
             (!string.IsNullOrWhiteSpace($"{model.Name} {model.Surname}") ? $"{model.Name} {model.Surname}" : uniqueUserName),
             IsEncrypted = false
@@ -95,7 +97,11 @@ public class AccountController : Controller
         if (result.Succeeded)
         {
             user = await _userManager.FindByIdAsync(user.Id);
+            await _userManager.AddToRoleAsync(user, "User");
+
             await _signInManager.SignInAsync(user, isPersistent: false);
+            this.HttpContext.Session.SetString("UselessInfoHash", user.EncryptionHash);
+
             return Redirect("/Main/Profile/Index");
         }
 
@@ -103,7 +109,7 @@ public class AccountController : Controller
         return View(model);
     }
 
-    [HttpPost("RegisterFromFile")]
+    [HttpPost]
     public async Task<IActionResult> RegisterFromFile(
         IFormFile profileFile, 
         string password, 
@@ -160,9 +166,10 @@ public class AccountController : Controller
                 UserName = uniqueUserName,
                 Name = model.Name,
                 Surname = model.Surname,
+                Email = model.Email,
                 DisplayNickname = model.DisplayNickname ??
                 (!string.IsNullOrWhiteSpace($"{model.Name} {model.Surname}") ? $"{model.Name} {model.Surname}" : uniqueUserName),
-                EncryptionKey = model.PersonalHashKey,
+                EncryptionHash = model.PersonalHashKey,
                 IsEncrypted = false
             };
 
@@ -171,7 +178,10 @@ public class AccountController : Controller
             if (result.Succeeded)
             {
                 user = await _userManager.FindByIdAsync(user.Id);
+                await _userManager.AddToRoleAsync(user, "User");
+
                 await _signInManager.SignInAsync(user, isPersistent: false);
+                this.HttpContext.Session.SetString("UselessInfoHash", user.EncryptionHash);
                 return Redirect("/Main/Profile/Index");
             }
 
@@ -186,7 +196,7 @@ public class AccountController : Controller
     }
 
 
-    [HttpGet("Login")]
+    [HttpGet]
     public IActionResult Login(string returnUrl = "") 
     { 
         return View(new LoginViewModel
@@ -195,7 +205,7 @@ public class AccountController : Controller
         });
     }
     
-    [HttpPost("Login")]
+    [HttpPost]
     public async Task<IActionResult> Login(LoginViewModel model)
     {
         if (!ModelState.IsValid) {
@@ -241,7 +251,7 @@ public class AccountController : Controller
         return View(model);
     }
 
-    [HttpPost("LoginFromFile")]
+    [HttpPost]
     //redo
     public async Task<IActionResult> LoginFromFile(
         IFormFile profileFile,
@@ -280,7 +290,7 @@ public class AccountController : Controller
                 return View("Login", loginModel);
             }
 
-            var decryptedPhsk = SecurityHelperUtil.DecryptData(user.PersonalHashKeyLockedByPassword, password);
+            var decryptedPhsk = SecurityHelperUtil.DecryptData(model.PersonalHashKey, password);
 
             if (string.IsNullOrEmpty(decryptedPhsk))
             {
@@ -288,7 +298,7 @@ public class AccountController : Controller
                 return View("Login", loginModel);
             }
 
-            var fileDecryptedId = SecurityHelperUtil.DecryptData(user.UserIdLockedByPHSK, decryptedPhsk);
+            var fileDecryptedId = SecurityHelperUtil.DecryptData(model.UserIdLockedByPHSK, decryptedPhsk);
 
             if (fileDecryptedId != user.UserName)
             {
@@ -337,22 +347,29 @@ public class AccountController : Controller
         }
     }
 
-    [HttpPost("Logout")]
+    [HttpPost]
     public async Task<IActionResult> Logout()
     {
         await _signInManager.SignOutAsync();
+        //this.HttpContext.Session.Remove("UselessInfoHash");
         this.HttpContext.Session.Clear();
+
+        Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+        Response.Headers["Pragma"] = "no-cache";
+        Response.Headers["Expires"] = "0";
+
+        //this.HttpContext.User = null;
         return Redirect("/Main/Home/Dashboard");
     }
 
     [LocalhostOnly]
-    [HttpGet("AdminRegister")]
+    [HttpGet]
     public IActionResult AdminRegister()
     {
         return View(new AdminRegisterViewModel());
     }
     [LocalhostOnly]
-    [HttpPost("AdminRegister")]
+    [HttpPost]
     public async Task<IActionResult> AdminRegister(AdminRegisterViewModel model)
     {
         if (!ModelState.IsValid)
@@ -407,7 +424,7 @@ public class AccountController : Controller
             var adminState = _serviceProvider.GetRequiredService<AdminSetupState>();
             adminState.SetAdminConfigured();
 
-            this.HttpContext.Session.SetString("UselessInfoHash", user.EncryptionKey);
+            this.HttpContext.Session.SetString("UselessInfoHash", user.EncryptionHash);
 
             return Redirect("/Main/Profile/Index");
         }

@@ -14,10 +14,10 @@ using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver.Linq;
 
+using ProcessorApplication.Configuration.Settings;
 using ProcessorApplication.Database;
 using ProcessorApplication.Database.Models;
 using ProcessorApplication.Infrastructure;
-using ProcessorApplication.Models.Settings;
 
 namespace ProcessorApplication.Services.HashStamps;
 public class HashGenerationJob : BackgroundService

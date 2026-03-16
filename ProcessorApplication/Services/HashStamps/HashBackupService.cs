@@ -15,11 +15,11 @@ using Microsoft.Extensions.Options;
 
 using MongoDB.Bson;
 
+using ProcessorApplication.Configuration.Settings;
 using ProcessorApplication.Database;
 using ProcessorApplication.Database.Models;
 using ProcessorApplication.Infrastructure;
 using ProcessorApplication.Models;
-using ProcessorApplication.Models.Settings;
 
 namespace ProcessorApplication.Services.HashStamps;
 public class HashBackupService : IHashBackupService

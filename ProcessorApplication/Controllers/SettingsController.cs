@@ -5,14 +5,17 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.Extensions.Options;
 
+using ProcessorApplication.Attributes;
+using ProcessorApplication.Configuration.Settings;
 using ProcessorApplication.Models.Settings;
 using ProcessorApplication.Utils;
 using ProcessorApplication.ViewModels;
 
 namespace ProcessorApplication.Controllers;
 
-[Route("Main/Settings")]
 [Authorize(Policy = "AdminLocalPolicy")]
+[ModuleRoute("Main")]
+[Route("[controller]/[action]/{id?}")]
 public class SettingsController : Controller
 {
     private readonly ILogger<SettingsController> _logger;
@@ -35,7 +38,7 @@ public class SettingsController : Controller
         _providerRules = providerRules;
     }
 
-    [Route("Index")] // Catches /Home/Dashboard
+    [HttpGet]
     public IActionResult Index()
     {
         var model = new SettingsViewModel
@@ -52,7 +55,7 @@ public class SettingsController : Controller
         return View(model);
     }
 
-    [HttpPost("ProcessAllSettings")]
+    [HttpPost]
     public async Task<IActionResult> ProcessAllSettings([FromForm] SettingsViewModel model)
     {
         if (!TryValidateModel(model.Security)||

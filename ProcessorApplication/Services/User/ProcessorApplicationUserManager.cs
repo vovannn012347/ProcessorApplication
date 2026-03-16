@@ -98,7 +98,7 @@ public class ProcessorApplicationUserManager : UserManager<ApplicationUser>
     private void ProcessUserData(ApplicationUser user, CryptoAction action)
     {
         // 1. Key Check
-        if (string.IsNullOrEmpty(user.EncryptionKey))
+        if (string.IsNullOrEmpty(user.EncryptionHash))
         {
             // Without the key, we cannot touch the protected data.
             // In a production app, you might throw or log depending on severity.
@@ -222,19 +222,19 @@ public class ProcessorApplicationUserManager : UserManager<ApplicationUser>
     {
         var serverHash = _hashProvider.GetLatestHashAsync().Result;
         user.CreateDateTime = DateTime.UtcNow;
-        if (string.IsNullOrEmpty(user.EncryptionKey))
+        if (string.IsNullOrEmpty(user.EncryptionHash))
         {
-            user.EncryptionKey = SecurityHelperUtil.GeneratePHSK(length);
+            user.EncryptionHash = SecurityHelperUtil.GeneratePHSK(length);
         }
 
-        user.PersonalHashKeyLockedByPassword = SecurityHelperUtil.EncryptData(user.EncryptionKey, plainPassword);
-        user.ServerEncryptedHashKey = SecurityHelperUtil.EncryptData(user.EncryptionKey, serverHash.MasterKey);
-        user.UserIdLockedByPHSK = SecurityHelperUtil.EncryptData(user.UserName, user.EncryptionKey);
+        user.PersonalHashKeyLockedByPassword = SecurityHelperUtil.EncryptData(user.EncryptionHash, plainPassword);
+        user.ServerEncryptedHashKey = SecurityHelperUtil.EncryptData(user.EncryptionHash, serverHash.MasterKey);
+        user.UserIdLockedByPHSK = SecurityHelperUtil.EncryptData(user.UserName, user.EncryptionHash);
 
-        var derivedKey = SecurityHelperUtil.DeriveKey(user.EncryptionKey, serverHash.MasterKey);
+        var derivedKey = SecurityHelperUtil.DeriveKey(user.EncryptionHash, serverHash.MasterKey);
 
         var defaultSettings = new UserSecuritySettings();
-        user.EncryptedSecuritySettings = SecurityHelperUtil.EncryptData(JsonSerializer.Serialize(defaultSettings), user.EncryptionKey);
+        user.EncryptedSecuritySettings = SecurityHelperUtil.EncryptData(JsonSerializer.Serialize(defaultSettings), user.EncryptionHash);
 
         // PHSK lock and ID lock happen AFTER userManager.CreateAsync
     }
@@ -257,11 +257,11 @@ public class ProcessorApplicationUserManager : UserManager<ApplicationUser>
     private string GetUserKey(ApplicationUser user)
     {
         var serverHash = _hashProvider.GetHashByTimeAsync(user.CreateDateTime).Result;
-        if (string.IsNullOrEmpty(user.EncryptionKey))
+        if (string.IsNullOrEmpty(user.EncryptionHash))
         {
-            user.EncryptionKey = SecurityHelperUtil.DecryptData(user.ServerEncryptedHashKey, serverHash.MasterKey);
+            user.EncryptionHash = SecurityHelperUtil.DecryptData(user.ServerEncryptedHashKey, serverHash.MasterKey);
         }
-        return SecurityHelperUtil.DeriveKey(user.EncryptionKey, serverHash.MasterKey);
+        return SecurityHelperUtil.DeriveKey(user.EncryptionHash, serverHash.MasterKey);
     }
 
     private string UnprotectData(ApplicationUser user, string data)
@@ -361,7 +361,7 @@ public class ProcessorApplicationUserManager : UserManager<ApplicationUser>
     {
         if (user.IsEncrypted)
         {
-            if (string.IsNullOrEmpty(user.EncryptionKey))
+            if (string.IsNullOrEmpty(user.EncryptionHash))
             {
                 return IdentityResult.Failed(new IdentityError { Description = "Cannot update user: Encryption key missing for validation." });
             }
@@ -395,7 +395,7 @@ public class ProcessorApplicationUserManager : UserManager<ApplicationUser>
 
         if (user.IsEncrypted)
         {
-            if (string.IsNullOrEmpty(user.EncryptionKey))
+            if (string.IsNullOrEmpty(user.EncryptionHash))
             {
                 return IdentityResult.Failed(new IdentityError { Description = "Cannot update user: Encryption key missing for validation." });
             }
@@ -426,8 +426,8 @@ public class ProcessorApplicationUserManager : UserManager<ApplicationUser>
         try
         {
             // Decrypt the password-locked key container
-            user.EncryptionKey = SecurityHelperUtil.DecryptData(user.PersonalHashKeyLockedByPassword, password);
-            return !string.IsNullOrEmpty(user.EncryptionKey);
+            user.EncryptionHash = SecurityHelperUtil.DecryptData(user.PersonalHashKeyLockedByPassword, password);
+            return !string.IsNullOrEmpty(user.EncryptionHash);
         }
         catch
         {
@@ -455,9 +455,9 @@ public class ProcessorApplicationUserManager : UserManager<ApplicationUser>
             var serverHash = _hashProvider.GetHashByTimeAsync(user.CreateDateTime).Result;
 
             // 2. Decrypt the server-locked key container
-            user.EncryptionKey = SecurityHelperUtil.DecryptData(user.ServerEncryptedHashKey, serverHash.MasterKey);
+            user.EncryptionHash = SecurityHelperUtil.DecryptData(user.ServerEncryptedHashKey, serverHash.MasterKey);
 
-            return !string.IsNullOrEmpty(user.EncryptionKey);
+            return !string.IsNullOrEmpty(user.EncryptionHash);
         }
         catch
         {
@@ -499,9 +499,12 @@ public class ProcessorApplicationUserManager : UserManager<ApplicationUser>
 
                 return false;
             }
-            var adminName = /*_contextAccessor.HttpContext?.User?.Identity?.Name ??*/ "System";
-            string subject = //_localizer["SecurityAlertTitle"];
-            "Security Alert: Profile Access";
+            var adminName = 
+                //_contextAccessor.HttpContext?.User?.Identity?.Name ??
+                "System";
+            string subject = 
+                //_localizer["SecurityAlertTitle"];
+                "Security Alert: Profile Access";
 
             // Key: "AuditMessageBody" -> Value: "Your profile data was accessed by an Administrator ({0}) for audit purposes."
             // We pass 'adminName' as the argument {0}
@@ -543,7 +546,7 @@ public class ProcessorApplicationUserManager : UserManager<ApplicationUser>
             return false;
         }
 
-        user.EncryptionKey = key;
+        user.EncryptionHash = key;
 
         if (user.IsEncrypted)
         {
@@ -557,7 +560,7 @@ public class ProcessorApplicationUserManager : UserManager<ApplicationUser>
     public bool LoadKeyForAdminAction(ApplicationUser user)
     {
         GetUserKey(user);
-        return !string.IsNullOrEmpty(user.EncryptionKey);
+        return !string.IsNullOrEmpty(user.EncryptionHash);
     }
 
     public void ReLockPHSKAsync(ApplicationUser user, string phsk, string password)

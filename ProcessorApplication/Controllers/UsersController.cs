@@ -3,23 +3,26 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
+using ProcessorApplication.Attributes;
 using ProcessorApplication.Database;
 using ProcessorApplication.Database.Models;
 using ProcessorApplication.Models.User;
+using ProcessorApplication.Services.User;
 using ProcessorApplication.Utils;
 
 namespace ProcessorApplication.Controllers;
-
-[Route("Main/Users")]
+[ModuleRoute("Main")]
+[Route("[controller]/[action]/{id?}")]
+[SessionKeyRequired("UselessInfoHash")]
 [Authorize(Policy = "AdminLocalPolicy", Roles = "Admin")]
 public class UsersController : Controller
 {
-    private readonly UserManager<ApplicationUser> _userManager;
+    private readonly ProcessorApplicationUserManager _userManager;
     private readonly ILogger<UsersController> _logger;
     private readonly AppDbContext _database;
 
     public UsersController(
-        UserManager<ApplicationUser> userManager,
+        ProcessorApplicationUserManager userManager,
         ILogger<UsersController> logger,
         AppDbContext database)
     {
@@ -28,7 +31,7 @@ public class UsersController : Controller
         _database = database;
     }
 
-    [HttpGet("Index")]
+    [HttpGet]
     public async Task<IActionResult> Index(int pageNumber = 1, int pageSize = 20)
     {
         if (pageSize <= 0) pageSize = 20;
@@ -74,7 +77,8 @@ public class UsersController : Controller
         public string UserName { get; set; }
         public bool IsLocked { get; set; }
     }
-    [HttpPost("SetLockout")]
+
+    [HttpPost]
     public async Task<IActionResult> SetLockout([FromBody] UserActionLockout lockout)
     {
         var user = await _userManager.FindByNameAsync(lockout.UserName);
@@ -114,7 +118,7 @@ public class UsersController : Controller
     {
         public string UserName { get; set; }
     }
-    [HttpPost("Delete")]
+    [HttpPost]
     public async Task<IActionResult> Delete([FromBody] UserActionDelete delete)
     {
         var user = await _userManager.FindByNameAsync(delete.UserName);

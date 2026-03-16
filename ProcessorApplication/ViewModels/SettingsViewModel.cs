@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-using ProcessorApplication.Models.Settings;
+using ProcessorApplication.Configuration.Settings;
 
 namespace ProcessorApplication.ViewModels;
 

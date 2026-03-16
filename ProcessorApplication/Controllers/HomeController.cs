@@ -1,15 +1,19 @@
 ﻿using System.Diagnostics;
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
 
+using ProcessorApplication.Attributes;
 using ProcessorApplication.Models;
 using ProcessorApplication.Models.View;
 using ProcessorApplication.Utils;
 
 namespace ProcessorApplication.Controllers;
 
-[Route("Main/Home")]
+[Authorize]
+[ModuleRoute("Main")]
+[Route("[controller]")]
 public class HomeController : Controller
 {
     private readonly ILogger<HomeController> _logger;
@@ -19,8 +23,8 @@ public class HomeController : Controller
         _logger = logger;
     }
 
-    [Route("/")] // Catches the root of the entire site: "/"
-    [Route("Dashboard")] // Catches /Home/Dashboard
+    [Route("")]
+    [Route("Dashboard")]
     public IActionResult Dashboard()
     {
         if (Request.IsAjaxRequest())

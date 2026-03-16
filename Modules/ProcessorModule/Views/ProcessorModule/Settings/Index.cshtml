@@ -1,0 +1,144 @@
+﻿@using ProcessorModule.Models.Views;
+@model ProcessorSettingsViewModel;
+
+<link rel="stylesheet" href="/Processor/css/output.css" asp-append-version="true" />
+<div id="settings-partial-wrapper">
+    <link rel="stylesheet" href="/Processor/css/output.css" asp-append-version="true" />
+
+    <div class="container mx-auto py-8 px-4">
+        <div class="mb-8 flex justify-between items-end">
+            <div>
+                <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Processor Configuration</h1>
+                <p class="text-slate-500">Manage global paths, Python runtimes, and sandboxing isolation levels.</p>
+            </div>
+        </div>
+
+        @* Validation and Status Message Area *@
+        <div id="settings-messages" class="mb-6 space-y-4">
+            @if (TempData["SuccessMessage"] != null)
+            {
+                <div class="p-4 bg-green-50 border-l-4 border-green-500 text-green-700 text-sm flex items-center gap-3 rounded-r-lg shadow-sm">
+                    <i class="fa-solid fa-check-circle"></i>
+                    <span>@TempData["SuccessMessage"]</span>
+                </div>
+            }
+
+            @if (!ViewData.ModelState.IsValid)
+            {
+                <div class="p-4 bg-yellow-50 border border-yellow-200 rounded-md shadow-sm">
+                    <div class="flex items-center gap-3 mb-2 font-bold uppercase tracking-tight text-xs text-yellow-800">
+                        <i class="fa-solid fa-triangle-exclamation text-yellow-500"></i>
+                        <span>Configuration Errors Detected</span>
+                    </div>
+                    <ul class="ml-7 list-disc text-sm text-yellow-700 space-y-1">
+                        @foreach (var state in ViewData.ModelState.Values)
+                        {
+                            @foreach (var error in state.Errors)
+                            {
+                                <li>@error.ErrorMessage</li>
+                            }
+                        }
+                    </ul>
+                </div>
+            }
+        </div>
+
+        <form id="processorSettingsForm" asp-action="Save" method="post" class="space-y-6">
+            @* General Paths Section *@
+            <div class="bg-white shadow-sm border border-slate-200 rounded-xl overflow-hidden">
+                <div class="bg-slate-50 px-6 py-3 border-b border-slate-200">
+                    <h2 class="text-sm font-bold text-slate-700 uppercase tracking-wider">Storage & Limits</h2>
+                </div>
+                <div class="p-6">
+                    <partial name="_GeneralTabPartial" for="General" />
+                </div>
+            </div>
+
+            @* Python Runtime Section *@
+            <div class="bg-white shadow-sm border border-slate-200 rounded-xl overflow-hidden">
+                <div class="bg-slate-50 px-6 py-3 border-b border-slate-200">
+                    <h2 class="text-sm font-bold text-slate-700 uppercase tracking-wider">Python Executor</h2>
+                </div>
+                <div class="p-6">
+                    <partial name="_PythonTabPartial" for="Python" />
+                </div>
+            </div>
+
+            @* Sandboxing Strategy Section *@
+            <div class="bg-white shadow-sm border border-slate-200 rounded-xl overflow-hidden">
+                <div class="bg-slate-50 px-6 py-3 border-b border-slate-200">
+                    <h2 class="text-sm font-bold text-slate-700 uppercase tracking-wider">Isolation Settings</h2>
+                </div>
+                <div class="p-6 space-y-8">
+                    <div>
+                        <label asp-for="General.SandboxingType" class="block text-sm font-semibold text-slate-700 mb-2"></label>
+                        <select asp-for="General.SandboxingType" class="w-full md:w-1/3 rounded-lg border-slate-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="None">None (In-Process)</option>
+                            <option value="OSUser">OS User (Linux/Windows)</option>
+                            <option value="Docker">Docker Container</option>
+                        </select>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div class="p-5 bg-slate-50 rounded-xl border border-slate-200">
+                            <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">OS Sandbox Parameters</h3>
+                            <partial name="_OsSandboxPartial" for="OsSandbox" />
+                        </div>
+                        <div class="p-5 bg-slate-50 rounded-xl border border-slate-200">
+                            <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Docker Sandbox Parameters</h3>
+                            <partial name="_DockerSandboxPartial" for="DockerSandbox" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-8 pt-4 border-t border-gray-200">
+                <button type="submit" id="saveSettingsButton" class="justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition duration-150">
+                    <i class="fa-solid fa-save mr-2"></i> Save Configuration
+                </button>
+            </div>
+
+        </form>
+    </div>
+
+    <script>
+        document.getElementById('processorSettingsForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            const form = event.target;
+            const url = form.action;
+            const container = document.getElementById('settings-partial-wrapper');
+            const button = document.getElementById('saveSettingsButton');
+            const buttonText = document.getElementById('saveSettingsButton');
+            const formData = new FormData(form);
+
+            const originalText = buttonText.innerText;
+            buttonText.innerText = 'Saving...';
+            button.disabled = true;
+
+            fetch(url, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => {
+                if (!response.ok) throw new Error(`Server error: ${response.status}`);
+                return response.text();
+            })
+            .then(html => {
+                // Replace the entire wrapper content with the returned PartialView
+                if (container) {
+                    container.innerHTML = html;
+                }
+            })
+            .catch(error => {
+                buttonText.innerText = originalText;
+                button.disabled = false;
+                console.error('Update failed:', error);
+                alert('Failed to save settings. Please check the console for details.');
+            });
+        });
+    </script>
+</div>

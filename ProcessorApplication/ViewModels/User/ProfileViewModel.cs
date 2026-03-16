@@ -19,7 +19,7 @@ public class ProfileViewModel
     public List<RoleSelectionViewModel> RoleSelections { get; set; } = new List<RoleSelectionViewModel>();
 
     // We bind the decrypted string here for display/editing
-    public string DecryptedSensitiveData { get; set; }
+    //public string DecryptedSensitiveData { get; set; }
 
     public bool IsAuditView { get; set; } = false;
     public bool CanEditRoles { get; set; } = false;

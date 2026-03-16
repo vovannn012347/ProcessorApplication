@@ -17,6 +17,12 @@ public class DbConfigurationProvider : ConfigurationProvider, IDbConfigurationPr
 
     public override void Load()
     {
+        // InternalLoad handles the actual dictionary building
+        LoadInternal();
+    }
+
+    public void LoadInternal()
+    {
         try
         {
             // Create a dedicated DbContext instance for configuration loading.
@@ -45,7 +51,7 @@ public class DbConfigurationProvider : ConfigurationProvider, IDbConfigurationPr
     /// </summary>
     public void TriggerReload()
     {
-        this.Load();
+        this.LoadInternal();
         this.OnReload();
     }
 }

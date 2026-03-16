@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.Options;
 
+using ProcessorApplication.Configuration.Settings;
 using ProcessorApplication.Infrastructure;
-using ProcessorApplication.Models.Settings;
 
 namespace ProcessorApplication.Services;
 

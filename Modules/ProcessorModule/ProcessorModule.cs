@@ -1,185 +1,215 @@
-﻿
+﻿using System.Runtime.InteropServices;
 
 using Common.Interfaces.Menu;
 using Common.Models;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Razor;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
-using ProcessorApplication.Configuration;
-using ProcessorApplication.Database;
 using ProcessorApplication.Infrastructure;
+using ProcessorApplication.Utils;
+
+using ProcessorModule.Configuration;
+using ProcessorModule.Database;
+using ProcessorModule.Infrastructure;
+using ProcessorModule.Infrastructure.Web;
+using ProcessorModule.Services;
+using ProcessorModule.Services.Processing;
+using ProcessorModule.Services.Sandboxing;
+using ProcessorModule.Services.Sandboxing.Windows;
 
 namespace ProcessorModule;
 public class ProcessorModule : IModule
 {
-    public string Name => "Processor module";
-    public string ModuleId => "Processor";
+    public const string MODULE_ID = "Processor";
+    public string Name => "Processor Module";
+    public string ModuleId => MODULE_ID;
 
-    public Version Version => new Version("0.0.0.1");
+    public const string RoleProcessRunner = "ProcessRunner";
 
-    public ModuleDependency[] Dependencies =>
-        new ModuleDependency[] { 
-            new ModuleDependency {
-                ModuleId = "Main",
-                MinVersion = new Version("1.0.0.0")
-            } 
-        };
+    public Version Version => new Version("1.0.0.0");
 
-    public List<MenuItemViewModel> GetMenuItems()
+    public ModuleDependency[] Dependencies => new[]
     {
-        return new List<MenuItemViewModel>
-        {
-            new MenuItemViewModel { 
-                Name = "Processing modules", 
-                IconClass = "fa-solid fa-network-wired", 
-                Url = "Processor/Process" },
+        new ModuleDependency { 
+            ModuleId = "Main", 
+            MinVersion = new Version("1.0.0.0") 
+        }
+    };
 
-            new MenuItemViewModel {
-                Name = "Process status",
-                IconClass = "fa-solid fa-network-wired",
-                Url = "Processor/Process" },
-            new MenuItemViewModel { Name = "Settings", IconClass = "fa-solid fa-shield-halved", Url = "/P2P/Security" }
-        };
+    public IEnumerable<string> GetDefinedRoles() 
+    { 
+        return new[] { RoleProcessRunner }; 
+    }
+
+    public List<MenuItemViewModel> GetMenuItems(IServiceProvider services)
+    {
+        var menu = new List<MenuItemViewModel>();
+
+
+        // Personal History (Personal Queue) - Available to Runners and Admins
+        menu.Add(new MenuItemViewModel
+        {
+            Name = "Processing History",
+            IconClass = "fa-solid fa-clock",
+            Url = "/Processor/Home/Queue"
+        });
+
+        //Admin View(Global Queue) -Strict Admin only
+        menu.Add(new MenuItemViewModel
+        {
+            Name = "Processing History (Admin)",
+            IconClass = "fa-solid fa-server",
+            Url = "/Processor/Admin/QueueAdmin",
+            Roles = "Admin"
+        });
+
+        // Run Scripts (Main Action) - Available to Runners and Admins
+        // script reindexins is also done here
+        menu.Add(new MenuItemViewModel
+        {
+            Name = "Run Scripts",
+            IconClass = "fa-solid fa-play",
+            Url = "/Processor/Home/ScriptList",
+            Roles = $"{RoleProcessRunner},Admin"
+        });
+
+
+        // Module Settings - Strict Admin only
+        menu.Add(new MenuItemViewModel
+        {
+            Name = "Processor Settings",
+            IconClass = "fa-solid fa-cog",
+            Url = "/Processor/Settings/Index",
+            Roles = "Admin"
+        });
+
+        return menu;
     }
 
     public void ConfigureServices(IServiceCollection services, IConfiguration config)
     {
-        Console.WriteLine("PROCESSOR MODULE CONFIGURED");
+        services.Configure<RazorViewEngineOptions>(options =>
+        {
+            options.ViewLocationExpanders.Add(new ProcessorViewLocationExpander());
+        });
 
-        //var moduleConfig = config.GetSection("P2PNode");
+        var rawConnectionString = config.GetConnectionString("SQLite");
 
-        //// --- SQLite (per-module) ---
-        //var dbPath = Path.Combine(AppContext.BaseDirectory, "Modules", "P2PNode", moduleConfig["DatabaseFile"] ?? "P2PNode.db");
+        if (!string.IsNullOrWhiteSpace(rawConnectionString))
+        {
+            var moduleFolder = Path.GetDirectoryName(typeof(ProcessorModule).Assembly.Location);
+            var builder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(rawConnectionString);
+            if (!Path.IsPathRooted(builder.DataSource))
+            {
+                builder.DataSource = Path.Combine(moduleFolder!, builder.DataSource);
+            }
+            var absoluteConnectionString = builder.ToString();
 
-        //services.AddDbContext<P2PNodeDbContext>(opt =>
-        //    opt.UseSqlite($"Data Source={dbPath}"));
+            services.AddDbContext<ProcessorDbContext>(options =>
+                options.UseSqlite(absoluteConnectionString),
+                contextLifetime: ServiceLifetime.Scoped,
+                optionsLifetime: ServiceLifetime.Singleton);
 
-        //// --- MongoDB (demo: for another module, but safe) ---
-        //var mongoCs = config.GetConnectionString("MongoDB") ?? config["MongoDB:ConnectionString"];
-        //if (!string.IsNullOrWhiteSpace(mongoCs))
+            //for singletons
+            services.AddDbContextFactory<ProcessorDbContext>(options =>
+                options.UseSqlite(absoluteConnectionString));
+        }
+
+
+        // Binds the "ProcessorDirectories" property from the current config section
+        services.AddModuleSettings<ProcessorSettings>(config, ModuleId);
+        services.AddModuleSettings<PythonProcessingSettings>(config, ModuleId);
+
+        services.AddModuleSettings<NoneSandboxSettings>(config, ModuleId);
+        services.AddModuleSettings<OsSandboxSettings>(config, ModuleId);
+        services.AddModuleSettings<DockerSandboxSettings>(config, ModuleId);
+
+        services.AddScoped<IScriptIndexer, ScriptIndexer>();
+
+        services.AddScoped<IProcessingService, ProcessingService>();
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            services.AddSingleton<ISandboxProcessing, WindowsNoneSandboxPython>();
+            services.AddSingleton<ISandboxProcessing, WindowsOsSandboxPython>();
+            services.AddSingleton<ISandboxProcessing, WindowsDockerSandboxPython>();
+        }
+        //else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         //{
-        //    services.AddSingleton<IMongoClient>(_ => new MongoClient(mongoCs));
-        //    services.AddSingleton(provider =>
-        //    {
-        //        var client = provider.GetRequiredService<IMongoClient>();
-        //        var dbName = config["MongoDB:DatabaseName"] ?? "OtherModuleData";
-        //        return client.GetDatabase(dbName);
-        //    });
+        //    services.AddScoped<ISandboxProcessing, LinuxNoneSandbox>();
+        //    services.AddScoped<ISandboxProcessing, LinuxOsSandbox>();
+        //    services.AddScoped<ISandboxProcessing, LinuxDockerSandbox>();
         //}
 
-        //// --- P2P Services ---
-        //services.Configure<P2PSettings>(moduleConfig);
-        //services.AddSingleton<P2PSettingsService>();
-        //services.AddHostedService<P2PNodeService>();
+        services.AddSingleton<ISandboxProvider, SandboxProvider>();
 
-        ////services.AddScoped<GossipAction>();
-        ////services.AddScoped<AdvertiseAction>();
-        //// ... all actions
-
-        //// In P2PNodeModule.ConfigureServices()
-        //var assembly = typeof(P2PNodeModule).Assembly;
-
-        //// Register all IMessageHandler
-        //var handlerTypes = assembly.GetTypes()
-        //    .Where(t => typeof(IMessageHandler).IsAssignableFrom(t) && !t.IsAbstract);
-
-        //foreach (var type in handlerTypes)
-        //{
-        //    services.AddScoped(type);
-        //}
-
-        //// Auto-register all INodeAction + IActionMarker
-        //var actionTypes = typeof(P2PNodeModule).Assembly.GetTypes()
-        //    .Where(t => typeof(INodeAction).IsAssignableFrom(t) &&
-        //                t.GetInterfaces().Contains(typeof(IActionMarker)) &&
-        //                !t.IsAbstract);
-
-        //foreach (var type in actionTypes)
-        //{
-        //    services.AddScoped(type);
-        //}
-
-        //// Auto-initialize actions
-        //services.AddHostedService(sp =>
-        //    new ModuleActionInitializer(sp, assembly));
-
-
-        //// Initialize on startup
-        ////services.AddHostedService(sp =>
-        ////    new ModuleActionInitializer(sp, typeof(P2PNodeModule).Assembly));
-
-
-        //// --- MVC ---
-        //services.AddControllersWithViews()
-        //        .AddApplicationPart(typeof(P2PNodeModule).Assembly);
+        services.AddSingleton<ProcessingQueue>();
+        services.AddSingleton<TaskControlMonitor>();
+        services.AddHostedService<JobBackgroundService>();
     }
 
 
     public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
     {
-        //// --- Run migrations ---
-        ////using (var scope = app.ApplicationServices.CreateScope())
-        ////{
-        ////    var db = scope.ServiceProvider.GetRequiredService<P2PNodeDbContext>();
-        ////    db.Database.Migrate();
-        ////}
+        var assembly = typeof(ProcessorModule).Assembly;
+        var moduleFolder = Path.GetDirectoryName(assembly.Location);
+        var wwwrootPath = Path.Combine(moduleFolder!, "wwwroot");
 
-        //// --- Static files ---
-        //var wwwroot = Path.Combine(
-        //    Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!,
-        //    "wwwroot");
-
-        //if (Directory.Exists(wwwroot))
-        //{
-        //    app.UseStaticFiles(new StaticFileOptions
-        //    {
-        //        FileProvider = new PhysicalFileProvider(wwwroot),
-        //        RequestPath = "/p2p"
-        //    });
-        //}
-
-        //app.UseEndpoints(endpoints =>
-        //{
-        //    // --- Routes ---
-        //    endpoints.MapControllerRoute(
-        //        name: "p2p",
-        //        pattern: "p2p/{controller=Home}/{action=Index}/{id?}");
-        //});
+        if (Directory.Exists(wwwrootPath))
+        {
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = new PhysicalFileProvider(wwwrootPath),
+                // This allows <link href="/Processor/css/output.css" />
+                // It MUST match your ModuleId
+                RequestPath = $"/{ModuleId}"
+            });
+        }
     }
 
     public void PrestartInit(IHost host)
     {
-        //using (var scope = host.Services.CreateScope())
-        //{
-        //    var db = scope.ServiceProvider.GetRequiredService<P2PNodeDbContext>();
-        //    db.Database.Migrate();
-        //    //db.Database.ExecuteSqlRaw("PRAGMA journal_mode = WAL;");
-        //    //db.Database.ExecuteSqlRaw("PRAGMA synchronous = NORMAL;");
-        //    //db.Database.ExecuteSqlRaw("PRAGMA busy_timeout = 5000;");
-        //}
-    }
+        using var scope = host.Services.CreateScope();
+        var services = scope.ServiceProvider;
 
+        try
+        {
+            var db = services.GetRequiredService<ProcessorDbContext>();
+
+            var connectionString = db.Database.GetConnectionString();
+            var builder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connectionString);
+            var dbFilePath = builder.DataSource;
+            var directory = Path.GetDirectoryName(dbFilePath);
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            db.Database.Migrate();
+
+            // Optimal SQLite performance settings for local indexing
+            db.Database.ExecuteSqlRaw("PRAGMA journal_mode = WAL;");
+            db.Database.ExecuteSqlRaw("PRAGMA synchronous = NORMAL;");
+            db.Database.ExecuteSqlRaw("PRAGMA busy_timeout = 5000;");
+        }
+        catch (Exception ex)
+        {
+            // Log or handle the error if the DB fails to initialize
+            Console.WriteLine($"[ProcessorModule] DB Migration Failed: {ex.Message}");
+        }
+    }
 
     public IEnumerable<IConfigurationSource> GetConfigurationSources(IConfiguration initialConfig)
     {
-        var sqliteCs = initialConfig.GetConnectionString("SQLite");
-        if (string.IsNullOrEmpty(sqliteCs))
-            sqliteCs = initialConfig.GetValue<string>("Processor:ConnectionStrings:SQLite");
-
-        if (string.IsNullOrWhiteSpace(sqliteCs))
-        {
-            yield break;
-        }
-
-        var dbContextOptions = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(sqliteCs)
-            .Options;
-
-        yield return new DbConfigurationSource(dbContextOptions);
+        //settigns are saved in main database
+        yield break;
     }
 }

@@ -1,4 +1,11 @@
-﻿using ProcessorApplication;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Mvc.ApplicationParts;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+
+using ProcessorApplication;
+using ProcessorApplication.Attributes;
 using ProcessorApplication.Infrastructure;
 using ProcessorApplication.Services;
 using ProcessorApplication.Utils;
@@ -18,20 +25,20 @@ builder.Configuration
 // This adds "Main:SecuritySettings:..." from the file to the config
 builder.Configuration.AddModuleJsonFiles(AppContext.BaseDirectory);
 
-if (Directory.Exists(modulesRoot))
-{
-    foreach (var dir in Directory.GetDirectories(modulesRoot))
-    {
-        var moduleName = Path.GetFileName(dir);
-        var file = Path.Combine(dir, $"appsettings.{moduleName}.json");
-        if (File.Exists(file))
-            builder.Configuration.AddJsonFile(file, optional: true, reloadOnChange: true);
-    }
-}
+//if (Directory.Exists(modulesRoot))
+//{
+//    foreach (var dir in Directory.GetDirectories(modulesRoot))
+//    {
+//        var moduleName = Path.GetFileName(dir);
+//        var file = Path.Combine(dir, $"appsettings.{moduleName}.json");
+//        if (File.Exists(file))
+//            builder.Configuration.AddJsonFile(file, optional: true, reloadOnChange: true);
+//    }
+//}
 
 var modules = ModuleLoader.DiscoverModules(AppContext.BaseDirectory);
 var main = (IModule)Activator.CreateInstance(typeof(MainModule))!;
-modules = modules.Prepend(main);
+modules = modules.Prepend(main).ToList();
 
 foreach (var m in modules)
 {
@@ -42,17 +49,15 @@ foreach (var m in modules)
 }
 
 // core services
-builder.Services.AddControllersWithViews()
-    .AddRazorRuntimeCompilation(options =>
+var mvcBuilder = builder.Services.AddControllersWithViews(options =>
     {
-        // Add the Modules directory to the list of places Razor looks for files
-        if (Directory.Exists(modulesRoot))
-        {
-            options.FileProviders.Add(
-                new Microsoft.Extensions.FileProviders.PhysicalFileProvider(modulesRoot)
-            );
-        }
+        options.Conventions.Add(new ModuleRoutingConvention());
+    })
+    .ConfigureApplicationPartManager(apm =>
+    {
+        // Your custom code goes here
     });
+builder.Services.AddRazorPages();
 
 builder.Services.AddSingleton<IModuleService, ModuleService>();
 builder.Services.AddMemoryCache();
@@ -70,6 +75,9 @@ builder.Services.AddSession(options =>
 foreach (var m in modules)
 {
     builder.Services.AddSingleton(m);
+
+    var assembly = m.GetType().Assembly;
+    mvcBuilder.AddApplicationPart(assembly);
     m.ConfigureServices(builder.Services, builder.Configuration.GetSection(m.ModuleId));
 }
 
@@ -100,22 +108,46 @@ if (app.Environment.IsDevelopment())
 // request pipeline
 if (!app.Environment.IsDevelopment())
 {
-    app.UseExceptionHandler("/Home/Error");
+    app.UseExceptionHandler("/Main/Home/Error");
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
-app.UseStaticFiles();
-app.UseRouting();
+app.UseStaticFiles(); // Global app wwwroot
 app.UseSession();
+
+// 3. MODULE ISOLATION (Static Files & Isolated Config only)
+foreach (var m in moduleInstances)
+{
+    m.Configure(app, app.Environment);
+}
+
+// 4. GLOBAL ROUTING (The Single Source of Truth)
+app.UseRouting();
+
+// 5. GLOBAL AUTHENTICATION & AUTHORIZATION
+// One instance handles the whole app. Use [AllowAnonymous] on Login actions.
 app.UseAuthentication();
 app.UseAuthorization();
-app.MapControllerRoute(
-    name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}");
 
-// Let modules configure middleware, routes, static files
-foreach (var m in moduleInstances)
-    m.Configure(app, app.Environment);
+// 4. CENTRALIZED ROUTING (Unified Table)
+app.UseEndpoints(endpoints =>
+{
+    // Maps all Module-prefixed controllers (Main/Account, Processor/Settings)
+    endpoints.MapControllers();
+    endpoints.MapRazorPages();
+
+    // Navigation Logic
+    //endpoints.MapControllerRoute(
+    //    name: "nav_route",
+    //    pattern: "Navigation/{action=GetModules}/{id?}",
+    //    defaults: new { controller = "Navigation" });
+
+    // Root Redirect
+    endpoints.MapGet("/", context => {
+        context.Response.Redirect("/Main/Home/Dashboard");
+        return Task.CompletedTask;
+    });
+});
 
 await app.RunAsync();

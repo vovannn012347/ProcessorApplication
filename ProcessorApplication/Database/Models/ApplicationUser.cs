@@ -55,7 +55,7 @@ public class ApplicationUser : IdentityUser, IUserEncryptedData
     public bool IsEncrypted { get; set; } = true;
     [NotMapped]
     [StringLength(32)]
-    public string EncryptionKey { get; set; } = string.Empty; //user-interface key
+    public string EncryptionHash { get; set; } = string.Empty; //user-interface key
 
     [NotMapped]
     public UserSecuritySettings SecurityPreferences
@@ -63,20 +63,20 @@ public class ApplicationUser : IdentityUser, IUserEncryptedData
         get
         {
             if (!string.IsNullOrEmpty(EncryptedSecuritySettings) && 
-                !string.IsNullOrEmpty(EncryptionKey))
+                !string.IsNullOrEmpty(EncryptionHash))
             {
                 return JsonSerializer.Deserialize<UserSecuritySettings>(
-                    AesEncryptionHelper.Decrypt(EncryptedSecuritySettings, SecurityHelperUtil.MakeValidHashKey(EncryptionKey))
+                    AesEncryptionHelper.Decrypt(EncryptedSecuritySettings, SecurityHelperUtil.MakeValidHashKey(EncryptionHash))
                     ) ?? null;
             }
             return new UserSecuritySettings();
         }
         set
         {
-            if(!string.IsNullOrEmpty(EncryptionKey))
+            if(!string.IsNullOrEmpty(EncryptionHash))
                 EncryptedSecuritySettings =
                     AesEncryptionHelper.Encrypt(JsonSerializer.Serialize(value),
-                    SecurityHelperUtil.MakeValidHashKey(EncryptionKey));
+                    SecurityHelperUtil.MakeValidHashKey(EncryptionHash));
         }
     }
 }

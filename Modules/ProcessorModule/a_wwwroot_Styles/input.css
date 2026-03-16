@@ -1,0 +1,19 @@
+/*
+  Local font definition:
+  Paths are relative to the wwwroot folder of the final distribution.
+*/
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('/fonts/Inter-VariableFont.ttf') format('truetype');
+}
+
+/* Tailwind Directives:
+   Ensure your tailwind.config.js for the Main module 
+   also has prefix: 'mm-'
+*/
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

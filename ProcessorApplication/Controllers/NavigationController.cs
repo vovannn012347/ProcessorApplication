@@ -2,15 +2,18 @@
 
 using Common.Interfaces.Menu;
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 
+using ProcessorApplication.Attributes;
 using ProcessorApplication.Database.Models;
 using ProcessorApplication.Infrastructure;
 
 namespace ProcessorApplication.Controllers;
 
-[Route("/Navigation")]
+[AllowAnonymous]
+[Route("/Navigation/[action]/{id?}")]
 public class NavigationController : Controller
 {
     private readonly IServiceProvider _services;
@@ -25,14 +28,14 @@ public class NavigationController : Controller
         _moduleService = moduleService;
     }
 
-    [HttpGet("GetModules")]
+    [HttpGet]
     public IActionResult GetModules()
     {
         var modules = _moduleService.GetModuleInfo();
         return Json(modules);
     }
 
-    [HttpGet("GetModuleMenu")]
+    [HttpGet]
     public IActionResult GetModuleMenu(string moduleId)
     {
         var allMenuItems = _moduleService.GetMenuItems(moduleId, _services);

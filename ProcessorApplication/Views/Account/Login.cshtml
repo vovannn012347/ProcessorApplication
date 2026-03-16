@@ -14,6 +14,8 @@
 
     <div class="tab-content order-3 w-full">
         <form asp-area="Main" asp-controller="Account" asp-action="Login" method="post" class="space-y-6 mt-2">
+
+            <input type="hidden" asp-for="ReturnUrl" />
             <div>
                 <label asp-for="UserName" class="block text-sm font-medium text-gray-700">Login ID (Hash)</label>
                 <input asp-for="UserName" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" />
@@ -37,67 +39,34 @@
 
     <div class="tab-content order-3 w-full">
         <form asp-area="Main" asp-controller="Account" asp-action="LoginFromFile" method="post" enctype="multipart/form-data" class="space-y-6 mt-2">
+            <p class="text-sm text-gray-500">Use your exported identity file to authenticate using your password.</p>
+
             <div>
-                <label class="block text-sm font-medium text-gray-700">User ID</label>
-                <input name="userId" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" />
+                <label class="block text-sm font-medium text-gray-700">Profile File</label>
+                <input type="file" name="profileFile" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100" />
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700">Profile File (.json)</label>
-                <input type="file" name="profileFile" class="mt-1 block w-full text-sm text-gray-500" />
+                <label class="block text-sm font-medium text-gray-700">Password</label>
+                <input name="password" type="password" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" />
             </div>
-            <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+
+            @if (!string.IsNullOrEmpty(Model.ReturnUrl))
+            {
+                <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+            }
+
+            <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
                 Unlock with File Key
             </button>
         </form>
     </div>
 
+    <div class="order-4 w-full mt-8 pt-6 border-t border-gray-200 text-center">
+        <p class="text-sm text-gray-600">
+            Don't have an identity yet?
+            <a href="/Main/Account/Register" class="font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+                Create a new secure account
+            </a>
+        </p>
+    </div>
 </div>
-@* 
-<div class="tabs-container flex flex-wrap justify-center mb-6">
-
-    <input type="radio" id="login-std" name="login-mode" checked class="hidden-radio-tab">
-
-    <label for="login-std" class="tab-label order-1 px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-50 cursor-pointer mr-4 mb-4">
-        Standard
-    </label>
-
-    <div class="tab-content order-3 w-full">
-        <form asp-action="Login" method="post" class="space-y-6 mt-2">
-            <div>
-                <label asp-for="UserName" class="block text-sm font-medium text-gray-700">Login ID (Hash)</label>
-                <input asp-for="UserName" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" />
-            </div>
-            <div>
-                <label asp-for="Password" class="block text-sm font-medium text-gray-700"></label>
-                <input asp-for="Password" type="password" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" />
-            </div>
-            <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">
-                Sign in
-            </button>
-        </form>
-    </div>
-
-
-    <input type="radio" id="login-file" name="login-mode" class="hidden-radio-tab">
-
-    <label for="login-file" class="tab-label order-1 px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-50 cursor-pointer mb-4">
-        File Login
-    </label>
-
-    <div class="tab-content order-3 w-full">
-        <form asp-action="LoginFromFile" method="post" enctype="multipart/form-data" class="space-y-6 mt-2">
-            <div>
-                <label class="block text-sm font-medium text-gray-700">User ID</label>
-                <input name="userId" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" />
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700">Profile File (.json)</label>
-                <input type="file" name="profileFile" class="mt-1 block w-full text-sm text-gray-500" />
-            </div>
-            <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                Unlock with File Key
-            </button>
-        </form>
-    </div>
-
-</div> *@

@@ -3,7 +3,7 @@
     public interface IUserEncryptedData
     {
         public DateTime CreateDateTime { get; set; }
-        public string EncryptionKey { get; set; }
+        public string EncryptionHash { get; set; }
         public bool IsEncrypted { get; set; }
     }
 }

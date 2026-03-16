@@ -15,20 +15,24 @@ public static class ModuleConfigurationExtensions
             IConfiguration config,
             string moduleId) where T : class
     {
-        var sectionName = typeof(T).Name; // e.g., "SecuritySettings"
+        //var sectionName = typeof(T).Name; // e.g., "SecuritySettings"
 
-        // We look for the section prefixed by the module ID
-        // Because Step 1 (JSON Loader) and Step 2 (DB Provider) both prefix with "Area:"
-        //var combinedKey = $"{moduleId}:{sectionName}";
+        //// We look for the section prefixed by the module ID
+        //// Because Step 1 (JSON Loader) and Step 2 (DB Provider) both prefix with "Area:"
+        ////var combinedKey = $"{moduleId}:{sectionName}";
+        //var section = config.GetSection(sectionName);
+
+        //// Register Named Options
+        //services.Configure<T>(moduleId, section);
+
+        //// Register Singleton for direct injection
+        ////services.AddSingleton(sp =>
+        ////    sp.GetRequiredService<IOptionsMonitor<T>>().Get(moduleId));
+
+        var sectionName = typeof(T).Name;
         var section = config.GetSection(sectionName);
-
-        // Register Named Options
         services.Configure<T>(moduleId, section);
-
-        // Register Singleton for direct injection
-        //services.AddSingleton(sp =>
-        //    sp.GetRequiredService<IOptionsMonitor<T>>().Get(moduleId));
-
+        services.Configure<T>(section);
         return services;
     }
 
@@ -51,7 +55,10 @@ public static class ModuleConfigurationExtensions
         {
             foreach (var dir in Directory.GetDirectories(modulesPath))
             {
-                var areaName = Path.GetFileName(dir); // e.g., "P2P"
+                var dirName = Path.GetFileName(dir);
+                var areaName = dirName.EndsWith("Module", StringComparison.OrdinalIgnoreCase)
+                   ? dirName.Substring(0, dirName.Length - 6)
+                   : dirName; // e.g., "P2P"
                 var settingsFile = Path.Combine(dir, $"appsettings.{areaName}.json");
 
                 if (File.Exists(settingsFile))

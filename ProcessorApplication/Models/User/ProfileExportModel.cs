@@ -9,10 +9,11 @@ public class ProfileExportModel
     public string UserName { get; set; }
     public string Name { get; set; }
     public string Surname { get; set; }
+    public string Email { get; set; }
     public string DisplayNickname { get; set; }
 
     // The "Keys to the Kingdom"
-    // Decrypted PHSK by user password
+    // Encrypted PHSK by user password
     //it is not said directly in names of variables for security reasons
     public string PersonalHashKey { get; set; }
     // this is for password key correctness check

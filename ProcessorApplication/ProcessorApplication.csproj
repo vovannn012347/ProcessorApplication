@@ -4,16 +4,13 @@
     <TargetFramework>net6.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-    <MvcRazorCompileOnPublish>false</MvcRazorCompileOnPublish>
-    <CopyRazorFilesToPublishDirectory>true</CopyRazorFilesToPublishDirectory>
-    <RazorCompileOnBuild>false</RazorCompileOnBuild>
+    <DefaultItemExcludes>$(DefaultItemExcludes);node_modules\**;package*.json;tailwind.config.js;Styles\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="LiteNetLib" Version="1.2.0" />
     <PackageReference Include="MailKit" Version="4.14.1" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="6.0.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation" Version="6.0.35" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="6.0.35" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="6.0.35">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -28,14 +25,9 @@
   </ItemGroup>
   
   <ItemGroup>
-    <Folder Include="Areas\" />
     <Folder Include="Modules\" />
   </ItemGroup>
   <ItemGroup>
-    <Content Update="Views\**\*.cshtml" CopyToPublishDirectory="PreserveNewest" />
-    <Content Update="Areas\**\*.cshtml" CopyToPublishDirectory="PreserveNewest" />
-
-    <Content Update="Modules\**\*.cshtml" CopyToPublishDirectory="PreserveNewest" />
     <Content Update="wwwroot\**\*" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
@@ -44,5 +36,15 @@
     <Compile Remove="Services\SqliteConfigurationProvider.cs" />
     <Compile Remove="Services\SqliteConfigurationSource.cs" />
   </ItemGroup>
-
+  <ItemGroup>
+    <None Include="tailwind.config.js" />
+  </ItemGroup>
+  
+  <Target Name="CopyWwwRootToOutput" AfterTargets="Build">
+    <ItemGroup>
+      <ModuleAssets Include="$(ProjectDir)wwwroot\**\*.*" />
+    </ItemGroup>
+    <Message Text="Copying Module wwwroot to $(OutputPath)wwwroot..." Importance="high" />
+    <Copy SourceFiles="@(ModuleAssets)" DestinationFiles="@(ModuleAssets->'$(OutputPath)wwwroot\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

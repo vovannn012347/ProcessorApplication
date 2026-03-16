@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using ProcessorApplication.Attributes;
 using ProcessorApplication.Database;
 using ProcessorApplication.Database.Models;
+using ProcessorApplication.Infrastructure;
 using ProcessorApplication.Services;
 using ProcessorApplication.Services.User;
 using ProcessorApplication.Utils;
@@ -17,8 +18,9 @@ using ProcessorApplication.ViewModels.User;
 namespace ProcessorApplication.Controllers;
 
 [Authorize]
-[Route("Main/Profile")]
 [SessionKeyRequired("UselessInfoHash")]
+[ModuleRoute("Main")]
+[Route("[controller]/[action]/{id?}")]
 public class ProfileController : Controller
 {
     private readonly AppDbContext _dbContext;
@@ -26,13 +28,15 @@ public class ProfileController : Controller
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly RoleManager<IdentityRole> _roleManager;
     private readonly IdentityPortabilityHandler _identityExporter;
-    
+    private readonly IEmailService _emailService;
+
     public ProfileController(
         AppDbContext dbContext,
         ProcessorApplicationUserManager userManager,
         SignInManager<ApplicationUser> signInManager,
         RoleManager<IdentityRole> roleManager,
-        IdentityPortabilityHandler identityExporter
+        IdentityPortabilityHandler identityExporter,
+        IEmailService emailService
         )
     {
         _dbContext = dbContext;
@@ -40,13 +44,39 @@ public class ProfileController : Controller
         _signInManager = signInManager;
         _roleManager = roleManager;
         _identityExporter = identityExporter;
+        _emailService = emailService;
     }
 
-    [HttpGet("Index")]
+    private bool IsEffectiveAdmin()
+    {
+        // 1. Check actual Role
+        if (User.IsInRole("Admin")) return true;
+
+        // 2. Check Hardcoded "SuperUser" (username "admin")
+        // This allows the user "admin" to manage roles even if they removed the role from themselves.
+        var name = User.Identity?.Name;
+        if (!string.IsNullOrEmpty(name) && name.Equals("admin", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    [HttpGet]
     public async Task<IActionResult> Index(string userName = "")
     {
         ApplicationUser user;
-        if (!string.IsNullOrEmpty(userName))
+
+        // Check permissions to view other users
+        // Hardcoded "admin" username bypass or Admin role
+        //bool isSuperUser = User.Identity.Name?.Equals("admin", StringComparison.OrdinalIgnoreCase) ?? false;
+        //bool isAdmin = User.IsInRole("Admin") || isSuperUser;
+
+
+        bool isAdmin = IsEffectiveAdmin();
+
+        if (!string.IsNullOrEmpty(userName) && isAdmin)
         {
             user = await _userManager.FindByNameAsync(userName);
         }
@@ -55,31 +85,38 @@ public class ProfileController : Controller
             user = await _userManager.GetUserAsync(User);
         }
 
-        if (user == null) 
-            return NotFound();
+        if (user == null) return NotFound();
 
+        // 1. Detach to prevent accidental saving of decrypted state during View
         _dbContext.Entry(user).State = EntityState.Detached;
 
         bool isAuditView = false;
+        string decryptedSensitiveData = string.Empty;
 
-        var sessionKey = HttpContext.Session.GetString("UselessInfoHash");
-        if (!string.IsNullOrEmpty(sessionKey) && user.Id == User.FindFirstValue(ClaimTypes.NameIdentifier))
+        var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        bool isSelf = (user.Id == currentUserId);
+
+        // 2. Decryption Logic
+        if (isSelf)
         {
-            _userManager.DecryptUserDataDirect(user, sessionKey);
+            var sessionKey = HttpContext.Session.GetString("UselessInfoHash");
+            if (!string.IsNullOrEmpty(sessionKey))
+            {
+                _userManager.DecryptUserDataDirect(user, sessionKey);
+            }
         }
         else 
-        if (User.IsInRole("Admin"))
+        if (isAdmin)
         {
-            if (_userManager.DecryptUserDataByServer(user))
+            isAuditView = true;
+            // Admin View: Triggers Audit
+            if (!_userManager.DecryptUserDataByServer(user))
             {
-                isAuditView = true;
-            }
-            else
-            {
-                return Forbid(); // Audit notification failed
+                ModelState.AddModelError("", "Cannot notify user. Will not decrypt.");
             }
         }
 
+        // 3. Prepare ViewModel
         var userRoles = await _userManager.GetRolesAsync(user);
         var allRoles = await _roleManager.Roles.AsNoTracking().ToListAsync();
 
@@ -89,135 +126,90 @@ public class ProfileController : Controller
             IsSelected = userRoles.Contains(role.Name)
         }).ToList();
 
-
         var model = new ProfileViewModel
         {
             User = user,
+            UserSecurity = user.IsEncrypted ? null : user.SecurityPreferences,
             RoleSelections = roleSelections,
             IsAuditView = isAuditView,
-            CanEditRoles = User.IsInRole("Admin")
+            CanEditRoles = isAdmin // Only admins can edit roles
         };
 
-        if (string.IsNullOrEmpty(userName) || userName == User.Identity.Name)
+        if(ModelState.ErrorCount > 0)
         {
-            model.UserSecurity = user.SecurityPreferences;
+            user.Id = Guid.Empty.ToString();
         }
 
-        return Request.IsAjaxRequest() ? PartialView(model) : View(model);
+        return Request.IsAjaxRequest() ? PartialView("Index", model) : View("Index", model);
     }
 
-    [HttpPost("Update")]
+    [HttpPost]
     public async Task<IActionResult> Update(ProfileViewModel model)
     {
-        // 1. Fetch Tracked User (Encrypted state from DB)
         var user = await _userManager.FindByIdAsync(model.User.Id);
-        if (user == null) 
-            return NotFound();
+        if (user == null)
+        {
+            ModelState.AddModelError("", "Cannot save changes.");
+            return Request.IsAjaxRequest() ? PartialView("Index", model) : View("Index", model);
+        }
 
         var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         bool isSelfEdit = (user.Id == currentUserId);
-        bool isAdmin = User.IsInRole("Admin");
 
-        if (!isSelfEdit && !isAdmin) 
-            return Forbid();
+        // Determine Permissions
+        bool isAdmin = IsEffectiveAdmin();
+       
+        if (!isSelfEdit && !isAdmin)
+        {
+            ModelState.AddModelError("", "Forbidden.");
+            return Request.IsAjaxRequest() ? PartialView("Index", model) : View("Index", model);
+        }
 
-        // 2. KEY HYDRATION & DECRYPTION (Critical for editing)
         bool keyLoaded = false;
-
         if (isSelfEdit)
         {
             var userKey = HttpContext.Session.GetString("UselessInfoHash");
             if (!string.IsNullOrEmpty(userKey))
-            {
-                // Unlocks user in memory -> IsEncrypted = false
                 keyLoaded = _userManager.DecryptUserDataDirect(user, userKey);
-            }
         }
         else if (isAdmin)
         {
-            // Admin Edit: Load key via Server Master Key logic (silent load for write)
             keyLoaded = _userManager.LoadKeyForAdminAction(user);
-
-            // Manually decrypt to prepare for edit state
             if (keyLoaded && user.IsEncrypted)
-            {
-                _userManager.DecryptUserDataDirect(user, user.EncryptionKey);
-            }
+                _userManager.DecryptUserDataDirect(user, user.EncryptionHash);
         }
 
         if (!keyLoaded)
         {
-            ModelState.AddModelError("", "Decryption failed. Cannot save changes without valid encryption context.");
-            // Re-populate roles for view
+            ModelState.AddModelError("", "Decryption failed. Cannot save changes.");
             model.CanEditRoles = isAdmin;
             return Request.IsAjaxRequest() ? PartialView("Index", model) : View("Index", model);
         }
 
-        // --- 3. PASSWORD CHANGE LOGIC (Optional) ---
-        if (!string.IsNullOrEmpty(model.NewPassword))
-        {
-            if (isSelfEdit)
-            {
-                if (string.IsNullOrEmpty(model.CurrentPassword))
-                {
-                    ModelState.AddModelError("CurrentPassword", "Current password is required to set a new one.");
-                    return Request.IsAjaxRequest() ? PartialView("Index", model) : View("Index", model);
-                }
-
-                var token = await _userManager.GeneratePasswordResetTokenAsync(user);
-                var passResult = await _userManager.ChangePasswordAsync(user, model.CurrentPassword, model.NewPassword);
-                if (!passResult.Succeeded)
-                {
-                    foreach (var error in passResult.Errors) ModelState.AddModelError("", error.Description);
-                    return Request.IsAjaxRequest() ? PartialView("Index", model) : View("Index", model);
-                }
-
-                // RE-LOCK PHSK with new password hash
-                // We use the PHSK that is currently loaded in user.EncryptionKey
-                _userManager.ReLockPHSKAsync(user, user.EncryptionKey, model.NewPassword);
-
-                // Refresh cookie
-                await _signInManager.RefreshSignInAsync(user);
-            }
-            else if (isAdmin)
-            {
-                // Admin reset (Requires generating token usually, but here we force reset)
-                var token = await _userManager.GeneratePasswordResetTokenAsync(user);
-                var resetResult = await _userManager.ResetPasswordAsync(user, token, model.NewPassword);
-                if (!resetResult.Succeeded)
-                {
-                    foreach (var error in resetResult.Errors) ModelState.AddModelError("", error.Description);
-                    return Request.IsAjaxRequest() ? PartialView("Index", model) : View("Index", model);
-                }
-
-                // Admin Re-Lock:
-                // Since Admin has the PHSK loaded (via Server Key), they can re-lock it with the new password hash.
-                _userManager.ReLockPHSKAsync(user, user.EncryptionKey, model.NewPassword);
-            }
-        }
-
-        // --- 4. APPLY PROFILE EDITS ---
         user.Name = model.User.Name;
         user.Surname = model.User.Surname;
         user.DisplayNickname = model.User.DisplayNickname;
+        user.Email = model.User.Email;
 
-        // Apply new Sensitive Data (Cleartext from form -> Object)
-        // UserManager.UpdateAsync will see IsEncrypted=false and re-encrypt this.
-
-        // Security Settings (Self Only)
         if (isSelfEdit && model.UserSecurity != null)
         {
             user.SecurityPreferences = model.UserSecurity;
         }
 
-        // Roles (Admin Only)
         if (isAdmin)
         {
             var currentRoles = await _userManager.GetRolesAsync(user);
-            var selectedRoles = model.RoleSelections.Where(x => x.IsSelected).Select(x => x.RoleName).ToList();
 
-            await _userManager.AddToRolesAsync(user, selectedRoles.Except(currentRoles));
-            await _userManager.RemoveFromRolesAsync(user, currentRoles.Except(selectedRoles));
+            var selectedRoles = model.RoleSelections
+                .Where(x => x.IsSelected)
+                .Select(x => x.RoleName)
+                .ToList();
+
+            var rolesToAdd = selectedRoles.Except(currentRoles).ToList();
+            var rolesToRemove = currentRoles.Except(selectedRoles).ToList();
+
+            if (rolesToAdd.Any()) await _userManager.AddToRolesAsync(user, rolesToAdd);
+            if (rolesToRemove.Any()) await _userManager.RemoveFromRolesAsync(user, rolesToRemove);
         }
 
         var result = await _userManager.UpdateAsync(user);
@@ -225,18 +217,14 @@ public class ProfileController : Controller
         if (result.Succeeded)
         {
             TempData["StatusMessage"] = "Profile updated successfully.";
-            return RedirectToAction("Index");
+            return RedirectToAction("Index", new { userName = isAdmin && !isSelfEdit ? user.UserName : "" });
         }
 
-        foreach (var error in result.Errors)
-        {
-            ModelState.AddModelError("", error.Description);
-        }
-
+        foreach (var error in result.Errors) ModelState.AddModelError("", error.Description);
         return Request.IsAjaxRequest() ? PartialView("Index", model) : View("Index", model);
     }
 
-    [HttpGet("Download")]
+    [HttpGet]
     public async Task<IActionResult> Download(string userName)
     {
         ApplicationUser user;
@@ -256,7 +244,6 @@ public class ProfileController : Controller
 
         if (!isSelfDownload && !isAdmin) return Forbid();
 
-        // 2. KEY HYDRATION & DECRYPTION (Critical for editing)
         string sessionKey = string.Empty;
 
         if (isSelfDownload)
@@ -267,11 +254,12 @@ public class ProfileController : Controller
         {
             if (_userManager.DecryptUserDataByServer(user))
             {
-                sessionKey = user.EncryptionKey;
+                sessionKey = user.EncryptionHash;
             }
             else
             {
-                return Forbid(); // Audit notification failed
+                TempData["StatusMessage"] = "Cannot notify user. Will not decrypt.";
+                return RedirectToAction("Index");
             }
         }
 
@@ -286,12 +274,16 @@ public class ProfileController : Controller
 
         try
         {
-            var filePath = await _identityExporter.ExportUserDataAsync(user.UserName, sessionKey, tempPath);
+            var filePath = await _identityExporter.ProcessExportAsync(
+                user.UserName, 
+                new List<string>(){ "profile_main" },
+                sessionKey, 
+                tempPath);
 
-            if (string.IsNullOrEmpty(filePath) || !System.IO.File.Exists(filePath)) 
+            if (filePath != null && filePath.Count > 0 && !System.IO.File.Exists(Path.Combine(tempPath, filePath[0]))) 
                 return NotFound("Export generation failed.");
 
-            var fileBytes = await System.IO.File.ReadAllBytesAsync(filePath);
+            var fileBytes = await System.IO.File.ReadAllBytesAsync(Path.Combine(tempPath, filePath[0]));
             var fileName = $"Identity_{user.UserName}_{DateTime.Now:yyyyMMdd}.json";
 
             return File(fileBytes, "application/json", fileName);
@@ -300,5 +292,13 @@ public class ProfileController : Controller
         {
             if (Directory.Exists(tempPath)) Directory.Delete(tempPath, true);
         }
+    }
+    
+
+    [HttpPost]
+    public IActionResult CheckConnectivity()
+    {
+        bool isHealthy = _emailService.IsHealthy;
+        return Json(new { success = isHealthy, message = isHealthy ? "Email Service is connected." : "Email Service unreachable." });
     }
 }

@@ -13,6 +13,7 @@ public class RegisterViewModel
     [Required(ErrorMessage = "Surname is required.")]
     [StringLength(100)]
     public string Surname { get; set; }
+    public string Email { get; set; }
     [Required]
     [DataType(DataType.Password)] 
     public string Password { get; set; }

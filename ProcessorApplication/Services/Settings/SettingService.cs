@@ -1,4 +1,6 @@
-﻿using System.Text.Json;
+﻿using System.Globalization;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 
 using Common.Interfaces;
 using Common.Models.Database;
@@ -16,8 +18,14 @@ public class SettingService : ISettingService
     private readonly AppDbContext _db;
     private readonly IConfiguration _config;
     private readonly IHostEnvironment _env;
-    private readonly IDbConfigurationProvider _configProvider;
-    private bool AutoUpdateSettings = true;
+    private readonly List<IDbConfigurationProvider> _dbProviders;
+    private bool _autoUpdateSettings = true;
+
+    private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        PropertyNameCaseInsensitive = true
+    };
 
     public SettingService(
         ILogger<SettingService> logger,
@@ -30,14 +38,22 @@ public class SettingService : ISettingService
         _config = config;
         _env = env;
         
-        var configRoot = (IConfigurationRoot)config;
-        _configProvider = (IDbConfigurationProvider)configRoot.Providers
-            .First(p => p is IDbConfigurationProvider);
+        if (config is IConfigurationRoot configRoot)
+        {
+            _dbProviders = configRoot.Providers
+                .OfType<IDbConfigurationProvider>()
+                .ToList();
+
+            _logger.LogDebug("SettingService initialized with {Count} database configuration providers.", _dbProviders.Count);
+        }
+        else
+        {
+            _dbProviders = new List<IDbConfigurationProvider>();
+        }
     }
 
     public async Task SeedDefaultsIfEmptyAsync(CancellationToken stoppingToken)
     {
-
         var area = MainModule.MainId;
         // Use the application's root directory for the main appsettings file
         var mainSettingsFile = Path.Combine(_env.ContentRootPath, $"appsettings.{area}.json");
@@ -67,7 +83,7 @@ public class SettingService : ISettingService
         if (_db.ChangeTracker.HasChanges())
         {
             await _db.SaveChangesAsync(stoppingToken);
-            _configProvider.TriggerReload(); // Trigger reload after seeding
+            ForceUpdateOptionsMonitor(); // Trigger reload after seeding
         }
     }
 
@@ -200,56 +216,82 @@ public class SettingService : ISettingService
                 break;
         }
     }
-
-    public async Task<T> GetAsync<T>(string area, string key, T defaultValue) where T : class, new()
-    {
-        var fullKey = $"{key}";
-        var dbEntry = await _db.Settings
-            .FirstOrDefaultAsync(s => s.Area == area && s.Key == fullKey);
-
-        if (dbEntry != null && dbEntry.Value != null)
-        {
-            return JsonSerializer.Deserialize<T>(dbEntry.Value)!;
-        }
-
-        var fileSection = _config.GetSection($"{area}:{key}");
-        if (fileSection.Exists())
-        {
-            var obj = fileSection.Get<T>();
-            if (obj != null) return obj;
-        }
-
-        return defaultValue;
-    }
-
+    
     public async Task SetAsync<T>(string area, string key, T value)
     {
-        var json = JsonSerializer.Serialize(value);
+        string? valueToSave = SerializeValue(value);
 
-        var entry = await _db.Settings
-            .FirstOrDefaultAsync(s => s.Area == area && s.Key == key);
-
+        var entry = await _db.Settings.FirstOrDefaultAsync(s => s.Area == area && s.Key == key);
         if (entry == null)
         {
             entry = new Setting { Area = area, Key = key };
             _db.Settings.Add(entry);
         }
 
-        entry.Value = json;
+        entry.Value = valueToSave;
         await _db.SaveChangesAsync();
 
-        if(AutoUpdateSettings)
-            _configProvider.TriggerReload();
+        if (_autoUpdateSettings) ForceUpdateOptionsMonitor();
+    }
+
+    private string? SerializeValue<T>(T value)
+    {
+        if (value == null) return null;
+        if (value is string s) return s;
+
+        var type = typeof(T);
+        var underlyingType = Nullable.GetUnderlyingType(type) ?? type;
+
+        if (underlyingType.IsPrimitive || underlyingType.IsEnum || underlyingType == typeof(decimal) || 
+            underlyingType == typeof(double) || underlyingType == typeof(DateTime) || underlyingType == typeof(Guid))
+        {
+            return Convert.ToString(value, CultureInfo.InvariantCulture);
+        }
+
+        return JsonSerializer.Serialize(value, _jsonOptions);
+    }
+
+    public async Task<T> GetAsync<T>(string area, string key, T defaultValue) where T : class, new()
+    {
+        var dbEntry = await _db.Settings.FirstOrDefaultAsync(s => s.Area == area && s.Key == key);
+        if (dbEntry?.Value != null)
+        {
+            if (typeof(T) == typeof(string)) return (dbEntry.Value as T)!;
+            return JsonSerializer.Deserialize<T>(dbEntry.Value, _jsonOptions) ?? defaultValue;
+        }
+
+        return _config.GetSection($"{area}:{key}").Get<T>() ?? defaultValue;
     }
 
     public void SetAutoUpdate(bool autoupdate)
     {
-        AutoUpdateSettings = autoupdate;
+        _autoUpdateSettings = autoupdate;
     }
 
     public void ForceUpdateOptionsMonitor()
     {
-        _configProvider.TriggerReload();
+        if (!_dbProviders.Any())
+        {
+            _logger.LogWarning("No IDbConfigurationProvider instances found to reload.");
+            return;
+        }
+
+        _logger.LogInformation("Triggering reload on {Count} configuration providers...", _dbProviders.Count);
+
+        // Iterate backwards: Last provider added is the highest priority.
+        // Refreshing them ensures that when IOptionsMonitor re-binds, 
+        // it sees the latest DB state from every possible source.
+        for (int i = _dbProviders.Count - 1; i >= 0; i--)
+        {
+            try
+            {
+                _dbProviders[i].TriggerReload();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error reloading configuration provider at index {Index}", i);
+            }
+        }
     }
 
 }

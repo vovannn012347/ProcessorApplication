@@ -1,0 +1,57 @@
+﻿
+cd .\ProcessorApplication\
+npx tailwindcss -i ./a_wwwroot_Styles/input.css -o ./wwwroot/css/output.css
+cd ..\Modules\ProcessorModule\
+npx tailwindcss -i ./a_wwwroot_Styles/input.css -o ./wwwroot/css/output.css
+
+npx tailwindcss -i ./wwwroot/css/input.css -o ./wwwroot/css/output.css
+
+this version for persistent rebuilds
+npx tailwindcss -i ./wwwroot/css/input.css -o ./wwwroot/css/output.css  --watch
+
+
+copy view for live edit
+
+  <ItemGroup>
+    <Content Update="Views\**\*.cshtml" CopyToPublishDirectory="PreserveNewest" />
+    <Content Update="Areas\**\*.cshtml" CopyToPublishDirectory="PreserveNewest" />
+
+    <Content Update="Modules\**\*.cshtml" CopyToPublishDirectory="PreserveNewest" />
+    <Content Update="wwwroot\**\*" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  
+    <MvcRazorCompileOnPublish>true</MvcRazorCompileOnPublish>
+    <CopyRazorFilesToPublishDirectory>true</CopyRazorFilesToPublishDirectory>
+
+
+
+    
+    <AssemblyName>ProcessorModule</AssemblyName>
+
+
+    <!-- Unified View Compilation (Embedded in ProcessorModule.dll) -->
+    <!--<RazorCompileOnBuild>true</RazorCompileOnBuild>
+    <IncludeRazorContentInPack>false</IncludeRazorContentInPack>
+    <GenerateDependencyFile>true</GenerateDependencyFile>-->
+
+    <!-- Important: Keeps the metadata that helps the host find the views -->
+    <!--<PreserveCompilationContext>true</PreserveCompilationContext>-->
+    
+    <RazorCompileOnBuild>true</RazorCompileOnBuild>
+    <IncludeRazorContentInPack>true</IncludeRazorContentInPack>
+    <PreserveCompilationContext>true</PreserveCompilationContext>
+    <ResolveRazorGenerateInputs>true</ResolveRazorGenerateInputs>
+    <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
+    <GenerateDependencyFile>true</GenerateDependencyFile>
+    
+    <!-- .NET 6 unified view compilation -->
+    <!--<RazorCompileOnBuild>true</RazorCompileOnBuild>
+    <ResolveRazorGenerateInputs>true</ResolveRazorGenerateInputs>-->
+
+    <!-- These are needed for modular loading -->
+    <!--<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <PreserveCompilationContext>true</PreserveCompilationContext>-->
+
+    <!-- prevent view copying to processorapplication stuff -->
+    <!--<EnableDefaultContentItems>false</EnableDefaultContentItems>-->

@@ -1,5 +1,7 @@
 ﻿
 
+using System.Reflection;
+
 using Common.Interfaces;
 using Common.Interfaces.Menu;
 using Common.Models;
@@ -8,8 +10,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 
 using ProcessorApplication.Configuration;
+using ProcessorApplication.Configuration.Settings;
 using ProcessorApplication.Database;
 using ProcessorApplication.Database.Models;
 using ProcessorApplication.Infrastructure;
@@ -63,6 +67,12 @@ public class MainModule : IModule
                 Name = "Users", 
                 IconClass = "fa-solid fa-address-book", 
                 Url = "/Main/Users/Index",
+                Roles = "Admin"
+            },
+            new MenuItemViewModel {
+                Name = "Server log",
+                IconClass = "fa-solid fa-file-lines",
+                Url = "/Main/Log/Index",
                 Roles = "Admin"
             }
         };
@@ -151,21 +161,50 @@ public class MainModule : IModule
             options.FallbackPolicy = options.DefaultPolicy;
         });
 
-        // portability
+        // for export/import module
+        services.AddScoped<IPortabilityHandler, IdentityPortabilityHandler>();
+        //for identty export
         services.AddScoped<IdentityPortabilityHandler>();
     }
 
     public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
     {
-        app.UseEndpoints(endpoints =>
-            {
-                endpoints.MapControllerRoute(
-                        name: "default",
-                        pattern: "Main/{controller=Home}/{action=Dashboard}/{id?}",
-                        defaults: new { controller = "Home", action = "Dashboard" });
-            });
+        var assemblyLocation = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+        var wwwroot = Path.Combine(assemblyLocation!, "wwwroot");
 
+        if (Directory.Exists(wwwroot))
+        {
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = new PhysicalFileProvider(wwwroot),
+                // This allows <link href="/Main/css/output.css" />
+                RequestPath = $"/{MainId}"
+            });
+        }
     }
+
+    //public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+    //{
+    //    var assemblyLocation = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+    //    var wwwroot = Path.Combine(assemblyLocation!, "wwwroot");
+
+    //    if (Directory.Exists(wwwroot))
+    //    {
+    //        app.UseStaticFiles(new StaticFileOptions
+    //        {
+    //            FileProvider = new PhysicalFileProvider(wwwroot),
+    //            RequestPath = ""
+    //        });
+    //    }
+
+    //    // 2. Self-Resolving Routing
+    //    //app.UseRouting();
+    //    //app.UseAuthorization();
+    //    //app.UseEndpoints(endpoints =>
+    //    //{
+    //    //    endpoints.MapControllers();
+    //    //});
+    //}
 
     public void PrestartInit(IHost host)
     {

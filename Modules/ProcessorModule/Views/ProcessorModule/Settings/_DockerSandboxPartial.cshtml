@@ -1,0 +1,23 @@
+﻿@using ProcessorModule.Configuration;
+
+@model DockerSandboxSettings
+<div class="space-y-4">
+    <div>
+        <label asp-for="ImageName" class="block text-[10px] font-bold text-slate-400 uppercase mb-1"></label>
+        <input asp-for="ImageName" class="w-full rounded-lg border-slate-300 text-sm font-mono" />
+    </div>
+    <div class="grid grid-cols-2 gap-4">
+        <div>
+            <label asp-for="MemoryLimitMb" class="block text-[10px] text-slate-400 uppercase"></label>
+            <input asp-for="MemoryLimitMb" type="number" class="w-full rounded border-slate-300 text-xs" />
+        </div>
+        <div>
+            <label asp-for="CpuShares" class="block text-[10px] text-slate-400 uppercase"></label>
+            <input asp-for="CpuShares" type="number" class="w-full rounded border-slate-300 text-xs" />
+        </div>
+    </div>
+    <div>
+        <label asp-for="NetworkMode" class="block text-[10px] text-slate-400 uppercase mb-1"></label>
+        <select asp-for="NetworkMode" asp-items="Html.GetEnumSelectList<DockerNetworkMode>()" class="w-full rounded border-slate-300 text-xs"></select>
+    </div>
+</div>

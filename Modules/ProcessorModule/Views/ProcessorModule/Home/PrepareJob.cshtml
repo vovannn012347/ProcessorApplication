@@ -1,0 +1,105 @@
+﻿@using ProcessorModule.Infrastructure
+@using ProcessorModule.Models.Views
+@model PrepareJobViewModel
+
+<div class="container mx-auto mt-4 px-2 max-w-3xl">
+    <div class="mb-6 flex justify-between items-end">
+        <div>
+            <h2 class="text-xl font-bold text-slate-800">Configure Processing Task</h2>
+            <p class="text-[10px] text-slate-400 uppercase tracking-widest font-bold">
+                Sequence: @string.Join(" → ", Model.SelectedScripts.Select(s => s.ScriptLabel))
+            </p>
+        </div>
+    </div>
+
+    <form asp-action="FinalizeStart" method="post" enctype="multipart/form-data" class="space-y-4" id="jobForm">
+        <input type="hidden" name="scriptIds" value="@Model.ScriptIds" />
+
+        @foreach (var input in Model.GroupedInputs)
+        {
+            <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                <div class="flex justify-between items-start mb-2">
+                    <label class="text-xs font-black text-slate-700 uppercase tracking-tight">@input.Label</label>
+                    <span class="text-[8px] font-black text-slate-300 border border-slate-100 bg-slate-50 px-2 py-0.5 rounded uppercase">@input.Type</span>
+                </div>
+
+                <div class="mb-3">
+                    @if (input.Type == "boolean")
+                    {
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox" name="values[@input.UniqueKey]" value="true" class="h-5 w-5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500" />
+                            <span class="text-xs text-slate-500 italic">Enabled / Active</span>
+                        </div>
+                    }
+                    else if (input.Type == "file")
+                    {
+                        @* Single file selection *@
+                        <input type="file" name="files_@input.UniqueKey" onchange="handleFileSelect(this, '@input.UniqueKey')" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" required />
+                    }
+                    else if (input.Type == InOutType.InOutFileMultiple)
+                    {
+                        <input type="file" name="folders_@input.UniqueKey" multiple onchange="handleFileSelect(this, '@input.UniqueKey')" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-slate-50 file:text-slate-700 hover:file:bg-slate-100" required />
+                    
+                    }
+                    else
+                    {
+                        <input type="@(new[] { "integer", "decimal" }.Contains(input.Type) ? "number" : "text")" name="values[@input.UniqueKey]" step="any" class="w-full bg-slate-50 border border-slate-200 text-sm p-3 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all" placeholder="Enter @input.Label..." required />
+                    }
+
+                    @* Pure JS Preview Container *@
+                    <div id="preview_@input.UniqueKey" class="hidden mt-2 p-2 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                        <ul class="max-h-24 overflow-y-auto text-[10px] text-slate-600 list-none p-0 m-0"></ul>
+                    </div>
+                </div>
+
+                <div class="space-y-1.5 border-t border-slate-50 pt-3">
+                    @foreach (var source in input.Sources)
+                    {
+                        <p class="text-[10px] text-slate-400 leading-tight">
+                            <span class="font-black text-slate-500 uppercase text-[8px]">@source.ScriptLabel:</span> @source.LocalizedDescription
+                        </p>
+                    }
+                </div>
+            </div>
+        }
+
+        <div class="pt-6">
+            <button type="submit" id="submitBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-indigo-100 transition-all active:scale-[0.98]">
+                Start Orchestration Sequence
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+    function handleFileSelect(input, key) {
+        const preview = document.getElementById('preview_' + key);
+        const list = preview.querySelector('ul');
+        list.innerHTML = '';
+
+        if (input.files.length > 0) {
+            preview.classList.remove('hidden');
+            Array.from(input.files).slice(0, 50).forEach(file => {
+                const li = document.createElement('li');
+                li.className = 'truncate py-0.5 border-b border-slate-100 last:border-0';
+                li.textContent = file.name;
+                list.appendChild(li);
+            });
+            if(input.files.length > 50) {
+                const li = document.createElement('li');
+                li.className = 'italic text-slate-400 pt-1';
+                li.textContent = `...and ${input.files.length - 50} more files`;
+                list.appendChild(li);
+            }
+        } else {
+            preview.classList.add('hidden');
+        }
+    }
+
+    document.getElementById('jobForm').onsubmit = function() {
+        const btn = document.getElementById('submitBtn');
+        btn.disabled = true;
+        btn.innerText = 'UPLOADING AND INITIALIZING...';
+        btn.classList.add('opacity-50', 'cursor-not-allowed');
+    };
+</script>

@@ -8,8 +8,22 @@ public class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbContext>
 {
     public AppDbContext CreateDbContext(string[] args)
     {
+        var basePath = Directory.GetCurrentDirectory();
+
+        var configuration = new ConfigurationBuilder()
+            .SetBasePath(basePath)
+            .AddJsonFile("appsettings.main.json", optional: true)
+            .Build();
+
+        var connectionString = configuration.GetConnectionString("SQLite");
+
+        if (string.IsNullOrEmpty(connectionString))
+        {
+            connectionString = "Data Source=medicalsystem.db";
+        }
+
         var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-        optionsBuilder.UseSqlite("Data Source=medicalsystem.db");
+        optionsBuilder.UseSqlite(connectionString);
 
         return new AppDbContext(optionsBuilder.Options);
     }

@@ -1,51 +1,72 @@
-<Project>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- 
+    FILE: /Modules/Directory.Build.targets
+    This file is automatically imported by any project located in the /Modules directory.
+  -->
 
   <PropertyGroup>
-    <!-- Force copy of non-transitive deps -->
-    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <!-- 1. IDENTIFY THE MAIN APP: Update this to your Main Project's folder name -->
+    <MainProjectFolderName Condition="'$(MainProjectFolderName)' == ''">ProcessorApplication</MainProjectFolderName>
+
+    <!-- 2. RESOLVE PATHS: Calculate where the Main App output lives -->
+    <MainProjectBinRoot>$(SolutionDir)$(MainProjectFolderName)\bin\$(Configuration)\$(TargetFramework)\</MainProjectBinRoot>
+    <TargetModuleFolder>$(MainProjectBinRoot)Modules\$(ProjectName)\</TargetModuleFolder>
   </PropertyGroup>
 
-  <!-- Define ItemGroup: Collect module outputs (automatic, no manual addition) -->
-  <ItemGroup>
-    <!-- DLL + PDB -->
-    <ModuleOutput Include="$(TargetDir)$(MSBuildProjectName).dll" />
-    <ModuleOutput Include="$(TargetDir)$(MSBuildProjectName).pdb" Condition="Exists('$(TargetDir)$(MSBuildProjectName).pdb')" />
+  <!-- This target runs after each submodule finishes its build -->
+  <Target Name="DeployModuleToMainApp" AfterTargets="Build" Condition="'$(SolutionDir)' != ''">
 
-    <!-- Non-transitive deps (all copied DLLs, exclude system/Microsoft) -->
-    <ModuleOutput Include="$(TargetDir)*.dll" 
-                  Exclude="$(TargetDir)$(MSBuildProjectName).dll;$(TargetDir)System.*.dll;$(TargetDir)Microsoft.*.dll" />
+    <ItemGroup>
+      <!-- Grab everything from the submodule's bin/debug/net6.0 folder -->
+      <AllModuleOutputs Include="$(TargetDir)**\*.*" />
 
-    <!-- Views (loose CSHTML) -->
-    <ModuleOutput Include="$(MSBuildProjectDirectory)\Views\**\*" />
+      <!-- Get a list of every file already sitting in the Main App's root bin folder -->
+      <!-- This includes shared libs like Common.dll, Newtonsoft, etc. -->
+      <MainAppBinFiles Include="$(MainProjectBinRoot)*.*" />
+      <ExistingInMain Include="@(MainAppBinFiles->'%(Filename)%(Extension)')" />
 
-    <!-- wwwroot (JS/CSS/etc.) -->
-    <ModuleOutput Include="$(MSBuildProjectDirectory)\wwwroot\**\*" />
+      <!-- High-level exclusions to keep the Module folder from being cluttered with absolute path noise -->
+      <FilteredModuleFiles Include="@(AllModuleOutputs)"
+                           Exclude="$(TargetDir)*.staticwebassets.runtime.json;
+                                    $(TargetDir)*.staticwebassets.endpoints.json;
+                                    $(TargetDir)*.deps.json;
+                                    $(TargetDir)*.runtimeconfig.json" />
 
-    <!-- Config (if exists) -->
-    <ModuleOutput Include="$(MSBuildProjectDirectory)\appsettings.$(MSBuildProjectName).json" 
-                  Condition="Exists('$(MSBuildProjectDirectory)\appsettings.$(MSBuildProjectName).json')" />
-  </ItemGroup>
+      <!-- Filter: Only copy files from the module bin that DO NOT already exist in the Main App's root bin -->
+      <!-- This is the "Universal" check for Common.dll and other shared dependencies -->
+      <FilesToCopy Include="@(FilteredModuleFiles)"
+                   Condition="!@(ExistingInMain->AnyHaveMetadataValue('Identity', '%(Filename)%(Extension)'))" />
 
-  <!-- Post-build: Copy ItemGroup to ProcessorApplication/bin/Modules/{ModuleName} -->
-  <Target Name="CopyModuleOutputs" AfterTargets="Build" 
-          Condition="'@(ModuleOutput)' != ''">  <!-- Only if ItemGroup has items (i.e., project built) -->
+      <!-- Force Include: The module's own code and view dlls must always be transported -->
+      <FilesToCopy Include="$(TargetDir)$(AssemblyName).dll" />
+      <FilesToCopy Include="$(TargetDir)$(AssemblyName).Views.dll" Condition="Exists('$(TargetDir)$(AssemblyName).Views.dll')" />
+      <FilesToCopy Include="$(TargetDir)$(AssemblyName).pdb" Condition="Exists('$(TargetDir)$(AssemblyName).pdb')" />
+      <FilesToCopy Include="$(TargetDir)appsettings.*.json" />
 
-    <PropertyGroup>
-      <!-- Module name from .csproj -->
-      <ModuleName>$(MSBuildProjectName)</ModuleName>
-      <!-- Main app bin path (adjust if needed) -->
-      <MainAppBinPath>$(SolutionDir)ProcessorApplication\bin\$(Configuration)\$(TargetFramework)</MainAppBinPath>
-      <!-- Target: ProcessorApplication/bin/Modules/{ModuleName} -->
-      <TargetModuleDir>$(MainAppBinPath)\Modules\$(ModuleName)</TargetModuleDir>
-    </PropertyGroup>
+      <!-- 3. ADD STATIC ASSETS: Grab the entire wwwroot folder from the PROJECT source -->
+      <ModuleStaticAssets Include="$(ProjectDir)wwwroot\**\*.*" />
+    </ItemGroup>
 
-    <!-- Create dir if missing -->
-    <MakeDir Directories="$(TargetModuleDir)" />
+    <Message Importance="high" Text="[Module Deploy] -> Moving binaries and assets for '$(ProjectName)' to '$(TargetModuleFolder)'" />
 
-    <!-- Copy with structure preserved -->
-    <Copy SourceFiles="@(ModuleOutput)" 
-          DestinationFolder="$(TargetModuleDir)\%(RecursiveDir)" 
-          SkipUnchangedFiles="true" />
+    <!-- Step A: Copy the DLLs and filtered binaries -->
+    <Copy SourceFiles="@(FilesToCopy)"
+          DestinationFolder="$(TargetModuleFolder)%(RecursiveDir)"
+          SkipUnchangedFiles="true"
+          OverwriteReadOnlyFiles="true" />
+
+    <!-- Step B: Copy the wwwroot folder explicitly to preserve the folder structure -->
+    <Copy SourceFiles="@(ModuleStaticAssets)"
+          DestinationFiles="@(ModuleStaticAssets->'$(TargetModuleFolder)wwwroot\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          OverwriteReadOnlyFiles="true" />
+
+  </Target>
+
+  <!-- Automatic cleanup when cleaning the module project -->
+  <Target Name="CleanupModuleDeployment" AfterTargets="Clean">
+    <Message Importance="high" Text="[Module Clean] -> Removing '$(TargetModuleFolder)'" />
+    <RemoveDir Directories="$(TargetModuleFolder)" Condition="Exists('$(TargetModuleFolder)')" />
   </Target>
 
 </Project>

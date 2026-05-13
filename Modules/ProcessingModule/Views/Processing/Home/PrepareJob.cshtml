@@ -1,0 +1,113 @@
+﻿@using ProcessingModule
+@using ProcessingModule.Infrastructure
+@using ProcessingModule.Models
+@using ProcessingModule.Models.Views
+@model PrepareJobViewModel
+@section Styles {
+    <link rel="stylesheet" href="/Processing/css/processor.min.css" asp-append-version="true" />
+}
+<div id="prepare-job-wrapper" data-script-id="processor-preparejob" class="pm-container pm-mx-auto pm-mt-4 pm-px-2 pm-max-w-3xl">
+    <div class="pm-mb-6 pm-flex pm-justify-between pm-items-end">
+        <div>
+            <h2 class="pm-text-xl pm-font-bold pm-text-slate-800">Configure Processing Task</h2>
+            <p class="pm-text-[10px] pm-text-slate-400 pm-uppercase pm-tracking-widest pm-font-bold">
+                Sequence: @string.Join(" → ", Model.SelectedScripts.Select(s => s.ScriptLabel))
+            </p>
+        </div>
+    </div>
+
+    <form asp-action="FinalizeStart" method="post" enctype="multipart/form-data" class="pm-space-y-4" id="jobForm">
+        <input type="hidden" name="scriptIds" value="@Model.ScriptIds" />
+
+        @foreach (var input in Model.GroupedInputs)
+        {
+            <div class="pm-bg-white pm-border pm-border-slate-200 pm-rounded-xl pm-p-4 pm-shadow-sm">
+                <div class="pm-flex pm-justify-between pm-items-start pm-mb-2">
+                    <label class="pm-text-xs pm-font-black pm-text-slate-700 pm-uppercase pm-tracking-tight">@input.Label</label>
+                    <span class="pm-text-[8px] pm-font-black pm-text-slate-300 pm-border pm-border-slate-100 pm-bg-slate-50 pm-px-2 pm-py-0.5 pm-rounded pm-uppercase">@input.Type</span>
+                </div>
+
+                <div class="pm-mb-3">
+                    @if (input.Type == "boolean")
+                    {
+                        <div class="pm-flex pm-items-center pm-gap-2">
+                            <input type="checkbox" name="values[@input.UniqueKey]" value="true" class="pm-h-5 pm-w-5 pm-text-indigo-600 pm-border-slate-300 pm-rounded focus:pm-ring-indigo-500" />
+                            <span class="pm-text-xs pm-text-slate-500 pm-italic">Enabled / Active</span>
+                        </div>
+                    }
+                    else if (input.Type == "file")
+                    {
+                        <input type="file" name="files_@input.UniqueKey" onchange="handleFileSelect(this, '@input.UniqueKey')" class="pm-w-full pm-text-xs pm-text-slate-500 file:pm-mr-4 file:pm-py-2 file:pm-px-4 file:pm-rounded-full file:pm-border-0 file:pm-text-xs file:pm-font-semibold file:pm-bg-indigo-50 file:pm-text-indigo-700 hover:file:pm-bg-indigo-100" required />
+                    }
+                    else if (input.Type == InOutType.InOutFileMultiple)
+                    {
+                        <input type="file" name="folders_@input.UniqueKey" multiple onchange="handleFileSelect(this, '@input.UniqueKey')" class="pm-w-full pm-text-xs pm-text-slate-500 file:pm-mr-4 file:pm-py-2 file:pm-px-4 file:pm-rounded-full file:pm-border-0 file:pm-text-xs file:pm-font-semibold file:pm-bg-slate-50 file:pm-text-slate-700 hover:file:pm-bg-slate-100" required />
+                    }
+                    else
+                    {
+                        <input type="@(new[] { "integer", "decimal" }.Contains(input.Type) ? "number" : "text")" name="values[@input.UniqueKey]" step="any" class="pm-w-full pm-bg-slate-50 pm-border pm-border-slate-200 pm-text-sm pm-p-3 pm-rounded-lg pm-outline-none focus:pm-ring-2 focus:pm-ring-indigo-500/20 pm-transition-all" placeholder="Enter @input.Label..." required />
+                    }
+
+                    <div id="preview_@input.UniqueKey" class="pm-hidden pm-mt-2 pm-p-2 pm-bg-slate-50 pm-rounded-lg pm-border pm-border-dashed pm-border-slate-200">
+                        <ul class="pm-max-h-24 pm-overflow-y-auto pm-text-[10px] pm-text-slate-600 pm-list-none pm-p-0 pm-m-0"></ul>
+                    </div>
+                </div>
+
+                <div class="pm-space-y-1.5 pm-border-t pm-border-slate-50 pm-pt-3">
+                    @foreach (var source in input.Sources)
+                    {
+                        <p class="pm-text-[10px] pm-text-slate-400 pm-leading-tight">
+                            <span class="pm-font-black pm-text-slate-500 pm-uppercase pm-text-[8px]">@source.ScriptLabel:</span> @source.LocalizedDescription
+                        </p>
+                    }
+                </div>
+            </div>
+        }
+
+        <div class="pm-pt-6">
+            <button type="submit" id="submitBtn" class="pm-w-full pm-bg-indigo-600 hover:pm-bg-indigo-700 pm-text-white pm-py-4 pm-rounded-2xl pm-font-black pm-text-xs pm-uppercase pm-tracking-[0.2em] pm-shadow-xl pm-shadow-indigo-100 pm-transition-all active:pm-scale-[0.98]">
+                Start Orchestration Sequence
+            </button>
+        </div>
+    </form>
+
+
+</div>
+@section Scripts {
+    <script src="~/processing/js/pages/home/prepare-job.js" asp-append-version="true"></script>
+}
+@* 
+<script>
+    function handleFileSelect(input, key) {
+    const preview = document.getElementById('preview_' + key);
+    const list = preview.querySelector('ul');
+    list.innerHTML = '';
+
+        if (input.files.length > 0) {
+            preview.classList.remove('pm-hidden');
+            Array.from(input.files).slice(0, 50).forEach(file => {
+                const li = document.createElement('li');
+                li.className = 'pm-truncate pm-py-0.5 pm-border-b pm-border-slate-100 last:pm-border-0';
+                li.textContent = file.name;
+                list.appendChild(li);
+            });
+            if(input.files.length > 50) {
+                const li = document.createElement('li');
+                li.className = 'pm-italic pm-text-slate-400 pm-pt-1';
+                li.textContent = `...and ${input.files.length - 50} more files`;
+                list.appendChild(li);
+            }
+        } else {
+            preview.classList.add('pm-hidden');
+        }
+    }
+
+    document.getElementById('jobForm').onsubmit = function() {
+        const btn = document.getElementById('submitBtn');
+        btn.disabled = true;
+        btn.innerText = 'UPLOADING AND INITIALIZING...';
+        btn.classList.add('pm-opacity-50', 'pm-cursor-not-allowed');
+    };
+
+
+</script> *@

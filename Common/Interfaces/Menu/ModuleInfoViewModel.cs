@@ -3,4 +3,5 @@ public class ModuleInfoViewModel
 {
     public string ModuleId { get; set; }
     public string Name { get; set; }
+    public string[] Roles { get; set; }
 }

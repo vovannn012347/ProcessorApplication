@@ -1,0 +1,21 @@
+﻿@model ProviderlessSettingsViewModel
+@using ProviderlessModule.Configuration.Tunnel
+@{
+    var key = "static";
+    var settings = Model.TunnelSettings.ContainsKey(key) 
+                   ? (StaticUrlSettings)Model.TunnelSettings[key] 
+                   : new StaticUrlSettings();
+}
+
+<div class="plss-space-y-4">
+    <p class="plss-text-[11px] plss-text-amber-600 plss-bg-amber-50 plss-p-3 plss-rounded-lg plss-border plss-border-amber-100">
+        <strong>Manual Mode:</strong> Use this if you have a fixed IP or a pre-configured reverse proxy. No automated tunneling binaries will be launched.
+    </p>
+
+    <div class="plss-group">
+        <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Public Static URL</label>
+        <input name="TunnelSettings[@key].PublicUrl" value="@settings.PublicUrl" 
+               placeholder="https://portal.myclinic.com"
+               class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-rounded-lg plss-text-sm" />
+    </div>
+</div>

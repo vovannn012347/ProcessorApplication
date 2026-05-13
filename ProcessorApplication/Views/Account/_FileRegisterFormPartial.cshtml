@@ -1,23 +1,22 @@
 ﻿@model ProcessorApplication.ViewModels.Account.RegisterViewModel
 
-<div class="space-y-4">
-    <p class="text-sm text-gray-600">Please select your exported profile file (e.g., from a medical system) and set a new password to secure your imported identity in this application.</p>
+<div class="mm-space-y-4">
+    <p class="mm-text-sm mm-text-gray-600">Please select your exported profile file (e.g., from a medical system) and set a new password to secure your imported identity in this application.</p>
 
     <!-- File Input -->
     <div>
-        <label for="profileFile" class="block text-sm font-medium text-gray-700">Profile Export File (.json)</label>
-        <input type="file" id="profileFile" name="profileFile" required class="mt-1 block w-full text-sm text-gray-500 p-2 border border-gray-300 rounded-md" />
+        <label for="profileFile" class="mm-block mm-text-sm mm-font-medium mm-text-gray-700">Profile Export File (.json)</label>
+        <input type="file" id="profileFile" name="profileFile" required class="mm-mt-1 mm-block mm-w-full mm-text-sm mm-text-gray-500 mm-p-2 mm-border mm-border-gray-300 mm-rounded-md" />
     </div>
 
-    <!-- Password Input -->
-
+    <!-- Password Inputs -->
     <div>
-        <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
-        <input type="password" id="password" name="password" required class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm p-2" />
+        <label for="password" class="mm-block mm-text-sm mm-font-medium mm-text-gray-700">Password</label>
+        <input type="password" id="password" name="password" required class="mm-mt-1 mm-block mm-w-full mm-rounded-md mm-border mm-border-gray-300 mm-shadow-sm mm-p-2" />
     </div>
     <div>
-        <label for="confirmPassword" class="mm-block mm-text-sm mm-font-medium text-gray-700">Confirm Password</label>
-        <input type="password" id="confirmPassword" name="confirmPassword" required class="mt-1 block w-full rounded-md border border-gray-300 shadow-sm p-2" />
+        <label for="confirmPassword" class="mm-block mm-text-sm mm-font-medium mm-text-gray-700">Confirm Password</label>
+        <input type="password" id="confirmPassword" name="confirmPassword" required class="mm-mt-1 mm-block mm-w-full mm-rounded-md mm-border mm-border-gray-300 mm-shadow-sm mm-p-2" />
     </div>
 
     <p class="mm-text-xs mm-text-red-600">INFO: The imported user signature hash key will be encrypted by new password. Do not lose/forget password.</p>

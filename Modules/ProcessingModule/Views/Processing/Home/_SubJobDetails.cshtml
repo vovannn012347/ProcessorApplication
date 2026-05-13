@@ -1,0 +1,119 @@
+﻿@using ProcessingModule
+@using ProcessingModule.Models
+@using ProcessingModule.Models.Views
+@model SubJobDetailsViewModel
+
+<div class="pm-p-8 pm-flex pm-flex-col pm-gap-10 pm-animate-in pm-fade-in pm-slide-in-from-top-4 pm-duration-700 pm-bg-slate-50/30">
+
+<div class="pm-grid pm-grid-cols-1 lg:pm-grid-cols-4 pm-gap-8">
+    <div class="lg:pm-col-span-3 pm-flex pm-flex-col pm-gap-4">
+        <div class="pm-flex pm-items-center pm-gap-3">
+            <div class="pm-h-6 pm-w-1 pm-bg-indigo-500 pm-rounded-full"></div>
+            <h3 class="pm-text-[10px] pm-font-black pm-text-slate-400 pm-uppercase pm-tracking-[0.2em]">Execution Trace</h3>
+        </div>
+
+        @if (!string.IsNullOrEmpty(Model.SummaryJson))
+        {
+            <div class="pm-relative pm-group">
+                <div class="pm-absolute pm--inset-1 pm-bg-gradient-to-r pm-from-indigo-500 pm-to-cyan-500 pm-rounded-2xl pm-blur pm-opacity-5 group-hover:pm-opacity-10 pm-transition pm-duration-1000"></div>
+                <pre class="pm-relative pm-bg-slate-900 pm-text-indigo-300 pm-p-6 pm-rounded-2xl pm-text-[10px] pm-font-mono pm-leading-relaxed pm-overflow-x-auto pm-border pm-border-slate-800 pm-shadow-xl pm-max-h-64 pm-scrollbar-thin">@Model.SummaryJson</pre>
+            </div>
+        }
+    </div>
+
+    <div class="pm-bg-white pm-border pm-border-slate-200 pm-rounded-2xl pm-p-6 pm-shadow-sm pm-self-start">
+        <span class="pm-text-[9px] pm-font-black pm-text-slate-400 pm-uppercase pm-tracking-widest pm-block pm-mb-5 pm-border-b pm-border-slate-100 pm-pb-2">Scalar Configuration</span>
+        <div class="pm-space-y-4">
+            @foreach (var input in Model.ScalarInputs)
+            {
+                <div class="pm-flex pm-flex-col">
+                    <label class="pm-text-[8px] pm-font-black pm-text-slate-400 pm-uppercase pm-tracking-tighter">@input.LocalizedLabel</label>
+                    <span class="pm-text-xs pm-font-bold pm-text-slate-700 pm-font-mono pm-break-all pm-leading-tight">@input.Value</span>
+                </div>
+            }
+            @if (!Model.ScalarInputs.Any())
+            {
+                <span class="pm-text-[10px] pm-text-slate-300 pm-italic">No scalars provided.</span>
+            }
+        </div>
+    </div>
+</div>
+
+@if (Model.InputArtifacts.Any())
+{
+    <div class="pm-space-y-4">
+        <div class="pm-flex pm-items-center pm-gap-3 pm-px-1">
+            <span class="pm-text-[10px] pm-font-black pm-text-slate-800 pm-uppercase pm-tracking-widest">Source Input Assets</span>
+            <span class="pm-h-px pm-flex-1 pm-bg-slate-100"></span>
+        </div>
+        <div class="pm-flex pm-flex-wrap pm-gap-5">
+            @foreach (var art in Model.InputArtifacts)
+            {
+                <partial name="_ArtifactCard" model="art" />
+            }
+        </div>
+    </div>
+}
+
+@if (Model.DirectOutputs.Any())
+{
+    <div class="pm-space-y-4">
+        <span class="pm-text-[10px] pm-font-black pm-text-slate-400 pm-uppercase pm-tracking-widest pm-block pm-px-1">Key Performance Indicators</span>
+        <div class="pm-grid pm-grid-cols-2 md:pm-grid-cols-4 lg:pm-grid-cols-5 pm-gap-4">
+            @foreach (var output in Model.DirectOutputs)
+            {
+                <div class="pm-bg-white pm-border pm-border-slate-200 pm-p-5 pm-rounded-2xl pm-shadow-sm hover:pm-ring-2 hover:pm-ring-indigo-500/5 pm-transition-all">
+                    <p class="pm-text-[8px] pm-font-black pm-text-slate-400 pm-uppercase pm-tracking-tight pm-mb-2 pm-truncate" title="@output.LocalizedLabel">@output.LocalizedLabel</p>
+                    <p class="pm-text-xl pm-font-black pm-text-slate-800 pm-font-mono">@output.Value</p>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@if (Model.ExplicitArtifacts.Any())
+{
+    <div class="pm-space-y-4">
+        <div class="pm-flex pm-items-center pm-gap-3 pm-px-1">
+            <span class="pm-text-[10px] pm-font-black pm-text-slate-800 pm-uppercase pm-tracking-widest">Primary Output Artifacts</span>
+            <span class="pm-h-px pm-flex-1 pm-bg-indigo-100"></span>
+        </div>
+        <div class="pm-flex pm-flex-wrap pm-gap-5">
+            @foreach (var art in Model.ExplicitArtifacts)
+            {
+                <partial name="_ArtifactCard" model="art" />
+            }
+        </div>
+    </div>
+}
+
+@if (Model.InternalArtifacts.Any())
+{
+    <div class="pm-pt-6 pm-border-t pm-border-slate-100 pm-space-y-4">
+        <span class="pm-text-[10px] pm-font-black pm-text-slate-400 pm-uppercase pm-tracking-widest pm-block pm-px-1">Supporting Infrastructure Files</span>
+        <div class="pm-flex pm-flex-wrap pm-gap-4">
+            @foreach (var art in Model.InternalArtifacts)
+            {
+                <partial name="_ArtifactCard" model="art" />
+            }
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(Model.ResultMessage))
+{
+    <div class="pm-bg-red-50 pm-border-l-4 pm-border-red-500 pm-p-6 pm-rounded-r-2xl pm-shadow-sm pm-mt-4">
+        <div class="pm-flex pm-items-center pm-gap-3 pm-mb-3">
+            <div class="pm-w-8 pm-h-8 pm-rounded-full pm-bg-red-100 pm-flex pm-items-center pm-justify-center">
+                <i class="fa-solid fa-bug pm-text-red-600 pm-text-xs"></i>
+            </div>
+            <span class="pm-text-xs pm-font-black pm-text-red-700 pm-uppercase pm-tracking-widest">Step Execution Failure</span>
+        </div>
+        <div class="pm-bg-white/80 pm-p-4 pm-rounded-xl pm-border pm-border-red-100">
+            <code class="pm-text-[11px] pm-text-red-900 pm-leading-relaxed pm-break-all">@Model.ResultMessage</code>
+        </div>
+    </div>
+}
+
+
+</div>

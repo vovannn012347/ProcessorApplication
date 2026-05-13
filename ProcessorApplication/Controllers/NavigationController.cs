@@ -31,7 +31,13 @@ public class NavigationController : Controller
     [HttpGet]
     public IActionResult GetModules()
     {
-        var modules = _moduleService.GetModuleInfo();
+        var userRoles = User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
+
+        var modules =
+            _moduleService.GetModuleInfo()
+            .Where(r => r.Roles.Length == 0 || r.Roles.Any(requiredRole => userRoles.Contains(requiredRole)))
+        .ToList();
+
         return Json(modules);
     }
 

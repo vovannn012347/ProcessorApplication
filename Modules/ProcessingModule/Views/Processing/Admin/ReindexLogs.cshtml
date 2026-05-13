@@ -1,0 +1,63 @@
+﻿@section Styles {
+    <link rel="stylesheet" href="/Processing/css/processor.min.css" asp-append-version="true" />
+}
+<div id="reindex-console-wrapper" data-script-id="processor-reindex-logs" class="pm-container pm-mx-auto pm-p-6 pm-bg-slate-50 pm-min-h-screen">
+    <div class="pm-flex pm-items-center pm-justify-between pm-mb-6">
+        <div>
+            <h1 class="pm-text-2xl pm-font-black pm-text-slate-800 pm-uppercase pm-tracking-tighter">Library Reindexing Console</h1>
+            <p class="pm-text-xs pm-text-slate-500 pm-font-mono">Status: <span id="statusText" class="pm-text-indigo-600 pm-animate-pulse">Initializing stream...</span></p>
+        </div>
+        <a href="/Processing/Home/ScriptList" class="pm-text-[10px] pm-font-bold pm-uppercase pm-tracking-widest pm-text-slate-400 hover:pm-text-slate-600 pm-transition-colors">
+            <i class="fa-solid fa-arrow-left pm-mr-1"></i> Return to Library
+        </a>
+    </div>
+
+    <div class="pm-relative">
+        <div class="pm-absolute pm-top-3 pm-right-4 pm-flex pm-gap-2">
+            <div class="pm-w-2 pm-h-2 pm-rounded-full pm-bg-red-400"></div>
+            <div class="pm-w-2 pm-h-2 pm-rounded-full pm-bg-yellow-400"></div>
+            <div class="pm-w-2 pm-h-2 pm-rounded-full pm-bg-green-400"></div>
+        </div>
+        <textarea id="consoleOutput" readonly
+                  class="pm-w-full pm-h-[70vh] pm-bg-slate-900 pm-text-indigo-300 pm-font-mono pm-text-[11px] pm-p-6 pm-rounded-xl pm-border pm-border-slate-800 pm-shadow-2xl pm-resize-none focus:pm-outline-none pm-overflow-y-auto"
+                  placeholder="Establishing connection to indexing engine..."></textarea>
+    </div>
+
+</div>
+
+@section Scripts {
+    <script src="~/processing/js/pages/admin/reindex-logs.js" asp-append-version="true"></script>
+}
+@* 
+<script>
+    const output = document.getElementById('consoleOutput');
+    const statusParagraph = document.getElementById('statusText');
+
+    // Establish Server-Sent Events connection
+    const eventSource = new EventSource('/Processing/Admin/ConsecutiveReindex');
+
+    eventSource.onmessage = function(event) {
+        if (event.data === "[DONE]") {
+            statusParagraph.innerText = "Indexing Complete";
+            statusParagraph.classList.remove('pm-animate-pulse', 'pm-text-indigo-600');
+            statusParagraph.classList.add('pm-text-green-600');
+            output.value += "\n\r>>> REINDEXING PROCESS FINISHED SUCCESSFULLY.";
+            eventSource.close();
+        } else {
+            statusParagraph.innerText = "Processing...";
+            output.value += event.data + "\n";
+            // Auto-scroll
+            output.scrollTop = output.scrollHeight;
+        }
+    };
+
+    eventSource.onerror = function(err) {
+        statusParagraph.innerText = "Connection Lost / Error";
+        statusParagraph.classList.add('pm-text-red-600');
+        output.value += "\n\r[CRITICAL ERROR] The stream was interrupted. Check server logs.";
+        output.value += "\n\r" + err;
+        eventSource.close();
+    };
+
+
+</script> *@

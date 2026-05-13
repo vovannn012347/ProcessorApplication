@@ -1,0 +1,45 @@
+﻿@model ProviderlessSettingsViewModel
+@using ProviderlessModule.Configuration.Registry
+@{
+    var key = "github";
+    // Resolve the current monitor-backed settings from the dictionary
+    var settings = Model.RegistrySettings.ContainsKey(key)
+                   ? (GithubSettings)Model.RegistrySettings[key]
+                   : new GithubSettings();
+}
+
+<div class="plss-space-y-5">
+    <p class="plss-text-[11px] plss-text-blue-600 plss-font-medium plss-leading-relaxed">
+        Discovery via GitHub Raw requires a public repository or a PAT for private access.
+        The node will commit a signed JSON payload containing the tunnel URL.
+    </p>
+
+    <div class="plss-group">
+        <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase plss-tracking-widest">
+            Repository (owner/name)
+        </label>
+        <input name="RegistrySettings[@key].RepositoryName" value="@settings.RepositoryName"
+               placeholder="e.g., MyClinic/portal-discovery"
+               class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-border-gray-200 plss-rounded-lg plss-text-sm plss-focus:plss-border-blue-500" />
+    </div>
+
+    <div class="plss-grid plss-grid-cols-2 plss-gap-4">
+        <div>
+            <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase plss-tracking-widest">Branch</label>
+            <input name="RegistrySettings[@key].Branch" value="@settings.Branch"
+                   class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-border-gray-200 plss-rounded-lg plss-text-sm" />
+        </div>
+        <div>
+            <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase plss-tracking-widest">Path</label>
+            <input name="RegistrySettings[@key].RegistryPath" value="@settings.RegistryPath"
+                   class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-border-gray-200 plss-rounded-lg plss-text-sm" />
+        </div>
+    </div>
+
+    <div>
+        <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase plss-tracking-widest">Access Token</label>
+        <input name="RegistrySettings[@key].GitHubToken" value="@settings.GitHubToken" type="password"
+               placeholder="ghp_xxxxxxxxxxxx"
+               class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-border-gray-200 plss-rounded-lg plss-font-mono plss-text-sm" />
+    </div>
+</div>

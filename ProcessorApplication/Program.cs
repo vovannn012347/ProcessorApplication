@@ -1,11 +1,16 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿
+using Infrastructure.Monitoring;
+
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 using ProcessorApplication;
 using ProcessorApplication.Attributes;
+using ProcessorApplication.Dashboard;
 using ProcessorApplication.Infrastructure;
 using ProcessorApplication.Services;
 using ProcessorApplication.Utils;
@@ -81,6 +86,8 @@ foreach (var m in modules)
     m.ConfigureServices(builder.Services, builder.Configuration.GetSection(m.ModuleId));
 }
 
+builder.Services.AddSingleton<UserPresenceStore>();
+
 // build
 var app = builder.Build();
 
@@ -105,6 +112,11 @@ if (app.Environment.IsDevelopment())
     };
 }
 
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
+
 // request pipeline
 if (!app.Environment.IsDevelopment())
 {
@@ -112,7 +124,11 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
+if (builder.Configuration.GetValue<bool>("Features:ForceHttpsRedirection"))
+{
+    app.UseHttpsRedirection();
+}
+
 app.UseStaticFiles(); // Global app wwwroot
 app.UseSession();
 
@@ -128,6 +144,7 @@ app.UseRouting();
 // 5. GLOBAL AUTHENTICATION & AUTHORIZATION
 // One instance handles the whole app. Use [AllowAnonymous] on Login actions.
 app.UseAuthentication();
+app.UseMiddleware<UserPresenceMiddleware>();
 app.UseAuthorization();
 
 // 4. CENTRALIZED ROUTING (Unified Table)
@@ -137,17 +154,34 @@ app.UseEndpoints(endpoints =>
     endpoints.MapControllers();
     endpoints.MapRazorPages();
 
-    // Navigation Logic
-    //endpoints.MapControllerRoute(
-    //    name: "nav_route",
-    //    pattern: "Navigation/{action=GetModules}/{id?}",
-    //    defaults: new { controller = "Navigation" });
+    endpoints.MapHub<DashboardHub>("/dashboardHub");
 
     // Root Redirect
     endpoints.MapGet("/", context => {
         context.Response.Redirect("/Main/Home/Dashboard");
         return Task.CompletedTask;
     });
-});
+
+}); 
+
+
+/*
+var logger = app.Services
+    .GetRequiredService<ILogger<Program>>();
+
+var endpointDataSource =
+    app.Services.GetRequiredService<EndpointDataSource>();
+
+foreach (var endpoint in endpointDataSource.Endpoints.OfType<RouteEndpoint>())
+{
+    var methods = endpoint.Metadata
+        .OfType<HttpMethodMetadata>()
+        .FirstOrDefault()?.HttpMethods;
+
+    logger.LogInformation(
+        "Route: {Methods} {Route}",
+        methods is null ? "ANY" : string.Join(",", methods),
+        endpoint.RoutePattern.RawText);
+}*/
 
 await app.RunAsync();

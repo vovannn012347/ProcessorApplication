@@ -1,0 +1,35 @@
+﻿<div class="mm-widget-container mm-p-5 mm-h-full mm-flex mm-flex-col mm-justify-between" id="widget-access-status">
+    <div class="mm-flex mm-items-center mm-justify-between mm-mb-4">
+        <div class="mm-flex mm-items-center mm-gap-4">
+            @* Three Tier Modem Blings with Labels *@
+            <span class="mm-text-[10px] mm-font-black mm-uppercase mm-tracking-widest mm-text-slate-400">Gateway Status</span>
+            <div class="mm-flex mm-gap-3">
+                <div class="mm-flex mm-flex-col mm-items-center mm-gap-1">
+                    <div id="bling-reg" class="status-bling mm-w-1.5 mm-h-1.5 mm-rounded-full mm-bg-slate-200 mm-transition-all mm-duration-500"></div>
+                    <span class="mm-text-[7px] mm-font-black mm-uppercase mm-text-slate-300">Reg</span>
+                </div>
+                <div class="mm-flex mm-flex-col mm-items-center mm-gap-1">
+                    <div id="bling-tun" class="status-bling mm-w-1.5 mm-h-1.5 mm-rounded-full mm-bg-slate-200 mm-transition-all mm-duration-500"></div>
+                    <span class="mm-text-[7px] mm-font-black mm-uppercase mm-text-slate-300">Tun</span>
+                </div>
+                <div class="mm-flex mm-flex-col mm-items-center mm-gap-1">
+                    <div id="bling-png" class="status-bling mm-w-1.5 mm-h-1.5 mm-rounded-full mm-bg-slate-200 mm-transition-all mm-duration-500"></div>
+                    <span class="mm-text-[7px] mm-font-black mm-uppercase mm-text-slate-300">Png</span>
+                </div>
+            </div>
+        </div>
+        <div class="mm-text-[9px] mm-font-mono mm-text-slate-300" id="access-sync-time">--:--:--</div>
+    </div>
+
+    <div class="mm-space-y-3 mm-mb-5">
+        <div class="mm-p-3 mm-bg-slate-900 mm-rounded-xl mm-border mm-border-slate-800">
+            <span class="mm-block mm-text-[8px] mm-font-black mm-text-slate-500 mm-uppercase mm-mb-1">Active Discovery Endpoint</span>
+            <div class="mm-text-[10px] mm-font-mono mm-text-indigo-300 mm-truncate" id="access-url-text">Checking...</div>
+        </div>
+    </div>
+
+    <a href="/Providerless" class="mm-w-full mm-py-2 mm-bg-slate-100 hover:mm-bg-slate-200 mm-rounded-xl mm-flex mm-items-center mm-justify-center mm-gap-2 mm-transition-colors">
+        <i class="fa-solid fa-qrcode mm-text-slate-400"></i>
+        <span class="mm-text-[10px] mm-font-black mm-text-slate-600 mm-uppercase">Access Portal</span>
+    </a>
+</div>

@@ -11,6 +11,7 @@ public interface IEmailService
     // Properties to expose health state safely
     bool IsHealthy { get; }
     string HealthStatus { get; }
+    string SmtpHost { get; }
     DateTime LastChecked { get; }
 
     Task VerifyConnectionAsync();

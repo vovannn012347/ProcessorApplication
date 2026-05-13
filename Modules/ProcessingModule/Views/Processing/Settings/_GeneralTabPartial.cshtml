@@ -1,0 +1,25 @@
+﻿@using ProcessingModule
+@using ProcessingModule.Configuration
+@using ProcessingModule.Models
+@model ProcessorSettings
+
+<div class="pm-grid pm-grid-cols-1 md:pm-grid-cols-2 pm-gap-6">
+    <div class="pm-space-y-1">
+        <label asp-for="ScriptSourcePath" class="pm-block pm-text-sm pm-font-medium pm-text-slate-700"></label>
+        <input asp-for="ScriptSourcePath" class="pm-w-full pm-rounded-lg pm-border-slate-300 pm-bg-slate-50 focus:pm-bg-white pm-transition-colors" />
+        <span asp-validation-for="ScriptSourcePath" class="pm-text-xs pm-text-red-500"></span>
+    </div>
+    <div class="pm-space-y-1">
+        <label asp-for="ResultsOutputPath" class="pm-block pm-text-sm pm-font-medium pm-text-slate-700"></label>
+        <input asp-for="ResultsOutputPath" class="pm-w-full pm-rounded-lg pm-border-slate-300 pm-bg-slate-50 focus:pm-bg-white pm-transition-colors" />
+        <span asp-validation-for="ResultsOutputPath" class="pm-text-xs pm-text-red-500"></span>
+    </div>
+    <div class="pm-space-y-1">
+        <label asp-for="MaxConcurrentJobs" class="pm-block pm-text-sm pm-font-medium pm-text-slate-700"></label>
+        <input asp-for="MaxConcurrentJobs" type="number" class="pm-w-full pm-rounded-lg pm-border-slate-300" />
+    </div>
+    <div class="pm-space-y-1">
+        <label asp-for="JobTimeoutMinutes" class="pm-block pm-text-sm pm-font-medium pm-text-slate-700"></label>
+        <input asp-for="JobTimeoutMinutes" type="number" step="0.5" class="pm-w-full pm-rounded-lg pm-border-slate-300" />
+    </div>
+</div>

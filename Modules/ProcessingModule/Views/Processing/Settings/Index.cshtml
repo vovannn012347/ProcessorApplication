@@ -1,0 +1,157 @@
+﻿@using ProcessingModule
+@using ProcessingModule.Models
+@using ProcessingModule.Models.Views
+@model ProcessorSettingsViewModel;
+
+@* Scoped CSS containing the pm- namespace *@
+
+@section Styles {
+    <link rel="stylesheet" href="/Processing/css/processor.min.css" asp-append-version="true" />
+}
+
+<div id="settings-partial-wrapper" data-script-id="processor-settings">
+    <div class="pm-container pm-mx-auto pm-py-8 pm-px-4">
+        <div class="pm-mb-8 pm-flex pm-justify-between pm-items-end">
+            <div>
+                <h1 class="pm-text-3xl pm-font-extrabold pm-text-slate-900 pm-tracking-tight">Processor Configuration</h1>
+                <p class="pm-text-slate-500">Manage global paths, Python runtimes, and sandboxing isolation levels.</p>
+            </div>
+        </div>
+
+        @* Validation and Status Message Area *@
+        <div id="settings-messages" class="pm-mb-6 pm-space-y-4">
+            @if (TempData["SuccessMessage"] != null)
+            {
+                <div class="pm-p-4 pm-bg-green-50 pm-border-l-4 pm-border-green-500 pm-text-green-700 pm-text-sm pm-flex pm-items-center pm-gap-3 pm-rounded-r-lg pm-shadow-sm">
+                    <i class="fa-solid fa-check-circle"></i>
+                    <span>@TempData["SuccessMessage"]</span>
+                </div>
+            }
+
+            @if (!ViewData.ModelState.IsValid)
+            {
+                <div class="pm-p-4 pm-bg-yellow-50 pm-border pm-border-yellow-200 pm-rounded-md pm-shadow-sm">
+                    <div class="pm-flex pm-items-center pm-gap-3 pm-mb-2 pm-font-bold pm-uppercase pm-tracking-tight pm-text-xs pm-text-yellow-800">
+                        <i class="fa-solid fa-triangle-exclamation pm-text-yellow-500"></i>
+                        <span>Configuration Errors Detected</span>
+                    </div>
+                    <ul class="pm-ml-7 pm-list-disc pm-text-sm pm-text-yellow-700 pm-space-y-1">
+                        @foreach (var state in ViewData.ModelState.Values)
+                        {
+                            @foreach (var error in state.Errors)
+                            {
+                                <li>@error.ErrorMessage</li>
+                            }
+                        }
+                    </ul>
+                </div>
+            }
+        </div>
+
+        <form id="processorSettingsForm"
+              asp-controller="Settings"
+              @* should be SaveProcessor to hit correct method on correct controller, 
+               otherwise it may hit SettingsController in another module *@
+              asp-action="SaveProcessor" method="post" class="pm-space-y-6">
+            @* General Paths Section *@
+            <div class="pm-bg-white pm-shadow-sm pm-border pm-border-slate-200 pm-rounded-xl pm-overflow-hidden">
+                <div class="pm-bg-slate-50 pm-px-6 pm-py-3 pm-border-b pm-border-slate-200">
+                    <h2 class="pm-text-sm pm-font-bold pm-text-slate-700 pm-uppercase pm-tracking-wider">Storage & Limits</h2>
+                </div>
+                <div class="pm-p-6">
+                    <partial name="_GeneralTabPartial" for="General" />
+                </div>
+            </div>
+
+            @* Python Runtime Section *@
+            <div class="pm-bg-white pm-shadow-sm pm-border pm-border-slate-200 pm-rounded-xl pm-overflow-hidden">
+                <div class="pm-bg-slate-50 pm-px-6 pm-py-3 pm-border-b pm-border-slate-200">
+                    <h2 class="pm-text-sm pm-font-bold pm-text-slate-700 pm-uppercase pm-tracking-wider">Python Executor</h2>
+                </div>
+                <div class="pm-p-6">
+                    <partial name="_PythonTabPartial" for="Python" />
+                </div>
+            </div>
+
+            @* Sandboxing Strategy Section *@
+            <div class="pm-bg-white pm-shadow-sm pm-border pm-border-slate-200 pm-rounded-xl pm-overflow-hidden">
+                <div class="pm-bg-slate-50 pm-px-6 pm-py-3 pm-border-b pm-border-slate-200">
+                    <h2 class="pm-text-sm pm-font-bold pm-text-slate-700 pm-uppercase pm-tracking-wider">Isolation Settings</h2>
+                </div>
+                <div class="pm-p-6 pm-space-y-8">
+                    <div>
+                        <label asp-for="General.SandboxingType" class="pm-block pm-text-sm pm-font-semibold pm-text-slate-700 pm-mb-2"></label>
+                        <select asp-for="General.SandboxingType" class="pm-w-full md:pm-w-1/3 pm-rounded-lg pm-border-slate-300 pm-shadow-sm focus:pm-ring-indigo-500 focus:pm-border-indigo-500">
+                            <option value="None">None (In-Process)</option>
+                            <option value="OSUser">OS User (Linux/Windows)</option>
+                            @* <option value="Docker">Docker Container</option> *@
+                        </select>
+                    </div>
+
+                    <div class="pm-grid pm-grid-cols-1 lg:pm-grid-cols-2 pm-gap-8">
+                        <div class="pm-p-5 pm-bg-slate-50 pm-rounded-xl pm-border pm-border-slate-200">
+                            <h3 class="pm-text-xs pm-font-black pm-text-slate-400 pm-uppercase pm-tracking-widest pm-mb-4">OS Sandbox Parameters</h3>
+                            <partial name="_OsSandboxPartial" for="OsSandbox" />
+                        </div>
+                        @* <div class="pm-p-5 pm-bg-slate-50 pm-rounded-xl pm-border pm-border-slate-200">
+                            <h3 class="pm-text-xs pm-font-black pm-text-slate-400 pm-uppercase pm-tracking-widest pm-mb-4">Docker Sandbox Parameters</h3>
+                            <partial name="_DockerSandboxPartial" for="DockerSandbox" />
+                        </div> *@
+                    </div>
+                </div>
+            </div>
+
+            <div class="pm-mt-8 pm-pt-4 pm-border-t pm-border-gray-200">
+                <button type="submit" id="saveSettingsButton" class="pm-justify-center pm-rounded-md pm-border pm-border-transparent pm-bg-indigo-600 pm-py-2 pm-px-4 pm-text-sm pm-font-medium pm-text-white pm-shadow-md hover:pm-bg-indigo-700 focus:pm-outline-none focus:pm-ring-2 focus:pm-ring-indigo-500 focus:pm-ring-offset-2 pm-transition pm-duration-150">
+                    <i class="fa-solid fa-save pm-mr-2"></i> Save Configuration
+                </button>
+            </div>
+
+        </form>
+    </div>
+    @* 
+
+    <script>
+        document.getElementById('processorSettingsForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            const form = event.target;
+            const url = form.action;
+            const container = document.getElementById('settings-partial-wrapper');
+            const button = document.getElementById('saveSettingsButton');
+            const formData = new FormData(form);
+
+            const originalHtml = button.innerHTML;
+            button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin pm-mr-2"></i> Saving...';
+            button.disabled = true;
+
+            fetch(url, {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(response => {
+                if (!response.ok) throw new Error(`Server returned status ${response.status}`);
+                return response.text();
+            })
+            .then(html => {
+                if (container) {
+                    container.innerHTML = html;
+                }
+            })
+            .catch(error => {
+                button.innerHTML = originalHtml;
+                button.disabled = false;
+                console.error('Update failed:', error);
+                alert('Failed to save settings. Please check the console for details.');
+            });
+        });
+    </script> *@
+
+
+</div>
+
+@section Scripts {
+    @* <script src="/Providerless/lib/qrcodejs/qrcode.min.js"></script> *@
+    <script src="~/processing/js/pages/settings/index.js" asp-append-version="true"></script>
+}

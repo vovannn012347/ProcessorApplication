@@ -3,9 +3,9 @@
 @using ProcessorApplication.Models
 @using ProcessorApplication.ViewModels
 
-<div id="settings-partial-wrapper">
+<div id="settings-partial-wrapper" data-script-id="main-settings">
 
-    <h1 class="text-3xl font-bold text-gray-900 mb-6">Main Module Configuration</h1>
+    <h1 class="mm-text-3xl mm-font-bold mm-text-gray-900 mm-mb-6">Main Module Configuration</h1>
 
     <div id="global-messages">
         @{
@@ -18,14 +18,14 @@
                 var icon = isSuccess ? "fa-check-circle" : "fa-circle-exclamation";
                 var color = isSuccess ? "green" : "red";
 
-                <div class="rounded-md bg-@color-50 p-4 mb-6">
-                    <div class="flex">
-                        <div class="flex-shrink-0 text-@color-400">
+                <div class="mm-rounded-md mm-bg-@color-50 mm-p-4 mm-mb-6">
+                    <div class="mm-flex">
+                        <div class="mm-flex-shrink-0 mm-text-@color-400">
                             <i class="fa-solid @icon"></i>
                         </div>
-                        <div class="ml-3">
-                            <h3 class="text-sm font-medium text-@color-800">@(isSuccess ? "Success" : "Error")</h3>
-                            <p class="mt-2 text-sm text-@color-700">@globalMessage</p>
+                        <div class="mm-ml-3">
+                            <h3 class="mm-text-sm mm-font-medium mm-text-@color-800">@(isSuccess ? "Success" : "Error")</h3>
+                            <p class="mm-mt-2 mm-text-sm mm-text-@color-700">@globalMessage</p>
                         </div>
                     </div>
                 </div>
@@ -33,15 +33,14 @@
         }
     </div>
 
-    <div id="validation-messages" class="mb-4" style="@(ViewData.ModelState.IsValid ? "display: none;" : "")">
-
+    <div id="validation-messages" class="mm-mb-4" style="@(ViewData.ModelState.IsValid ? "display: none;" : "")">
         @if (!ViewData.ModelState.IsValid)
         {
-            <div class="rounded-md bg-yellow-50 p-4 border border-yellow-200">
-                <h3 class="text-sm font-medium text-yellow-800 flex items-center mb-2">
-                    <i class="fa-solid fa-triangle-exclamation mr-2 text-yellow-500"></i> Please correct the following errors:
+            <div class="mm-rounded-md mm-bg-yellow-50 mm-p-4 mm-border mm-border-yellow-200">
+                <h3 class="mm-text-sm mm-font-medium mm-text-yellow-800 mm-flex mm-items-center mm-mb-2">
+                    <i class="fa-solid fa-triangle-exclamation mm-mr-2 mm-text-yellow-500"></i> Please correct the following errors:
                 </h3>
-                <ul class="list-disc ml-6 text-sm text-yellow-700 space-y-1">
+                <ul class="mm-list-disc mm-ml-6 mm-text-sm mm-text-yellow-700 mm-space-y-1">
                     @foreach (var state in ViewData.ModelState.Values)
                     {
                         @foreach (var error in state.Errors)
@@ -56,34 +55,36 @@
 
 
     <!-- wrap all tabs -->
-    <form id="masterSettingsForm" asp-controller="Settings" asp-action="ProcessAllSettings" method="post">
+    <form id="masterSettingsForm" 
+        asp-controller="Settings" 
+        asp-action="ProcessAllSettings" method="post">
 
-        <div class="flex flex-col md:flex-row space-x-0 md:space-x-8">
+        <div class="mm-flex mm-flex-col md:mm-flex-row mm-space-x-0 md:mm-space-x-8">
 
             <!-- Tab Navigation -->
-            <div id="settings-tab-nav" class="flex flex-row md:flex-col space-x-2 md:space-x-0 md:space-y-2 mb-4 md:mb-0 pb-2 md:pb-0 overflow-x-auto border-b md:border-b-0 md:border-r border-gray-200 md:w-48 flex-shrink-0">
+            <div id="settings-tab-nav" class="mm-flex mm-flex-row md:mm-flex-col mm-space-x-2 md:mm-space-x-0 md:mm-space-y-2 mm-mb-4 md:mm-mb-0 mm-pb-2 md:mm-pb-0 mm-overflow-x-auto mm-border-b md:mm-border-b-0 md:mm-border-r mm-border-gray-200 md:mm-w-48 mm-flex-shrink-0">
 
-                <button type="button" data-tab="security" class="tab-button inline-flex items-center px-4 py-2 text-sm font-medium rounded-md transition duration-150 bg-indigo-600 text-white shadow-md" aria-selected="true">
-                    <i class="fa-solid fa-shield-halved mr-2"></i> Security
+                <button type="button" data-tab="security" class="tab-button mm-inline-flex mm-items-center mm-px-4 mm-py-2 mm-text-sm mm-font-medium mm-rounded-md mm-transition mm-duration-150 mm-bg-indigo-600 mm-text-white mm-shadow-md" aria-selected="true">
+                    <i class="fa-solid fa-shield-halved mm-mr-2"></i> Security
                 </button>
 
-                <button type="button" data-tab="email" class="tab-button inline-flex items-center px-4 py-2 text-sm font-medium rounded-md transition duration-150 bg-indigo-600 text-white shadow-md" aria-selected="true">
-                    <i class="fa-solid fa-square-envelope mr-2"></i> Email
+                <button type="button" data-tab="email" class="tab-button mm-inline-flex mm-items-center mm-px-4 mm-py-2 mm-text-sm mm-font-medium mm-rounded-md mm-transition mm-duration-150 mm-bg-indigo-600 mm-text-white mm-shadow-md" aria-selected="true">
+                    <i class="fa-solid fa-square-envelope mm-mr-2"></i> Email
                 </button>
 
             </div>
 
             <!-- Tab Content -->
-            <div class="flex-1 min-w-0 p-2">
+            <div class="mm-flex-1 mm-min-w-0 mm-p-2">
 
                 <!-- Tab 1: Security Settings -->
-                <div id="tab-security" class="tab-content space-y-4">
-                    <h2 class="text-xl font-semibold mb-3 border-b pb-2">Security</h2>
+                <div id="tab-security" class="tab-content mm-space-y-4">
+                    <h2 class="mm-text-xl mm-font-semibold mm-mb-3 mm-border-b mm-pb-2">Security</h2>
                     <partial name="_SecurityTabPartial" model="Model.Security" view-data='new ViewDataDictionary(ViewData) { { "ModelPrefix", "Security" } }' />
                 </div>
 
-                <div id="tab-email" class="tab-content space-y-4">
-                    <h2 class="text-xl font-semibold mb-3 border-b pb-2">Email</h2>
+                <div id="tab-email" class="tab-content mm-space-y-4">
+                    <h2 class="mm-text-xl mm-font-semibold mm-mb-3 mm-border-b mm-pb-2">Email</h2>
                     <partial name="_EmailTabPartial" model="Model.Email" view-data='new ViewDataDictionary(ViewData) { { "ModelPrefix", "Email" } }' />
                 </div>
 
@@ -93,17 +94,22 @@
         </div>
 
         <!-- Global Save Button -->
-        <div class="mt-8 pt-4 border-t border-gray-200">
-            <button type="submit" id="masterSaveButton" class="justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition duration-150">
-                <i class="fa-solid fa-save mr-2"></i> Save All
+        <div class="mm-mt-8 mm-pt-4 mm-border-t mm-border-gray-200">
+            <button type="submit" id="masterSaveButton" class="mm-justify-center mm-rounded-md mm-border mm-border-transparent mm-bg-indigo-600 mm-py-2 mm-px-4 mm-text-sm mm-font-medium mm-text-white mm-shadow-md hover:mm-bg-indigo-700 focus:mm-outline-none focus:mm-ring-2 focus:mm-ring-indigo-500 focus:mm-ring-offset-2 mm-transition mm-duration-150">
+                <i class="fa-solid fa-save mm-mr-2"></i> Save All
             </button>
         </div>
     </form>
+</div>
 
-    <script>
+
+@section Scripts {
+    <script src="~/js/pages/settings/index.js" asp-append-version="true"></script>
+}
+
+
+@*  <script>
         // --- Tab Management Functions ---
-
-        // Generic function to activate a tab, updating its button and content visibility
         function activateTab(tabId) {
             const wrapper = document.getElementById('settings-partial-wrapper');
             if (!wrapper) return;
@@ -111,16 +117,16 @@
             wrapper.querySelectorAll('.tab-button').forEach(btn => {
                  const isActive = btn.getAttribute('data-tab') === tabId;
 
-                 btn.classList.toggle('bg-indigo-600', isActive);
-                 btn.classList.toggle('text-white', isActive);
-                 btn.classList.toggle('shadow-md', isActive);
-                 btn.classList.toggle('text-gray-600', !isActive);
-                 btn.classList.toggle('hover:bg-gray-100', !isActive);
+                 btn.classList.toggle('mm-bg-indigo-600', isActive);
+                 btn.classList.toggle('mm-text-white', isActive);
+                 btn.classList.toggle('mm-shadow-md', isActive);
+                 btn.classList.toggle('mm-text-gray-600', !isActive);
+                 btn.classList.toggle('hover:mm-bg-gray-100', !isActive);
             });
 
             wrapper.querySelectorAll('.tab-content').forEach(content => {
                 const isVisible = content.id === `tab-${tabId}`;
-                content.classList.toggle('hidden', !isVisible);
+                content.classList.toggle('mm-hidden', !isVisible);
             });
             return tabId;
         }
@@ -136,72 +142,46 @@
             });
         }
 
-        //console.error("Test");
-        // --- Form Submission Logic (Decoupled) ---
         document.getElementById('masterSettingsForm').addEventListener('submit', function(event) {
             event.preventDefault();
 
             const form = event.target;
             const url = form.action;
-
-            // Get the reliable wrapper container
             const viewContainer = document.getElementById('settings-partial-wrapper');
-
             const submitButton = document.getElementById('masterSaveButton');
-
             const formData = new FormData(form);
 
             const originalButtonHtml = submitButton.innerHTML;
-            submitButton.innerHTML = '<i class="fa-solid fa-sync fa-spin mr-2"></i> Saving...';
+            submitButton.innerHTML = '<i class="fa-solid fa-sync fa-spin mm-mr-2"></i> Saving...';
             submitButton.disabled = true;
 
             fetch(url, {
                 method: 'POST',
                 body: formData,
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
             })
             .then(response => {
-                if (!response.ok) {
-                     throw new Error(`Server returned status ${response.status}. Check server logs.`);
-                }
+                if (!response.ok) throw new Error(`Server returned status ${response.status}.`);
                 return response.text();
             })
             .then(html => {
-                // 2. Inject the returned PartialView
                 if (viewContainer) {
-                     // Check current active tab to re-activate it after refresh
-                     let activeTab = document.querySelector('#settings-tab-nav .tab-button.bg-indigo-600');
+                     let activeTab = document.querySelector('#settings-tab-nav .tab-button.mm-bg-indigo-600');
                      let tabToActivate = (activeTab && activeTab.dataset.tab) || 'security';
-
                      viewContainer.innerHTML = html;
-
-                    // Re-attach listeners to the newly injected content
-                    attachTabListeners();
-
-                    // Re-select the correct tab
-                    activateTab(tabToActivate);
-                } else {
-                     console.error("Could not find view container to inject response.");
+                     attachTabListeners();
+                     activateTab(tabToActivate);
                 }
             })
             .catch(error => {
                 submitButton.innerHTML = originalButtonHtml;
                 submitButton.disabled = false;
-
-                const message = `Error processing settings: ${error.message}`;
                 if (viewContainer) {
-                     viewContainer.innerHTML = `<h1 class="text-2xl font-semibold text-red-700">Error</h1><p>${message}</p>`;
+                     viewContainer.innerHTML = `<h1 class="mm-text-2xl mm-font-semibold mm-text-red-700">Error</h1><p>${error.message}</p>`;
                 }
-                console.error(error);
             });
         });
 
-        // --- Initializers ---
         attachTabListeners();
-        // Select the default tab
         activateTab('security');
-
-    </script>
-</div>
+    </script> *@

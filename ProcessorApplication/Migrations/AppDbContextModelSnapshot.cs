@@ -302,6 +302,32 @@ namespace ProcessorApplication.Migrations
                     b.ToTable("HashStamps");
                 });
 
+            modelBuilder.Entity("ProcessorApplication.Database.Models.UserWidgetSetting", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(0);
+
+                    b.Property<string>("WidgetId")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(1);
+
+                    b.Property<string>("GeneralSettingsJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LargeScreenSettingsJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SmallScreenSettingsJson")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("UserId", "WidgetId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("DashboardItemData");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)

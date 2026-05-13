@@ -1,0 +1,35 @@
+﻿@model ProviderlessSettingsViewModel
+@using ProviderlessModule.Configuration.Tunnel
+
+@{
+    var key = "ngrok";
+    var settings = Model.TunnelSettings.ContainsKey(key) 
+                   ? (NgrokSettings)Model.TunnelSettings[key] 
+                   : new NgrokSettings();
+}
+
+<div class="plss-space-y-4">
+    <div class="plss-group">
+        <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Auth Token</label>
+        <input name="TunnelSettings[@key].AuthToken" value="@settings.AuthToken" type="password"
+               class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-rounded-lg plss-font-mono plss-text-sm" />
+    </div>
+
+    <div class="plss-grid plss-grid-cols-2 plss-gap-4">
+        <div>
+            <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Region</label>
+            <select name="TunnelSettings[@key].Region" class="plss-w-full plss-mt-1 plss-p-2 plss-border plss-rounded-lg plss-text-sm">
+                <!option value="us" @(settings.Region == "us" ? "selected" : "")>United States</!option>
+                <!option value="eu" @(settings.Region == "eu" ? "selected" : "")>Europe</!option>
+                <!option value="au" @(settings.Region == "au" ? "selected" : "")>Australia</!option>
+                <!option value="jp" @(settings.Region == "jp" ? "selected" : "")>Japan</!option>
+            </select>
+        </div>
+        <div>
+            <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Custom Domain</label>
+            <input name="TunnelSettings[@key].CustomDomain" value="@settings.CustomDomain" 
+                   placeholder="clinic.ngrok-free.app"
+                   class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-rounded-lg plss-text-sm" />
+        </div>
+    </div>
+</div>

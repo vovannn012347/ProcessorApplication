@@ -4,21 +4,21 @@
     Layout = "_LayoutLogin";
 }
 
-<div class="flex items-center justify-center h-screen bg-gray-50">
-    <div class="max-w-md w-full p-8 space-y-8 bg-white rounded-xl shadow-2xl border border-gray-200">
-        <div class="text-center">
-            <i class="fa-solid fa-clock-rotate-left text-red-500 fa-3x mb-4"></i>
-            <h1 class="text-3xl font-extrabold text-gray-900">Session Key Expired</h1>
+<div class="mm-flex mm-items-center mm-justify-center mm-h-screen mm-bg-gray-50">
+    <div class="mm-max-w-md mm-w-full mm-p-8 mm-space-y-8 mm-bg-white mm-rounded-xl mm-shadow-2xl mm-border mm-border-gray-200">
+        <div class="mm-text-center">
+            <i class="fa-solid fa-clock-rotate-left mm-text-red-500 fa-3x mm-mb-4"></i>
+            <h1 class="mm-text-3xl mm-font-extrabold mm-text-gray-900">Session Key Expired</h1>
         </div>
 
-        <div class="mt-6 text-center">
-            <p class="text-gray-600 mb-4">
+        <div class="mm-mt-6 mm-text-center">
+            <p class="mm-text-gray-600 mm-mb-4">
                 Your secure decryption session key is unavailable.
             </p>
-            <p class="text-gray-700 font-medium">
-                To continue working, please <a href="@Url.Action("Login", "Account", new { returnUrl = Model })" class="text-indigo-600 hover:text-indigo-800 font-semibold underline transition duration-150">login here</a> to refresh your session.
+            <p class="mm-text-gray-700 mm-font-medium">
+                To continue working, please <a href="@Url.Action("Login", "Account", new { returnUrl = Model })" class="mm-text-indigo-600 hover:mm-text-indigo-800 mm-font-semibold mm-underline mm-transition mm-duration-150">login here</a> to refresh your session.
             </p>
-            <p class="mt-4 text-xs text-gray-400">
+            <p class="mm-mt-4 mm-text-xs mm-text-gray-400">
                 You will be redirected back to the page you were trying to access from.
             </p>
         </div>

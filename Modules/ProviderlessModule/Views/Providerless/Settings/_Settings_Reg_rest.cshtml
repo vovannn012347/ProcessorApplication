@@ -1,0 +1,24 @@
+﻿@using ProviderlessModule.Configuration.Registry
+@model ProviderlessSettingsViewModel
+
+@{
+    var key = "rest";
+    var settings = Model.RegistrySettings.ContainsKey(key) 
+                   ? (RestSettings)Model.RegistrySettings[key] 
+                   : new RestSettings();
+}
+
+<div class="plss-space-y-4">
+    <div class="plss-group">
+        <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Endpoint URL</label>
+        <input name="RegistrySettings[@key].Url" value="@settings.Url" 
+               placeholder="https://api.yourclinic.org/discovery"
+               class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-rounded-lg plss-text-sm" />
+    </div>
+
+    <div class="plss-group">
+        <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Security Token</label>
+        <input name="RegistrySettings[@key].SecurityToken" value="@settings.SecurityToken" type="password"
+               class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-rounded-lg plss-font-mono plss-text-sm" />
+    </div>
+</div>

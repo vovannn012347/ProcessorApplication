@@ -1,0 +1,48 @@
+﻿<div class="mm-widget-container mm-p-5 mm-h-full mm-flex mm-flex-col mm-justify-between" id="widget-process-status">
+    <div class="mm-flex mm-items-center mm-justify-between mm-mb-4">
+        <div class="mm-flex mm-items-center mm-gap-4">
+            @* Triple Bling modem indicators *@
+            <div class="mm-flex mm-gap-3">
+                <div class="mm-flex mm-flex-col mm-items-center mm-gap-1">
+                    <div id="bling-eng" class="status-bling mm-w-1.5 mm-h-1.5 mm-rounded-full mm-bg-slate-200 mm-transition-all mm-duration-500"></div>
+                    <span class="mm-text-[7px] mm-font-black mm-uppercase mm-text-slate-300">Eng</span>
+                </div>
+                <div class="mm-flex mm-flex-col mm-items-center mm-gap-1">
+                    <div id="bling-idx" class="status-bling mm-w-1.5 mm-h-1.5 mm-rounded-full mm-bg-slate-200 mm-transition-all mm-duration-500"></div>
+                    <span class="mm-text-[7px] mm-font-black mm-uppercase mm-text-slate-300">Idx</span>
+                </div>
+                <div class="mm-flex mm-flex-col mm-items-center mm-gap-1">
+                    <div id="bling-ops" class="status-bling mm-w-1.5 mm-h-1.5 mm-rounded-full mm-bg-slate-200 mm-transition-all mm-duration-500"></div>
+                    <span class="mm-text-[7px] mm-font-black mm-uppercase mm-text-slate-300">Ops</span>
+                </div>
+            </div>
+            <span class="mm-text-[10px] mm-font-black mm-uppercase mm-tracking-widest mm-text-slate-400">Library State</span>
+        </div>
+        <div class="mm-text-[9px] mm-font-mono mm-text-slate-300" id="process-sync-time">--:--:--</div>
+    </div>
+
+    @* Metrics Grid *@
+    <div class="mm-grid mm-grid-cols-2 mm-gap-2 mm-mb-4">
+        <div class="mm-p-2 mm-bg-slate-50 mm-rounded-lg mm-border mm-border-slate-100">
+            <span class="mm-block mm-text-[7px] mm-font-black mm-text-slate-400 mm-uppercase">Scripts</span>
+            <span class="mm-text-sm mm-font-black mm-text-slate-700" id="stat-scripts">0</span>
+        </div>
+        <div class="mm-p-2 mm-bg-indigo-50/50 mm-rounded-lg mm-border mm-border-indigo-100/50">
+            <span class="mm-block mm-text-[7px] mm-font-black mm-text-indigo-400 mm-uppercase">Processing</span>
+            <span class="mm-text-sm mm-font-black mm-text-indigo-600" id="stat-active">0</span>
+        </div>
+        <div class="mm-p-2 mm-bg-slate-50 mm-rounded-lg mm-border mm-border-slate-100">
+            <span class="mm-block mm-text-[7px] mm-font-black mm-text-slate-400 mm-uppercase">Total Tasks</span>
+            <span class="mm-text-sm mm-font-black mm-text-slate-700" id="stat-total">0</span>
+        </div>
+        <div class="mm-p-2 mm-bg-slate-50 mm-rounded-lg mm-border mm-border-slate-100">
+            <span class="mm-block mm-text-[7px] mm-font-black mm-text-slate-400 mm-uppercase">Today</span>
+            <span class="mm-text-sm mm-font-black mm-text-slate-700" id="stat-today">0</span>
+        </div>
+    </div>
+
+    <a href="/Processing/Admin/Index" class="mm-w-full mm-py-2 mm-bg-slate-100 hover:mm-bg-slate-200 mm-rounded-xl mm-flex mm-items-center mm-justify-center mm-gap-2 mm-transition-colors">
+        <i class="fa-solid fa-list-check mm-text-slate-400"></i>
+        <span class="mm-text-[10px] mm-font-black mm-text-slate-600 mm-uppercase">Task Manager</span>
+    </a>
+</div>

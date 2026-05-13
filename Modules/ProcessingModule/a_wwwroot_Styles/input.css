@@ -1,0 +1,76 @@
+/*
+  Local font definition:
+  Declared here for module independence, though the Main Shell already 
+  provides this. Since the name 'Inter' matches, they will share 
+  the same font resources.
+*/
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('/fonts/Inter-VariableFont.ttf') format('truetype');
+}
+
+/* Namespaced Processor Logic
+  All custom classes here use the pm- prefix to avoid 
+  collisions with the main module or other sub-modules.
+*/
+
+/* Custom Row Nesting Indicator */
+.pm-nested-row-indicator {
+    border-left: 4px solid #6366f1; /* indigo-500 */
+}
+
+/* Processor-Specific Loader Animation */
+.pm-loading-overlay {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(2px);
+}
+
+#pm-content-loader-spinner {
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #6366f1;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    animation: pm-spin 1s linear infinite;
+}
+
+@keyframes pm-spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Utility to handle smooth entrance for details panels */
+.pm-details-enter {
+    animation: pm-fadeInDown 0.3s ease-out;
+}
+
+@keyframes pm-fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Tailwind Directives:
+   The prefix 'pm-' in config will apply to all 
+   utilities generated from these directives.
+*/
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

@@ -1,0 +1,28 @@
+﻿<div class="mm-widget-container mm-p-5 mm-h-full mm-flex mm-flex-col mm-justify-between" id="widget-main-email-status">
+    <div class="mm-flex mm-items-center mm-justify-between mm-mb-4">
+        <div class="mm-flex mm-items-center mm-gap-2">
+            @* Visual Request Pulse (Blinks on AJAX) *@
+            <div class="status-bling mm-w-1.5 mm-h-1.5 mm-rounded-full mm-bg-slate-200 mm-transition-all mm-duration-300"></div>
+            <span class="mm-text-[10px] mm-font-black mm-uppercase mm-tracking-widest mm-text-gray-400">SMTP Gateway</span>
+        </div>
+        <div class="mm-text-[9px] mm-font-mono mm-text-slate-300" id="email-last-sync">--:--:--</div>
+    </div>
+
+    <div class="mm-space-y-4">
+        <div>
+            <div class="mm-text-[10px] mm-font-bold mm-text-slate-400 mm-uppercase mm-mb-1">Endpoint</div>
+            <div class="mm-text-sm mm-font-black mm-text-slate-800 mm-truncate" id="email-address-display">Connecting...</div>
+        </div>
+
+        <div class="mm-flex mm-items-center mm-gap-3 mm-bg-slate-50 mm-p-3 mm-rounded-2xl mm-border mm-border-slate-100">
+            @* Persistent Health State Dot *@
+            <div class="mm-w-8 mm-h-8 mm-rounded-xl mm-flex mm-items-center mm-justify-center mm-bg-white mm-shadow-sm">
+                <div id="email-health-dot" class="mm-w-3 mm-h-3 mm-rounded-full mm-bg-slate-200 mm-transition-colors mm-duration-500"></div>
+            </div>
+            <div>
+                <div class="mm-text-[9px] mm-font-black mm-text-slate-400 mm-uppercase">Service Health</div>
+                <div class="mm-text-[10px] mm-font-bold mm-text-slate-600 mm-leading-tight" id="email-status-text">Synchronizing...</div>
+            </div>
+        </div>
+    </div>
+</div>

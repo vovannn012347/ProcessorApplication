@@ -1,0 +1,150 @@
+﻿@using ProcessingModule
+@using ProcessingModule.Database.Models
+@using ProcessingModule.Models
+@model List<OrchestratedTask>
+
+@section Styles {
+    <link rel="stylesheet" href="/Processing/css/processor.min.css" asp-append-version="true" />
+}
+
+@functions {
+    string GetStatusClass(string status) => status switch
+    {
+        "Complete" => "pm-bg-green-50 pm-text-green-700 pm-border-green-200",
+        "Running" => "pm-bg-blue-50 pm-text-blue-700 pm-border-blue-200 pm-animate-pulse",
+        "Error" => "pm-bg-red-50 pm-text-red-700 pm-border-red-200",
+        "Paused" => "pm-bg-amber-50 pm-text-amber-700 pm-border-amber-200",
+        "Stopped" => "pm-bg-slate-50 pm-text-slate-500 pm-border-slate-200",
+        _ => "pm-bg-slate-50 pm-text-slate-500 pm-border-slate-200"
+    };
+}
+
+<div id="queue-page-wrapper" data-script-id="processor-queue" class="pm-container pm-mx-auto pm-mt-8 pm-px-2 pm-max-w-5xl">
+    <div class="pm-flex pm-justify-between pm-items-end pm-mb-6">
+        <div>
+            <h2 class="pm-text-2xl pm-font-black pm-text-slate-800 pm-tracking-tight">Processing History</h2>
+            <p class="pm-text-[10px] pm-text-slate-400 pm-uppercase pm-font-bold pm-tracking-widest">Active and Archived Orchestrations</p>
+        </div>
+    </div>
+
+    <div class="pm-bg-white pm-border pm-border-slate-200 pm-rounded-2xl pm-overflow-hidden pm-shadow-sm">
+        <table class="pm-min-w-full pm-divide-y pm-divide-slate-100">
+            <thead class="pm-bg-slate-50/50">
+                <tr>
+                    <th class="pm-px-6 pm-py-4 pm-text-left pm-text-[10px] pm-font-black pm-text-slate-400 pm-uppercase pm-tracking-widest">Task Identity</th>
+                    <th class="pm-px-6 pm-py-4 pm-text-left pm-text-[10px] pm-font-black pm-text-slate-400 pm-uppercase pm-tracking-widest">Current Status</th>
+                    <th class="pm-px-6 pm-py-4 pm-text-left pm-text-[10px] pm-font-black pm-text-slate-400 pm-uppercase pm-tracking-widest">Initiated</th>
+                    <th class="pm-px-6 pm-py-4 pm-text-right pm-text-[10px] pm-font-black pm-text-slate-400 pm-uppercase pm-tracking-widest">Management</th>
+                </tr>
+            </thead>
+            <tbody class="pm-divide-y pm-divide-slate-100">
+                @foreach (var job in Model.OrderByDescending(j => j.CreatedTime))
+                {
+                    <tr class="hover:pm-bg-slate-50/30 pm-transition-colors pm-group">
+                        <td class="pm-px-6 pm-py-4">
+                            <div class="pm-flex pm-flex-col">
+                                <span class="pm-text-xs pm-font-bold pm-text-slate-700">TASK-@job.Id.ToString().ToUpper().Substring(0, 8)</span>
+                                <span class="pm-text-[8px] pm-font-mono pm-text-slate-400">@job.PhysicalPathRoot</span>
+                            </div>
+                        </td>
+                        <td class="pm-px-6 pm-py-4">
+                            <span class="pm-px-2.5 pm-py-1 pm-border pm-rounded-full pm-text-[9px] pm-font-black pm-uppercase pm-tracking-tighter @GetStatusClass(job.Status)">
+                                @job.Status
+                            </span>
+                        </td>
+                        <td class="pm-px-6 pm-py-4 pm-text-[10px] pm-font-bold pm-text-slate-500">
+                            @job.CreatedTime.ToString("yyyy-MM-dd HH:mm")
+                        </td>
+                        <td class="pm-px-6 pm-py-4 pm-text-right pm-space-x-2">
+                            @if (job.Status == "Running")
+                            {
+                                <button onclick="ProcessorQueue.controlTask('@job.Id', 'Pause')" class="pm-p-2 pm-text-amber-500 hover:pm-bg-amber-50 pm-rounded-lg pm-transition-colors" title="Pause after current step">
+                                    <i class="fa-solid fa-pause pm-text-xs"></i>
+                                </button>
+                                <button onclick="ProcessorQueue.controlTask('@job.Id', 'Stop')" class="pm-p-2 pm-text-red-500 hover:pm-bg-red-50 pm-rounded-lg pm-transition-colors" title="Stop and Cancel">
+                                    <i class="fa-solid fa-stop pm-text-xs"></i>
+                                </button>
+                            }
+                            else if (new[] { "Paused", "Stopped", "Error" }.Contains(job.Status))
+                            {
+                                <button onclick="ProcessorQueue.controlTask('@job.Id', 'Resume')" class="pm-p-2 pm-text-green-600 hover:pm-bg-green-50 pm-rounded-lg pm-transition-colors" title="Resume sequence">
+                                    <i class="fa-solid fa-play pm-text-xs"></i>
+                                </button>
+                            }
+
+                            <button onclick="ProcessorQueue.toggleRow('steps-@job.Id')" class="pm-px-4 pm-py-1.5 pm-bg-slate-100 hover:pm-bg-indigo-600 hover:pm-text-white pm-rounded-lg pm-text-[10px] pm-font-black pm-uppercase pm-transition-all">
+                                Steps (@job.SubJobs.Count)
+                            </button>
+                        </td>
+                    </tr>
+
+                    <tr id="steps-@job.Id" class="pm-hidden pm-bg-slate-50/50">
+                        <td colspan="4" class="pm-p-0 pm-border-l-4 pm-border-indigo-500">
+                            <div class="pm-divide-y pm-divide-slate-100">
+                                @foreach (var sub in job.SubJobs.OrderBy(s => s.Sequence))
+                                {
+                                    <div class="pm-flex pm-items-center pm-justify-between pm-px-8 pm-py-3 hover:pm-bg-white pm-transition-colors">
+                                        <div class="pm-flex pm-items-center pm-gap-4">
+                                            <span class="pm-text-[10px] pm-font-black pm-text-slate-300 pm-font-mono">#@sub.Sequence.ToString("D2")</span>
+                                            <span class="pm-text-xs pm-font-bold pm-text-slate-700">@sub.ScriptId</span>
+                                        </div>
+                                        <div class="pm-flex pm-items-center pm-gap-6">
+                                            <span class="pm-text-[8px] pm-font-black pm-uppercase pm-px-2 pm-py-0.5 pm-border pm-rounded @GetStatusClass(sub.Status)">@sub.Status</span>
+                                            <button onclick="ProcessorQueue.loadDetails('@job.Id', '@sub.Id', this)" class="pm-text-indigo-500 hover:pm-text-indigo-700">
+                                                <i class="fa-solid fa-chevron-right pm-text-[10px]" id="icon-@sub.Id"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div id="details-@sub.Id" class="pm-hidden pm-bg-white pm-border-y pm-border-slate-100">
+                                        <div class="pm-p-8 pm-flex pm-items-center pm-justify-center pm-gap-3 loader">
+                                            <div class="pm-w-1.5 pm-h-1.5 pm-bg-indigo-500 pm-rounded-full pm-animate-bounce"></div>
+                                            <span class="pm-text-[10px] pm-font-bold pm-text-slate-400 pm-uppercase pm-tracking-widest">Extracting Artifacts...</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+
+</div>
+
+@section Scripts {
+    <script src="~/processing/js/pages/home/queue.js" asp-append-version="true"></script>
+}
+
+@* <script>
+    function toggleRow(id) {
+        document.getElementById(id).classList.toggle('pm-hidden');
+    }
+
+    async function controlTask(id, action) {
+        if (!confirm(`Are you sure you want to ${action} this task?`)) return;
+        await fetch(`/processing/Home/${action}Job?id=${id}`, { method: 'POST' });
+        location.reload();
+    }
+
+    async function loadDetails(parentId, subId, btn) {
+        const container = document.getElementById('details-' + subId);
+        const icon = document.getElementById('icon-' + subId);
+
+        if (container.classList.contains('pm-hidden')) {
+            container.classList.remove('pm-hidden');
+            icon.classList.replace('fa-chevron-right', 'fa-chevron-down');
+
+            if (container.querySelector('.loader')) {
+                const response = await fetch(`/processing/Home/GetSubJobDetails?subJobId=${subId}`);
+                container.innerHTML = await response.text();
+            }
+        } else {
+            container.classList.add('pm-hidden');
+            icon.classList.replace('fa-chevron-down', 'fa-chevron-right');
+        }
+    }
+
+
+</script> *@

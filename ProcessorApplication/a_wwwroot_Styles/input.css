@@ -1,6 +1,6 @@
 /*
-Local font definition:
-Paths are relative to the wwwroot folder of the final distribution.
+  Local font definition:
+  Paths are relative to the wwwroot folder of the final distribution.
 */
 @font-face {
     font-family: 'Inter';
@@ -11,20 +11,30 @@ Paths are relative to the wwwroot folder of the final distribution.
 }
 
 /* Sidebar and Layout logic */
-.sidebar {
+#sidebar {
     transition: width 0.3s ease-in-out, transform 0.3s ease-in-out;
 }
 
 /* Mobile responsive states */
 @media (max-width: 768px) {
-    .sidebar {
+    #sidebar {
         position: fixed;
         left: 0;
+        z-index: 50;
     }
 
     .sidebar-hidden-mobile {
         transform: translateX(-100%);
     }
+}
+
+/* Single Key Class Logic for Sidebar Visibility */
+.mm-sidebar-open #sidebar {
+    transform: translateX(0);
+}
+
+.mm-sidebar-open #sidebar-backdrop {
+    display: block;
 }
 
 /* CSS Tab System */
@@ -46,14 +56,14 @@ Paths are relative to the wwwroot folder of the final distribution.
 
 /* Tab Colors */
 .tabs-container .hidden-radio-tab:checked + .tab-label.style-indigo {
-    background-color: var(--indigo-100, #e0e7ff);
-    color: var(--indigo-700, #4338ca);
+    background-color: #e0e7ff;
+    color: #4338ca;
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
 .tabs-container .hidden-radio-tab:checked + .tab-label.style-green {
-    background-color: var(--green-100, #d1fae5);
-    color: var(--green-700, #047857);
+    background-color: #d1fae5;
+    color: #047857;
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
@@ -80,7 +90,7 @@ Paths are relative to the wwwroot folder of the final distribution.
 }
 
 /* Logic: When the hidden radio is checked, highlight the card */
-.hidden-radio-selector:checked + .settings-card {
+.mm-hidden-radio-selector:checked + .settings-card {
     opacity: 1;
     filter: grayscale(0%);
     border-color: #6366f1;
@@ -88,46 +98,50 @@ Paths are relative to the wwwroot folder of the final distribution.
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
-    .hidden-radio-selector:checked + .settings-card .indicator-icon {
+    .mm-hidden-radio-selector:checked + .settings-card .indicator-icon {
         color: #4338ca;
     }
 
-
-.hidden-radio-selector {
+.mm-hidden-radio-selector {
     position: absolute;
     opacity: 0;
     width: 0;
     height: 0;
 }
 
-/* Desktop Sidebar Collapsing */
+/* Desktop Sidebar Collapsing - FIXED SELECTOR */
 @media (min-width: 768px) {
-    .sidebar-collapsed {
+    /* We target the sidebar specifically so the rest of the app doesn't collapse */
+    .mm-sidebar-collapsed #sidebar {
         width: 0 !important;
         padding: 0 !important;
         overflow: hidden !important;
+        border: none !important;
     }
 
-        .sidebar-collapsed > .sidebar-header,
-        .sidebar-collapsed > .sidebar-nav {
+        .mm-sidebar-collapsed #sidebar > * {
             display: none;
         }
 }
 
+/* Sidebar Backdrop (Mobile only) */
+#sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background-color: rgba(17, 24, 39, 0.5);
+    backdrop-filter: blur(4px);
+}
+
 /* Loader and Spinner */
-#mm-content-loader {
+#mm-content-loader-spinner {
     border: 4px solid #f3f3f3;
-    border-top: 4px solid #3498db;
+    border-top: 4px solid #6366f1;
     border-radius: 50%;
     width: 40px;
     height: 40px;
     animation: mm-spin 1s linear infinite;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    margin-top: -20px;
-    margin-left: -20px;
-    display: none;
 }
 
 @keyframes mm-spin {

@@ -1,0 +1,25 @@
+﻿@using ProcessingModule
+@using ProcessingModule.Configuration
+@using ProcessingModule.Models
+@model DockerSandboxSettings
+
+<div class="pm-space-y-4">
+    <div>
+        <label asp-for="ImageName" class="pm-block pm-text-[10px] pm-font-bold pm-text-slate-400 pm-uppercase pm-mb-1"></label>
+        <input asp-for="ImageName" class="pm-w-full pm-rounded-lg pm-border-slate-300 pm-text-sm pm-font-mono" />
+    </div>
+    <div class="pm-grid pm-grid-cols-2 pm-gap-4">
+        <div>
+            <label asp-for="MemoryLimitMb" class="pm-block pm-text-[10px] pm-text-slate-400 pm-uppercase"></label>
+            <input asp-for="MemoryLimitMb" type="number" class="pm-w-full pm-rounded pm-border-slate-300 pm-text-xs" />
+        </div>
+        <div>
+            <label asp-for="CpuShares" class="pm-block pm-text-[10px] pm-text-slate-400 pm-uppercase"></label>
+            <input asp-for="CpuShares" type="number" class="pm-w-full pm-rounded pm-border-slate-300 pm-text-xs" />
+        </div>
+    </div>
+    <div>
+        <label asp-for="NetworkMode" class="pm-block pm-text-[10px] pm-text-slate-400 pm-uppercase pm-mb-1"></label>
+        <select asp-for="NetworkMode" asp-items="Html.GetEnumSelectList<DockerNetworkMode>()" class="pm-w-full pm-rounded pm-border-slate-300 pm-text-xs"></select>
+    </div>
+</div>

@@ -32,6 +32,11 @@ public interface IModule
     /// <returns></returns>
     IEnumerable<string> GetDefinedRoles();
     /// <summary>
+    /// Roles that module minimally requires
+    /// </summary>
+    /// <returns></returns>
+    IEnumerable<string> GetRequiredRoles();
+    /// <summary>
     /// module configuration sources, here module defines connection to its own configuration source - like local database
     /// </summary>
     /// <param name="initialConfig">initial config loaded from respective module appsettings file</param>

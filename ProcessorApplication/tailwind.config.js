@@ -2,9 +2,8 @@
 module.exports = {
     prefix: 'mm-',
     content: [
-        './Views/**/*.cshtml'   // Scans all .cshtml files in the Views folder
-        //'./Pages/**/*.cshtml'  // Scans all .cshtml files in the Pages folder
-        // '../Modules/*/**/*.cshtml' //  This one line scans ALL modules
+        './Views/**/*.cshtml',   // Scans all .cshtml files in the Views folder
+        './wwwroot/js/**/*.js'   // Scans all .javascript stuffs
     ],
     theme: {
         extend: {

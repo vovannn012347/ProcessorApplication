@@ -1,0 +1,47 @@
+﻿@using ProcessingModule
+@using ProcessingModule.Models
+@using ProcessingModule.Models.Views
+@model ScriptDetailsViewModel
+
+<div class="pm-grid pm-grid-cols-2 pm-gap-8 pm-text-[10px]">
+    <div>
+        <h4 class="pm-text-slate-400 pm-font-black pm-uppercase pm-tracking-widest pm-mb-3 pm-flex pm-items-center pm-gap-2">
+            <i class="fa-solid fa-right-to-bracket pm-text-indigo-400"></i>
+            User Parameters
+        </h4>
+        @if (Model.Inputs.Any())
+        {
+            <div class="pm-space-y-2">
+                @foreach (var input in Model.Inputs)
+                {
+                    <div class="pm-flex pm-items-center pm-justify-between pm-border-b pm-border-slate-100 pm-pb-1">
+                        <span class="pm-text-slate-600 pm-font-semibold">@input.DisplayName</span>
+                        <span class="pm-text-slate-400 pm-font-mono pm-text-[8px] pm-bg-slate-50 pm-px-1 pm-rounded pm-border">@input.Type</span>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <p class="pm-text-slate-300 pm-italic">No user inputs required.</p>
+        }
+    </div>
+
+    <div>
+        <h4 class="pm-text-slate-400 pm-font-black pm-uppercase pm-tracking-widest pm-mb-3 pm-flex pm-items-center pm-gap-2">
+            <i class="fa-solid fa-right-from-bracket pm-text-emerald-400"></i>
+            Generated Outputs
+        </h4>
+        <div class="pm-space-y-2">
+            @foreach (var output in Model.Outputs)
+            {
+                <div class="pm-flex pm-items-center pm-justify-between pm-border-b pm-border-slate-100 pm-pb-1">
+                    <span class="pm-text-slate-600 pm-font-semibold">@output.DisplayName</span>
+                    <span class="pm-text-slate-400 pm-font-mono pm-text-[8px] pm-bg-slate-50 pm-px-1 pm-rounded pm-border">@output.Type</span>
+                </div>
+            }
+        </div>
+    </div>
+
+
+</div>

@@ -1,0 +1,417 @@
+﻿@using Microsoft.AspNetCore.Authorization
+@using System.IO
+@inject IAuthorizationService AuthorizationService
+@{
+    var isAdmin = (await AuthorizationService.AuthorizeAsync(User, Context, "AdminLocalPolicy")).Succeeded;
+}
+
+@section Styles {
+    <link rel="stylesheet" href="/Providerless/css/providerless.min.css" asp-append-version="true" />
+
+    <style>
+        /* Print styles to ensure only the patient handout or QR is printed */
+        @@media print {
+            body * {
+                visibility: hidden;
+            }
+
+            #patient-print-template, #patient-print-template * {
+                visibility: visible;
+            }
+
+            #patient-print-template {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+            }
+        }
+    </style>
+}
+
+@* Duplicate link for AJAX loading context *@
+<link rel="stylesheet" href="/Providerless/css/providerless.min.css" asp-append-version="true" />
+<style>
+    /* Print styles to ensure only the patient handout or QR is printed */
+    @@media print {
+        body * {
+            visibility: hidden;
+        }
+
+        #patient-print-template, #patient-print-template * {
+            visibility: visible;
+        }
+
+        #patient-print-template {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+        }
+    }
+</style>
+
+<div id="patient-print-template" class="plss-hidden">
+    <div style="text-align: center; font-family: sans-serif; padding: 40px; border: 2px solid #e2e8f0; border-radius: 1rem; max-width: 500px; margin: auto;">
+        <h2 style="color: #0f172a; margin-top: 0;">Medical Portal Access</h2>
+        <p style="color: #64748b; margin-bottom: 2rem;">Scan the code below to access processing.</p>
+        <div id="print-qr-target" style="margin-bottom: 2rem; display: inline-block; background: white; padding: 10px; border: 1px solid #f1f5f9;"></div>
+        <div style="background-color: #f8fafc; padding: 1.5rem; border-radius: 0.5rem; border: 1px solid #e2e8f0;">
+            <p style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin: 0 0 0.5rem 0;">Web Address</p>
+            <p id="print-url-text" style="font-family: monospace; color: #2563eb; font-size: 1.1rem; word-break: break-all; margin: 0;"></p>
+        </div>
+        <p style="margin-top: 2.5rem; font-size: 0.75rem; color: #94a3b8;">
+            Generated: @DateTime.Now.ToString("f")
+        </p>
+    </div>
+</div>
+
+<div id="script-page-wrapper" data-script-id="providerless-home" class="plss-container plss-mx-auto plss-mt-8 plss-px-4 plss-max-w-4xl">
+
+    <div class="plss-bg-white plss-rounded-xl plss-shadow-lg plss-p-8 plss-border plss-border-gray-200">
+
+        <div class="plss-flex plss-justify-between plss-items-start plss-mb-8">
+            <div>
+                <h1 class="plss-text-3xl plss-font-extrabold plss-text-gray-900">Clinic Gateway</h1>
+                <p class="plss-text-gray-500 plss-mt-1">Secure tunneling & discovery management</p>
+            </div>
+            <div id="status-badge" class="plss-px-4 plss-py-1.5 plss-rounded-full plss-text-sm plss-font-bold plss-uppercase plss-tracking-wider plss-bg-gray-100 plss-text-gray-500">
+                Initializing...
+            </div>
+        </div>
+
+        <div class="plss-grid plss-grid-cols-1 md:plss-grid-cols-2 plss-gap-8">
+
+            <div class="plss-space-y-6">
+                <div class="plss-bg-gray-50 plss-p-5 plss-rounded-lg plss-border plss-border-gray-100">
+                    <h3 class="plss-text-xs plss-font-bold plss-text-gray-400 plss-uppercase plss-tracking-widest plss-mb-4">Connection Details</h3>
+                    <dl class="plss-grid plss-grid-cols-2 plss-gap-x-4 plss-gap-y-4">
+                        <dt class="plss-text-sm plss-text-gray-500">Provider</dt>
+                        <dd id="stat-provider" class="plss-text-sm plss-font-semibold plss-text-gray-900">--</dd>
+
+                        <dt class="plss-text-sm plss-text-gray-500">Started At</dt>
+                        <dd id="stat-start" class="plss-text-sm plss-font-semibold plss-text-gray-900">--</dd>
+
+                        <dt class="plss-text-sm plss-text-gray-500">Tunnel</dt>
+                        <dd id="stat-tunnel" class="plss-text-sm plss-font-bold">--</dd>
+
+                        <dt class="plss-text-sm plss-text-gray-500">Registry</dt>
+                        <dd id="stat-registry" class="plss-text-sm plss-font-bold">--</dd>
+                    </dl>
+                </div>
+
+                <div id="error-container" class="plss-hidden plss-bg-red-50 plss-border-l-4 plss-border-red-500 plss-p-4">
+                    <div class="plss-flex">
+                        <div class="plss-flex-shrink-0">
+                            <svg class="plss-h-5 plss-w-5 plss-text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="plss-ml-3">
+                            <p id="error-text" class="plss-text-sm plss-text-red-700 font-mono"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="active-section" class="plss-hidden plss-flex plss-flex-col plss-items-center">
+                <div class="plss-p-4 plss-bg-white plss-rounded-xl plss-shadow-inner plss-border-2 plss-border-gray-100">
+                    <div id="qrcode" class="plss-mx-auto"></div>
+                </div>
+                <div class="plss-mt-4 plss-text-center">
+                    <p class="plss-text-xs plss-font-bold plss-text-gray-400 plss-uppercase plss-mb-2">Secure Link</p>
+                    <a id="tunnel-link" href="#" target="_blank" class="plss-text-blue-600 plss-font-mono plss-text-sm plss-break-all hover:plss-underline"></a>
+                </div>
+                <div class="plss-flex plss-space-x-2 plss-mt-6">
+                    <button onclick="Providerless.printPatientHandout()" class="plss-bg-blue-600 plss-text-white plss-px-6 plss-py-2 plss-rounded-lg hover:plss-bg-blue-700 plss-transition">
+                        <i class="fa-solid fa-print"></i>
+                    </button>
+                    <button onclick="Providerless.downloadQRCode()" class="plss-bg-gray-800 plss-text-white plss-px-6 plss-py-2 plss-rounded-lg hover:plss-bg-gray-900 plss-transition">
+                        <i class="fa-solid fa-download"></i>
+                    </button>
+                    <button onclick="Providerless.copyImageToClipboard()" class="plss-bg-gray-100 plss-text-gray-700 plss-px-6 plss-py-2 plss-rounded-lg hover:plss-bg-gray-200 plss-transition">
+                        <i class="fa-solid fa-copy"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div id="inactive-section" class="plss-flex plss-flex-col plss-items-center plss-justify-center plss-py-12 plss-bg-gray-50 plss-rounded-xl plss-border-2 plss-border-dashed plss-border-gray-200">
+                <svg class="plss-w-12 plss-h-12 plss-text-gray-300 plss-mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+                <p class="plss-text-gray-500 plss-font-medium">Waiting for Registry & Tunnel synchronization...</p>
+            </div>
+        </div>
+
+        @if (isAdmin)
+        {
+            <div class="plss-mt-10 plss-pt-8 plss-border-t plss-border-gray-100">
+                <div class="plss-bg-amber-50 plss-p-6 plss-rounded-xl plss-border plss-border-amber-100">
+                    <h3 class="plss-text-sm plss-font-bold plss-text-amber-800 plss-uppercase plss-tracking-widest plss-mb-4">Administrative Controls</h3>
+                    <div class="plss-flex plss-items-center plss-mb-4">
+                        <input type="checkbox" id="reestablish-now" class="plss-h-5 plss-w-5 plss-text-amber-600 plss-border-gray-300 plss-rounded">
+                        <label for="reestablish-now" class="plss-ml-3 plss-text-sm plss-font-medium plss-text-amber-900">Confirm immediate system re-establishment</label>
+                    </div>
+                    <button id="reestablish-btn" onclick="Providerless.reestablishConnection()" class="plss-w-full plss-py-3 plss-bg-white plss-border-2 plss-border-amber-200 plss-text-amber-700 plss-font-bold plss-rounded-lg hover:plss-bg-amber-100 plss-transition">
+                        <i class="fa-solid fa-rotate mm-mr-2"></i> Force Restart Orchestration
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+
+@section Scripts {
+    <script src="/Providerless/lib/qrcodejs/qrcode.min.js"></script>
+    <script src="~/providerless/js/pages/home/index.js" asp-append-version="true"></script>
+}
+@* 
+<script>
+
+    if (window.Providerless && window.Providerless.poller) {
+        clearInterval(window.Providerless.poller);
+    }
+
+    window.Providerless = (function () {
+        const CONFIG = {
+            containerId: 'script-page-wrapper',
+            pollInterval: 5000,
+            endpoints: {
+                status: '/Providerless/Home/GetStatus',
+                reestablish: '/Providerless/Home/Reestablish'
+            }
+        };
+
+        let qrcode = null;
+        let lastUrl = "";
+
+        return {
+            poller: null,
+
+            init: function () {
+                const qrContainer = document.getElementById('qrcode');
+                if (qrContainer) {
+                    qrcode = new QRCode(qrContainer, {
+                        width: 256,
+                        height: 256,
+                        colorDark: "#0f172a",
+                        colorLight: "#ffffff",
+                        correctLevel: QRCode.CorrectLevel.H
+                    });
+                }
+
+                this.poller = setInterval(() => this.updateStatus(), CONFIG.pollInterval);
+                this.updateStatus();
+                console.log("Clinic Gateway Orchestrator UI Initialized.");
+            },
+
+            updateStatus: async function () {
+                const container = document.getElementById(CONFIG.containerId);
+                if (!container) {
+                    clearInterval(this.poller); // Stop polling if page changed [cite: 79-80]
+                    return;
+                }
+
+                try {
+                    const response = await fetch(CONFIG.endpoints.status);
+                    if (!response.ok) throw new Error("Status endpoint unavailable [cite: 81]");
+                    const data = await response.json();
+
+                    // 1. Update Status Badge with Colors [cite: 85-87]
+                    const badge = document.getElementById('status-badge');
+                    if (badge) {
+                        const isOnline = data.tunnelActive && data.registyActive;
+                        badge.innerText = isOnline ? "Online & Discovery Active" : (data.tunnelActive ? "Tunneling Active" : "Offline");
+                        badge.className = isOnline
+                            ? "plss-px-4 plss-py-1.5 plss-rounded-full plss-text-sm plss-font-bold plss-uppercase plss-bg-green-100 plss-text-green-700"
+                            : "plss-px-4 plss-py-1.5 plss-rounded-full plss-text-sm plss-font-bold plss-uppercase plss-bg-amber-100 plss-text-amber-700";
+                    }
+
+                    // 2. Update Connection Stats [cite: 83-84, 88-91]
+                    const updateText = (id, text, colorClass = "") => {
+                        const el = document.getElementById(id);
+                        if (el) {
+                            el.innerText = text || "--";
+                            if (colorClass) el.className = `plss-text-sm plss-font-bold ${colorClass}`;
+                        }
+                    };
+
+                    updateText('stat-provider', data.providerName);
+                    updateText('stat-start', data.startTime);
+                    updateText('stat-tunnel', data.tunnelActive ? "RUNNING" : "STOPPED",
+                               data.tunnelActive ? "plss-text-green-600" : "plss-text-red-600");
+                    updateText('stat-registry', data.registyActive ? "SYNCED" : "PENDING",
+                               data.registyActive ? "plss-text-green-600" : "plss-text-amber-600");
+
+                    // 3. Visibility Logic [cite: 92-97]
+                    const activeSec = document.getElementById('active-section');
+                    const inactiveSec = document.getElementById('inactive-section');
+                    if (data.tunnelActive && data.registyActive) {
+                        activeSec?.classList.remove('plss-hidden');
+                        inactiveSec?.classList.add('plss-hidden');
+
+                        const link = document.getElementById('tunnel-link');
+                        if (link) { link.innerText = data.url; link.href = data.url; }
+
+                        // Only update QR if the URL actually changed to prevent flickering
+                        if (qrcode && data.url && data.url !== lastUrl) {
+                            lastUrl = data.url;
+                            qrcode.clear();
+                            qrcode.makeCode(data.url);
+                        }
+                    } else {
+                        activeSec?.classList.add('plss-hidden');
+                        inactiveSec?.classList.remove('plss-hidden');
+                    }
+
+                } catch (e) { console.warn("Polling error:", e); }
+            },
+
+            reestablishConnection: async function () {
+                const btn = document.getElementById('reestablish-btn');
+                const force = document.getElementById('reestablish-now')?.checked;
+
+                if (!force) {
+                    alert("Please check the confirmation box to force restart.");
+                    return;
+                }
+
+                btn.disabled = true;
+                btn.innerText = "Signaling Orchestrator...";
+
+                try {
+                    const res = await fetch(CONFIG.endpoints.reestablish, { method: 'POST' });
+                    const result = await res.json();
+                    if (result.success) {
+                        lastUrl = ""; // Force QR update on next poll
+                        setTimeout(() => this.updateStatus(), 2000);
+                    }
+                } finally {
+                    btn.disabled = false;
+                    btn.innerText = "Force Restart Orchestration";
+                }
+            },
+
+            printPatientHandout: function () {
+                const url = lastUrl;
+                const template = document.getElementById("patient-print-template");
+                const printTarget = document.getElementById("print-qr-target");
+                const urlText = document.getElementById("print-url-text");
+
+                if (!url || !template || !printTarget) return;
+
+                // 1. Generate the QR in the hidden parent template first
+                printTarget.innerHTML = "";
+                new QRCode(printTarget, {
+                    text: url,
+                    width: 256,
+                    height: 256,
+                    colorDark: "#000000"
+                });
+
+                // 2. Short delay to ensure the Canvas is fully rendered
+                setTimeout(() => {
+                    if (urlText) urlText.innerText = url;
+
+                    // Extract the rendered pixels as a DataURL image
+                    const canvas = printTarget.querySelector('canvas');
+                    if (!canvas) return;
+                    const qrImageData = canvas.toDataURL("image/png");
+
+                    // 3. Open the new window
+                    const printWin = window.open('', '_blank', 'width=800,height=900');
+
+                    // Gather styles, but we will simplify them for the new window
+                    const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
+                                        .map(s => s.outerHTML).join('');
+
+                    // Tag "shenanigans" to prevent ASP.NET from breaking the string
+                    const hO = '<' + 'html>'; const hC = '<' + '/html>';
+                    const headO = '<' + 'head>'; const headC = '<' + '/head>';
+                    const bO = '<' + 'body>'; const bC = '<' + '/body>';
+
+                    // 4. Build the HTML. We manually inject the Image tag so it survives the transfer.
+                    let contentHtml = template.innerHTML;
+                    // Replace the placeholder div with the actual generated image
+                    //contentHtml = contentHtml.replace(
+                    //    'id="print-qr-target"',
+                    //    `id="print-qr-target"><img src="${qrImageData}" style="width:256px;height:256px;margin:auto;" /`
+                    //);
+
+                    printWin.document.write(`
+                        ${hO}
+                            ${headO}
+                                <title>Patient Handout</title>
+                                ${styles}
+                                <style>
+                                    /* Reset visibility for the print-specific window */
+                                    @@page {
+                                        size: auto;
+                                        margin: 10mm; /* Minimal margins to allow content to grow */
+                                    }
+
+                                    body {
+                                        padding: 0;
+                                        margin: 0;
+                                        background: white;
+                                        display: flex;
+                                        justify-content: center; /* Center horizontally on page */
+                                    }
+
+                                    #patient-print-template {
+                                        display: block !important;
+                                        visibility: visible !important;
+                                        border: none !important;
+                                        max-width: none !important;
+                                        width: 180mm; /* Fixed width relative to A4 (210mm) */
+
+                                        /* THE INITIAL SCALE FIX */
+                                        transform: scale(1.25); /* Increase this number to grow the content */
+                                        transform-origin: top center;
+                                        margin-top: 20mm;
+                                    }
+                                    .plss-hidden { display: block !important; visibility: visible !important; }
+                                    #print-qr-target img { margin: 0 auto; display: block; }
+                                </style>
+                            ${headC}
+                            ${bO}
+                                ${contentHtml}
+                            ${bC}
+                        ${hC}
+                    `);
+
+                    printWin.document.close();
+
+                    // 5. PRINTING DISABLED FOR DEBUGGING
+                    setTimeout(() => {
+                        printWin.print();
+                    //    printWin.close();
+                    }, 500);
+
+                    console.log("Print window prepared. Check for the QR code and layout.");
+                }, 150);
+            },
+
+            downloadQRCode: function () {
+                const canvas = document.querySelector("#qrcode canvas");
+                if (!canvas) return;
+                const link = document.createElement('a');
+                link.download = `portal-access-qr.png`;
+                link.href = canvas.toDataURL("image/png");
+                link.click();
+            },
+
+            copyImageToClipboard: function () {
+                const canvas = document.querySelector("#qrcode canvas");
+                if (!canvas) return;
+                canvas.toBlob(blob => {
+                    const item = new ClipboardItem({ "image/png": blob });
+                    navigator.clipboard.write([item]).then(() => alert("QR Code copied to clipboard!"));
+                });
+            }
+        };
+    })();
+
+    document.addEventListener('DOMContentLoaded', () => window.Providerless.init());
+</script> *@

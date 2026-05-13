@@ -1,20 +1,53 @@
 ﻿@{
     ViewData["Title"] = "Home Page";
+    bool isAjax = Context.Request.Headers["X-Requested-With"] == "XMLHttpRequest";
 }
 
-<div>
-    <p>Users info area.</p>
+<div id="dashboard-hub-wrapper" data-script-id="main-dashboard" class="mm-p-6">
+@*     <div class="mm-mb-8 mm-flex mm-justify-between mm-items-end">
+        <div>
+            <h1 class="mm-text-3xl mm-font-black mm-text-gray-900 mm-tracking-tight">Main</h1>
+            <p class="mm-text-[10px] mm-font-black mm-text-gray-400 mm-uppercase mm-tracking-[0.3em]">Operational Intelligence Hub</p>
+        </div>
+    </div> *@
+
+    @* The dynamic grid *@
+    <div id="widget-grid-container" class="mm-grid mm-grid-cols-1 md:mm-grid-cols-2 lg:mm-grid-cols-3 mm-gap-6 mm-items-start">
+        <div class="mm-col-span-full mm-py-20 mm-flex mm-flex-col mm-items-center mm-gap-4 mm-opacity-20">
+            <i class="fa-solid fa-layer-group mm-text-4xl"></i>
+            <span class="mm-text-[10px] mm-font-black mm-uppercase mm-tracking-widest">Building Workspace...</span>
+        </div>
+    </div>
+
+    @* Reusable Widget Shell Template *@
+    <template id="widget-shell-template">
+        <div class="widget-shell mm-bg-white mm-rounded-3xl mm-border mm-shadow-sm mm-transition-all">
+            <div class="widget-header mm-px-5 mm-py-3 mm-border-b mm-flex mm-justify-between mm-items-center mm-cursor-pointer">
+                <div class="mm-flex mm-items-center mm-gap-3">
+                    <i class="widget-icon"></i>
+                    <span class="widget-title mm-text-[10px] mm-font-black mm-text-slate-500 mm-uppercase mm-tracking-widest"></span>
+                </div>
+                <i class="fa-solid fa-chevron-down mm-text-[10px] mm-text-slate-300"></i>
+            </div>
+            <div class="widget-body">
+                <div class="mm-loading-spinner mm-p-10 mm-flex mm-justify-center mm-opacity-20">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    @if (isAjax)
+    {
+        <script src="/lib/microsoft/signalr/dist/browser/signalr.min.js"></script>
+        <script src="/js/dashboard/dashboard-manager.js" asp-append-version="true"></script>
+    }
 </div>
 
-<div>
-    <p>Processing module info area.</p>
-</div>
-
-@* todo *@
-<div>
-    <p>Registrature module info area.</p>
-</div>
-
-<div>
-    <p>P2P module info area</p>
-</div>
+@if (!isAjax)
+{
+    @section Scripts {
+        <script src="/lib/microsoft/signalr/dist/browser/signalr.min.js"></script>
+        <script src="/js/dashboard/dashboard-manager.js" asp-append-version="true"></script>
+    }
+}

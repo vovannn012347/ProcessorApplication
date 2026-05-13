@@ -14,6 +14,7 @@ using Microsoft.Extensions.FileProviders;
 
 using ProcessorApplication.Configuration;
 using ProcessorApplication.Configuration.Settings;
+using ProcessorApplication.Dashboard;
 using ProcessorApplication.Database;
 using ProcessorApplication.Database.Models;
 using ProcessorApplication.Infrastructure;
@@ -38,10 +39,9 @@ public class MainModule : IModule
 
     public ModuleDependency[] Dependencies => new ModuleDependency[] { };
 
-    public virtual IEnumerable<string> GetDefinedRoles()
-    {
-        return new[] { "Admin", "User" };
-    }
+    public virtual IEnumerable<string> GetDefinedRoles() => new[] { "Admin", "User" };
+
+    public IEnumerable<string> GetRequiredRoles() => Array.Empty<string>();
     public List<MenuItemViewModel> GetMenuItems(IServiceProvider services)
     {
         return new List<MenuItemViewModel>
@@ -93,10 +93,22 @@ public class MainModule : IModule
         if (!string.IsNullOrWhiteSpace(sqliteCs))
         {
             services.AddDbContext<AppDbContext>(opt =>
-                opt.UseSqlite(sqliteCs, sqliteOptions => sqliteOptions.CommandTimeout(30)));
+                opt.UseSqlite(sqliteCs, sqliteOptions => sqliteOptions.CommandTimeout(30)),
+                contextLifetime: ServiceLifetime.Scoped,
+                optionsLifetime: ServiceLifetime.Singleton);
+
+            //for singletons
+            services.AddDbContextFactory<AppDbContext>(options =>
+                options.UseSqlite(sqliteCs, sqliteOptions => sqliteOptions.CommandTimeout(30)));
+
         }
 
+        //services.AddScoped<IDashboardRepository, DashboardRepository>();
+        services.AddScoped<IWidgetProvider, MainWidgetProvider>();
+        services.AddScoped<IDashboardRepository, DashboardRepository>();
+
         // shared settings
+
         services.AddScoped<ISettingService, SettingService>();
         services.AddHostedService<SettingsInitializer>();
         services.AddModuleSettings<SecuritySettings>(config, ModuleId);
@@ -165,6 +177,13 @@ public class MainModule : IModule
         services.AddScoped<IPortabilityHandler, IdentityPortabilityHandler>();
         //for identty export
         services.AddScoped<IdentityPortabilityHandler>();
+
+
+        // dashboard stuff
+        services.AddSingleton<IDashboardSessionManager>(sp => sp.GetRequiredService<DashboardSessionManager>());
+        services.AddHostedService(sp => sp.GetRequiredService<DashboardSessionManager>());
+        services.AddSingleton<DashboardSessionManager>();
+        services.AddSignalR();
     }
 
     public void Configure(IApplicationBuilder app, IWebHostEnvironment env)

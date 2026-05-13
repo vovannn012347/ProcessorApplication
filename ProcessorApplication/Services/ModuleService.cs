@@ -23,8 +23,9 @@ public class ModuleService : IModuleService
         return _modules.Select(m => new ModuleInfoViewModel
         {
             ModuleId = m.ModuleId,
-            Name = m.Name
-        }).ToList();
+            Name = m.Name,
+            Roles = m.GetRequiredRoles().ToArray()
+        });
     }
 
     // Gets the sidebar menu for a specific module

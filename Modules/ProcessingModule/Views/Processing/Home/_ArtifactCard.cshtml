@@ -1,0 +1,50 @@
+﻿@using ProcessingModule
+@using ProcessingModule.Models
+@using ProcessingModule.Models.Views
+@model ArtifactViewModel
+
+<div class="pm-w-44 pm-group pm-flex pm-flex-col pm-bg-white pm-border pm-border-slate-200 pm-rounded-2xl pm-overflow-hidden hover:pm-border-indigo-400 pm-transition-all pm-shadow-sm hover:pm-shadow-md">
+    @if (Model.IsImage)
+    {
+        <div class="pm-relative pm-h-32 pm-bg-slate-100 pm-overflow-hidden">
+            <img src="/Processing/Files/Get/@Model.Token"
+                 class="pm-w-full pm-h-full pm-object-cover group-hover:pm-scale-110 pm-transition-transform pm-duration-700"
+                 alt="@Model.FileName"
+                 loading="lazy" />
+            <div class="pm-absolute pm-inset-0 pm-bg-black/20 pm-opacity-0 group-hover:pm-opacity-100 pm-transition-opacity pm-flex pm-items-center pm-justify-center">
+                <a href="/Processing/Files/Get/@Model.Token" target="_blank" class="pm-p-2 pm-bg-white pm-rounded-full pm-text-slate-800 pm-shadow-lg hover:pm-bg-indigo-500 hover:pm-text-white pm-transition-colors">
+                    <i class="fa-solid fa-magnifying-glass-plus pm-text-xs"></i>
+                </a>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="pm-h-32 pm-flex pm-flex-col pm-items-center pm-justify-center pm-bg-slate-50 pm-text-slate-300 group-hover:pm-bg-indigo-50 group-hover:pm-text-indigo-400 pm-transition-colors">
+            @{
+                var icon = Model.Extension switch
+                {
+                    ".json" => "fa-file-code",
+                    ".csv" or ".xlsx" => "fa-file-csv",
+                    ".pdf" => "fa-file-pdf",
+                    ".py" or ".sh" => "fa-terminal",
+                    _ => "fa-file-lines"
+                };
+            }
+            <i class="fa-solid @icon pm-text-3xl pm-mb-2 pm-transition-transform group-hover:pm-scale-110"></i>
+            <span class="pm-text-[9px] pm-font-black pm-uppercase pm-opacity-60">@Model.Extension.Replace(".", "") Asset</span>
+        </div>
+    }
+
+    <div class="pm-p-3 pm-bg-white">
+        <span class="pm-block pm-text-[10px] pm-font-bold pm-text-slate-700 pm-truncate pm-mb-2" title="@Model.FileName">@Model.FileName</span>
+        <div class="pm-flex pm-justify-between pm-items-center">
+            <span class="pm-text-[8px] pm-font-black pm-text-slate-300 pm-uppercase pm-bg-slate-50 pm-px-1.5 pm-py-0.5 pm-rounded pm-border pm-border-slate-100 pm-truncate pm-max-w-[80px]" title="@Model.LocalizedType">@Model.LocalizedType</span>
+            <a href="/Processing/Files/Get/@Model.Token" download="@Model.FileName" class="pm-w-7 pm-h-7 pm-flex pm-items-center pm-justify-center pm-bg-indigo-50 pm-text-indigo-500 pm-rounded-lg hover:pm-bg-indigo-500 hover:pm-text-white pm-transition-all pm-shadow-sm">
+                <i class="fa-solid fa-download pm-text-[10px]"></i>
+            </a>
+        </div>
+    </div>
+
+
+</div>

@@ -14,6 +14,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole, str
 {
     public DbSet<Setting> Settings { get; set; }
     public DbSet<ServerHashStamp> HashStamps { get; set; }
+    public DbSet<UserWidgetSetting> DashboardItemData { get; set; }
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {
@@ -43,6 +44,11 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole, str
             .HasIndex(s => new { s.Key, s.Area })
             .IsUnique();
 
+
+        modelBuilder.Entity<UserWidgetSetting>()
+            .HasKey(s => new { s.UserId, s.WidgetId });
+        modelBuilder.Entity<UserWidgetSetting>()
+            .HasIndex(s => s.UserId);
 
         base.OnModelCreating(modelBuilder);
     }

@@ -1,0 +1,25 @@
+﻿@model ProviderlessSettingsViewModel
+@using ProviderlessModule.Configuration.Registry
+
+@{
+    var key = "googledocs";
+    var settings = Model.RegistrySettings.ContainsKey(key)
+                   ? (GoogleDocsSettings)Model.RegistrySettings[key]
+                   : new GoogleDocsSettings();
+}
+
+<div class="plss-space-y-4">
+    <div class="plss-group">
+        <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Spreadsheet ID</label>
+        <input name="RegistrySettings[@key].SpreadsheetId" value="@settings.SpreadsheetId"
+               class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-rounded-lg plss-text-sm" />
+        <p class="plss-text-[10px] plss-text-gray-400 plss-mt-1">Found in the Google Sheet's URL identifier.</p>
+    </div>
+
+    <div class="plss-group">
+        <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Service Account JSON</label>
+        <textarea name="RegistrySettings[@key].ServiceAccountJson" rows="4"
+                  class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-rounded-lg plss-font-mono plss-text-xs">@settings.ServiceAccountJson</textarea>
+        <p class="plss-text-[10px] plss-text-gray-400 plss-mt-1">Paste the full contents of your Google Service Account .json key file.</p>
+    </div>
+</div>

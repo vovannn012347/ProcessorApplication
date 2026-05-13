@@ -51,6 +51,8 @@ public class EmailService : IEmailService, IDisposable
     {
         get { lock (_stateLock) { return _lastChecked; } }
     }
+    public string SmtpHost => _optionsMonitor.CurrentValue.Server.SmtpHost;
+
     private async Task AuthenticateClientAsync(ISmtpClient client, EmailSettings settings)
     {
         // For Certificate/KeyPair Auth, we often need to present the cert during the TLS handshake

@@ -1,0 +1,194 @@
+﻿@using Microsoft.AspNetCore.Authorization
+@using ProviderlessModule.Infrastructure.Interfaces
+@model ProviderlessSettingsViewModel
+@inject IAuthorizationService AuthorizationService
+
+@section Styles {
+    <link rel="stylesheet" href="/Providerless/css/providerless.min.css" asp-append-version="true" />
+}
+
+@* AJAX-safe link for dynamic content loading *@
+<link rel="stylesheet" href="/Providerless/css/providerless.min.css" asp-append-version="true" />
+
+<div id="providerless-settings-wrapper" data-script-id="providerless-settings">
+    <div class="plss-container plss-mx-auto plss-py-8 plss-px-4">
+        <div class="plss-mb-8">
+            <h1 class="plss-text-3xl plss-font-extrabold plss-text-slate-900 plss-tracking-tight">Portal Configuration</h1>
+            <p class="plss-text-slate-500">Manage discovery registries and tunneling infrastructure for the Clinic Gateway.</p>
+        </div>
+
+        @* Validation and Status Message Area [cite: 43-47] *@
+        <div id="settings-messages" class="plss-mb-6 plss-space-y-4">
+            @if (TempData["SuccessMessage"] != null)
+            {
+                <div class="plss-p-4 plss-bg-green-50 plss-border-l-4 plss-border-green-500 plss-text-green-700 plss-text-sm plss-flex plss-items-center plss-gap-3 plss-rounded-r-lg">
+                    <i class="fa-solid fa-check-circle"></i>
+                    <span>@TempData["SuccessMessage"]</span>
+                </div>
+            }
+            @if (!ViewData.ModelState.IsValid)
+            {
+                <div class="plss-p-4 plss-bg-yellow-50 plss-border plss-border-yellow-200 plss-rounded-md">
+                    <div class="plss-flex plss-items-center plss-gap-3 plss-mb-2 plss-font-bold plss-text-xs plss-text-yellow-800 uppercase">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        <span>Configuration Errors</span>
+                    </div>
+                    <ul class="plss-ml-7 plss-list-disc plss-text-sm plss-text-yellow-700">
+                        @foreach (var error in ViewData.ModelState.Values.SelectMany(v => v.Errors))
+                        {
+                            <li>@error.ErrorMessage</li>
+                        }
+                    </ul>
+                </div>
+            }
+        </div>
+
+        @* Explicitly define Area/Controller/Action to fix routing  *@
+        <form id="providerlessSettingsForm"
+              asp-controller="Settings"
+              asp-action="SaveProviderless"
+              method="post"
+              class="plss-space-y-6">
+            @* should be SaveProviderless to hit correct method on correct controller, 
+               otherwise it hits SettingsController in another module *@
+
+            @Html.AntiForgeryToken()
+
+            @* Core Settings Section *@
+            <div class="plss-bg-white plss-shadow-sm plss-border plss-border-slate-200 plss-rounded-xl plss-overflow-hidden">
+                <div class="plss-bg-slate-50 plss-px-6 plss-py-3 plss-border-b plss-border-slate-200">
+                    <h2 class="plss-text-sm plss-font-bold plss-text-slate-700 plss-uppercase plss-tracking-wider">Core Connectivity</h2>
+                </div>
+                <div class="plss-p-6">
+                    <div class="plss-grid plss-grid-cols-1 md:plss-grid-cols-2 plss-gap-8">
+                        <div class="plss-space-y-4">
+                            <div class="plss-flex plss-items-center plss-justify-between plss-p-4 plss-bg-gray-50 plss-rounded-xl plss-border">
+                                <label asp-for="General.Enabled" class="plss-text-sm plss-font-bold plss-text-gray-700">Master Gateway</label>
+                                <input asp-for="General.Enabled" type="checkbox" class="plss-w-6 plss-h-6 plss-rounded plss-text-blue-600" />
+                            </div>
+                            <div class="plss-flex plss-items-center plss-justify-between plss-p-4 plss-bg-gray-50 plss-rounded-xl plss-border">
+                                <label asp-for="General.RegistryEnabled" class="plss-text-sm plss-font-bold plss-text-gray-700">Cloud Discovery</label>
+                                <input asp-for="General.RegistryEnabled" type="checkbox" class="plss-w-6 plss-h-6 plss-rounded plss-text-blue-600" />
+                            </div>
+                        </div>
+                        <div class="plss-space-y-4">
+                            <div>
+                                <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Clinic ID</label>
+                                <input asp-for="General.ComputerId" class="plss-w-full plss-mt-1 plss-p-3 plss-bg-gray-100 plss-border plss-rounded-lg plss-text-sm plss-font-mono" readonly />
+                            </div>
+                            <div>
+                                <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Security Secret</label>
+                                <input asp-for="General.SharedSecret" class="plss-w-full plss-mt-1 plss-p-3 plss-bg-gray-100 plss-border plss-rounded-lg plss-text-sm plss-font-mono" readonly />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* Discovery Section *@
+            <div class="plss-bg-white plss-shadow-sm plss-border plss-border-slate-200 plss-rounded-xl plss-overflow-hidden">
+                <div class="plss-bg-slate-50 plss-px-6 plss-py-3 plss-border-b plss-border-slate-200">
+                    <h2 class="plss-text-sm plss-font-bold plss-text-slate-700 plss-uppercase plss-tracking-wider">Discovery Methods</h2>
+                </div>
+                <div class="plss-p-6">
+                    <div class="plss-grid plss-grid-cols-1 lg:plss-grid-cols-2 plss-gap-8">
+                        @foreach (var entry in Model.RegistrySettings)
+                        {
+                            var settings = (IProviderSettings)entry.Value;
+                            var isActive = Model.General.ActiveRegistry == settings.ProviderKey;
+
+                            <div class="plss-p-5 plss-bg-slate-50 plss-rounded-xl plss-border @(isActive ? "plss-border-blue-500" : "plss-border-slate-200")">
+                                <div class="plss-flex plss-items-center plss-gap-3 plss-mb-4">
+                                    <input type="radio" name="General.ActiveRegistry" value="@settings.ProviderKey" @(isActive ? "checked" : "") class="plss-w-4 plss-h-4" />
+                                    <h3 class="plss-text-xs plss-font-black plss-text-slate-500 plss-uppercase plss-tracking-widest">@settings.ProviderName</h3>
+                                </div>
+                                @await Html.PartialAsync(settings.SettingsViewPath, Model)
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            @* Tunnel Section *@
+            <div class="plss-bg-white plss-shadow-sm plss-border plss-border-slate-200 plss-rounded-xl plss-overflow-hidden">
+                <div class="plss-bg-slate-50 plss-px-6 plss-py-3 plss-border-b plss-border-slate-200">
+                    <h2 class="plss-text-sm plss-font-bold plss-text-slate-700 plss-uppercase plss-tracking-wider">Tunneling Infrastructure</h2>
+                </div>
+                <div class="plss-p-6">
+                    <div class="plss-grid plss-grid-cols-1 lg:plss-grid-cols-2 plss-gap-8">
+                        @foreach (var entry in Model.TunnelSettings)
+                        {
+                            var settings = (IProviderSettings)entry.Value;
+                            var isActive = Model.General.SelectedTunnel == settings.ProviderKey;
+
+                            <div class="plss-p-5 plss-bg-slate-50 plss-rounded-xl plss-border @(isActive ? "plss-border-indigo-500" : "plss-border-slate-200")">
+                                <div class="plss-flex plss-items-center plss-gap-3 plss-mb-4">
+                                    <input type="radio" name="General.SelectedTunnel" value="@settings.ProviderKey" @(isActive ? "checked" : "") class="plss-w-4 plss-h-4" />
+                                    <h3 class="plss-text-xs plss-font-black plss-text-slate-500 plss-uppercase plss-tracking-widest">@settings.ProviderName</h3>
+                                </div>
+                                @await Html.PartialAsync(settings.SettingsViewPath, Model)
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            @* Save Button at bottom [cite: 58] *@
+            <div class="plss-mt-8 plss-pt-4 plss-border-t plss-border-gray-200">
+                <button type="submit" id="saveProviderlessSettingsButton" class="plss-inline-flex plss-items-center plss-justify-center plss-rounded-md plss-bg-blue-600 plss-py-2.5 plss-px-6 plss-text-sm plss-font-bold plss-text-white plss-shadow-md hover:plss-bg-blue-700 plss-transition">
+                    <i class="fa-solid fa-floppy-disk plss-mr-2"></i> Save Configuration
+                </button>
+            </div>
+        </form>
+    </div>
+
+    @* AJAX Script: Logic mirrored from Processor Index [cite: 59-66] *@
+   @*  <script>
+        (function() {
+            const form = document.getElementById('providerlessSettingsForm');
+            if (!form) return;
+
+            form.addEventListener('submit', function(event) {
+                event.preventDefault();
+
+                const currentForm = event.target;
+                const url = currentForm.action;
+                const container = document.getElementById('providerless-settings-wrapper');
+                const button = document.getElementById('saveProviderlessSettingsButton');
+                const formData = new FormData(currentForm);
+
+                const originalHtml = button.innerHTML;
+                button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin plss-mr-2"></i> Synchronizing...';
+                button.disabled = true;
+
+                fetch(url, {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(response => {
+                    if (!response.ok) throw new Error(`Server returned status ${response.status}`);
+                    return response.text();
+                })
+                .then(html => {
+                    if (container) {
+                        container.innerHTML = html;
+                        // Scroll to top of settings on update
+                        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                })
+                .catch(error => {
+                    button.innerHTML = originalHtml;
+                    button.disabled = false;
+                    console.error('Providerless update failed:', error);
+                    alert('Failed to save settings. Please verify the connection.');
+                });
+            });
+        })();
+    </script> *@
+</div>
+
+@section Scripts {
+    @* <script src="/Providerless/lib/qrcodejs/qrcode.min.js"></script> *@
+    <script src="~/providerless/js/pages/settings/index.js" asp-append-version="true"></script>
+}

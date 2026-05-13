@@ -1,0 +1,86 @@
+﻿@using ProcessingModule
+@using ProcessingModule.Configuration
+@using ProcessingModule.Models
+@model OsSandboxSettings
+
+<div class="pm-space-y-4">
+    <!-- Identity Fields -->
+    <div class="pm-grid pm-grid-cols-1 md:pm-grid-cols-2 pm-gap-4">
+        <div>
+            <label asp-for="UserName" class="pm-block pm-text-[10px] pm-font-bold pm-text-slate-400 pm-uppercase pm-mb-1"></label>
+            <input asp-for="UserName" class="pm-w-full pm-rounded-lg pm-border-slate-300 pm-text-sm pm-font-mono" />
+        </div>
+        <div>
+            <label asp-for="GroupName" class="pm-block pm-text-[10px] pm-font-bold pm-text-slate-400 pm-uppercase pm-mb-1"></label>
+            <input asp-for="GroupName" class="pm-w-full pm-rounded-lg pm-border-slate-300 pm-text-sm pm-font-mono" />
+        </div>
+    </div>
+
+    @* <div class="pm-flex pm-items-center pm-gap-2">
+        <input asp-for="AutoCreateProcessingUser" type="checkbox" class="pm-rounded pm-border-slate-300 pm-text-indigo-600" />
+        <label asp-for="AutoCreateProcessingUser" class="pm-text-xs pm-text-slate-600"></label>
+    </div> *@
+
+    <!-- Action Buttons -->
+    <div class="pm-flex pm-gap-2 pm-mt-2">
+        <button type="button" onclick="launchStream('/Processing/Settings/StreamOsStatusCheck')"
+                class="pm-flex-1 pm-px-3 pm-py-2 pm-bg-slate-100 pm-text-slate-700 pm-text-[10px] pm-font-bold pm-uppercase pm-rounded-lg hover:pm-bg-indigo-600 pm-transition-colors shadow-sm">
+            <i class="fa-solid fa-magnifying-glass pm-mr-1"></i> Check Status
+        </button>
+        <button type="button" onclick="launchStream('/Processing/Settings/StreamOsProvisioning')"
+                class="pm-flex-1 pm-px-3 pm-py-2 pm-bg-slate-100 pm-text-slate-700 pm-text-[10px] pm-font-bold pm-uppercase pm-rounded-lg hover:pm-bg-indigo-600 pm-transition-colors shadow-sm">
+            <i class="fa-solid fa-user-plus pm-mr-1"></i> Setup User
+        </button>
+    </div>
+
+    <!-- Integrated Log Window -->
+    <div id="osLogWrapper" class="pm-hidden pm-mt-4 pm-animate-in pm-fade-in pm-slide-in-from-top-1">
+        <div class="pm-flex pm-items-center pm-justify-between pm-mb-1 pm-px-1">
+            <span class="pm-text-[9px] pm-font-bold pm-text-slate-400 pm-uppercase tracking-wider">System Setup Log</span>
+            <span id="osLogStatus" class="pm-text-[9px] pm-font-bold pm-text-indigo-500 pm-animate-pulse">Active</span>
+        </div>
+        <textarea id="osLogOutput" readonly
+                  class="pm-w-full pm-h-40 pm-bg-slate-900 pm-text-emerald-400 pm-font-mono pm-text-[10px] pm-p-4 pm-rounded-xl pm-border pm-border-slate-800 pm-shadow-inner pm-resize-none focus:pm-outline-none"
+                  placeholder="Logs will appear here..."></textarea>
+    </div>
+</div>
+
+<script>
+    let currentEventSource = null;
+
+    function launchStream(url) {
+        const wrapper = document.getElementById('osLogWrapper');
+        const output = document.getElementById('osLogOutput');
+        const status = document.getElementById('osLogStatus');
+
+        // Close existing if open
+        if (currentEventSource) currentEventSource.close();
+
+        // UI Prep
+        wrapper.classList.remove('pm-hidden');
+        output.value = `[${new Date().toLocaleTimeString()}] Establishing connection...\n`;
+        status.innerText = "Processing...";
+        status.className = "pm-text-[9px] pm-font-bold pm-text-indigo-500 pm-animate-pulse";
+
+        currentEventSource = new EventSource(url);
+
+        currentEventSource.onmessage = function(event) {
+            if (event.data === "[DONE]") {
+                status.innerText = "Complete";
+                status.className = "pm-text-[9px] pm-font-bold pm-text-green-600 pm-uppercase";
+                output.value += "\n>>> OPERATION FINISHED.";
+                currentEventSource.close();
+            } else {
+                output.value += event.data + "\n";
+                output.scrollTop = output.scrollHeight;
+            }
+        };
+
+        currentEventSource.onerror = function() {
+            status.innerText = "Stream Error";
+            status.className = "pm-text-[9px] pm-font-bold pm-text-red-600 pm-uppercase";
+            output.value += "\n[CRITICAL] Connection lost or access denied.";
+            currentEventSource.close();
+        };
+    }
+</script>

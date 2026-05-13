@@ -1,0 +1,210 @@
+﻿@using System.IO
+@using Microsoft.AspNetCore.Authorization
+@using ProcessingModule
+@using ProcessingModule.Database.Models
+@using ProcessingModule.Models
+@inject IAuthorizationService AuthorizationService
+@model List<ScriptIndex>
+
+@{
+    var isAdmin = (await AuthorizationService.AuthorizeAsync(User, Context, "AdminLocalPolicy")).Succeeded;
+}
+
+@section Styles {
+    <link rel="stylesheet" href="/Processing/css/processor.min.css" asp-append-version="true" />
+}
+
+<div id="script-page-wrapper" data-script-id="processor-scriptlist" class="pm-container pm-mx-auto pm-mt-4 pm-px-1">
+
+    <div class="pm-flex pm-justify-between pm-items-start pm-mb-4 pm-gap-4">
+        <div class="pm-flex-1">
+            <h2 class="pm-text-xl pm-font-bold pm-text-slate-800 pm-leading-tight">Medical Analysis Library</h2>
+            <p class="pm-text-[10px] pm-text-slate-400 pm-mt-0.5 pm-uppercase pm-tracking-widest pm-font-semibold">Algorithm Inventory</p>
+
+            <button id="launchBtn" onclick="ProcessorLibrary.submitSelection()"
+                    class="pm-mt-4 pm-bg-indigo-600 hover:pm-bg-indigo-700 pm-text-white pm-px-6 pm-py-2.5 pm-rounded-lg pm-text-[10px] pm-font-black pm-shadow-md pm-transition-all pm-flex pm-items-center pm-gap-2 pm-uppercase pm-tracking-widest">
+                <i class="fa-solid fa-play pm-text-[8px]"></i>
+                Run Selected
+            </button>
+        </div>
+
+        <div class="pm-flex pm-flex-col pm-items-end pm-pt-1">
+            <div class="pm-h-6"></div>
+            @if (isAdmin)
+            {
+                <button id="reindexBtn" onclick="ProcessorLibrary.runReindex(this)"
+                        class="pm-bg-white pm-border pm-border-slate-200 hover:pm-border-indigo-300 pm-text-slate-500 pm-px-6 pm-py-2.5 pm-rounded-lg pm-text-[10px] pm-font-black pm-transition-all pm-flex pm-items-center pm-gap-2 pm-uppercase pm-tracking-widest pm-shadow-sm">
+                    <i class="fa-solid fa-arrows-rotate" id="reindexIcon"></i>
+                    Reindex Library
+                </button>
+            }
+        </div>
+    </div>
+
+    <form id="launchForm" asp-action="PrepareJob" method="post" class="pm-hidden">
+        <input type="hidden" name="selectedScripts" id="selectedScripts" />
+    </form>
+
+    <div class="pm-bg-white pm-border pm-border-slate-200 pm-rounded-lg pm-overflow-hidden pm-shadow-sm">
+        <table class="pm-min-w-full pm-divide-y pm-divide-slate-100">
+            <thead class="pm-bg-slate-50">
+                <tr class="pm-divide-x pm-divide-slate-100">
+                    <th class="pm-w-12 pm-px-2 pm-py-3"></th>
+                    <th class="pm-px-4 pm-py-3 pm-text-left pm-text-[9px] pm-font-bold pm-text-slate-400 pm-uppercase pm-tracking-tighter">Identity & Location</th>
+                    <th class="pm-w-24 pm-px-4 pm-py-3 pm-text-left pm-text-[9px] pm-font-bold pm-text-slate-400 pm-uppercase pm-tracking-tighter">Version</th>
+                    <th class="pm-w-32 pm-px-4 pm-py-3 pm-text-left pm-text-[9px] pm-font-bold pm-text-slate-400 pm-uppercase pm-tracking-tighter">Integrity Status</th>
+                    <th class="pm-w-12 pm-px-2 pm-py-3"></th>
+                </tr>
+            </thead>
+            <tbody class="pm-divide-y pm-divide-slate-100" id="scriptTableBody">
+                @foreach (var script in Model)
+                {
+                    var isAvailable = script.IsAvailable;
+                    var hashMatch = script.HashMatch;
+
+                    <tr class="pm-group hover:pm-bg-slate-50/50 pm-transition-colors pm-cursor-pointer @(!isAvailable ? "pm-opacity-60" : "")"
+                        onclick="ProcessorLibrary.toggleSelectionRow('@script.ScriptIdentifier')">
+                        <td class="pm-px-2 pm-py-3 pm-text-center" onclick="event.stopPropagation()">
+                            <input type="checkbox" id="chk-@script.ScriptIdentifier"
+                                   onchange="ProcessorLibrary.toggleScriptId('@script.ScriptIdentifier')"
+                                   @(isAvailable ? "" : "disabled")
+                                   class="pm-h-4 pm-w-4 pm-text-indigo-600 pm-border-slate-300 pm-rounded focus:pm-ring-indigo-500 pm-cursor-pointer disabled:pm-cursor-not-allowed" />
+                        </td>
+                        <td class="pm-px-4 pm-py-3">
+                            <div class="pm-flex pm-flex-col">
+                                <span class="pm-text-xs pm-font-bold pm-text-slate-800 group-hover:pm-text-indigo-600 pm-transition-colors">@script.ScriptLabel</span>
+                                <span class="pm-text-[8px] pm-font-mono pm-text-slate-400 pm-leading-none pm-mt-1">ID: @script.ScriptIdentifier</span>
+                                @if (isAdmin)
+                                {
+                                    <span class="pm-text-[7px] pm-text-slate-300 pm-mt-1 pm-truncate pm-max-w-[200px]" title="@script.ManifestDirectoryPath">
+                                        <i class="fa-regular fa-folder-open pm-mr-1"></i>@System.IO.Path.GetFileName(script.ManifestDirectoryPath)
+                                    </span>
+                                }
+                            </div>
+                        </td>
+                        <td class="pm-px-4 pm-py-3">
+                            <span class="pm-text-[9px] pm-font-bold pm-text-slate-500 pm-px-2 pm-py-0.5 pm-bg-slate-100/50 pm-border pm-border-slate-200 pm-rounded">
+                                v@(string.IsNullOrEmpty(script.ScriptVersion) ? "1.0.0" : script.ScriptVersion)
+                            </span>
+                        </td>
+                        <td class="pm-px-4 pm-py-3">
+                            @if (!isAvailable)
+                            {
+                                <div class="pm-flex pm-items-center pm-gap-1.5">
+                                    <span class="pm-w-1.5 pm-h-1.5 pm-rounded-full pm-bg-red-500"></span>
+                                    <span class="pm-text-[9px] pm-text-red-600 pm-font-bold pm-uppercase pm-tracking-widest">Missing / Error</span>
+                                </div>
+                            }
+                            else if (!hashMatch)
+                            {
+                                <div class="pm-flex pm-items-center pm-gap-1.5">
+                                    <span class="pm-w-1.5 pm-h-1.5 pm-rounded-full pm-bg-amber-500"></span>
+                                    <span class="pm-text-[9px] pm-text-amber-600 pm-font-bold pm-uppercase pm-tracking-widest" title="Files modified on disk">Hash Mismatch</span>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="pm-flex pm-items-center pm-gap-1.5">
+                                    <span class="pm-w-1.5 pm-h-1.5 pm-rounded-full pm-bg-emerald-500"></span>
+                                    <span class="pm-text-[9px] pm-text-emerald-600 pm-font-bold pm-uppercase pm-tracking-widest">Verified Active</span>
+                                </div>
+                            }
+                        </td>
+                        <td class="pm-px-2 pm-py-3 pm-text-right" onclick="event.stopPropagation()">
+                            <button onclick="ProcessorLibrary.toggleDetails('@script.Id', '@script.ScriptIdentifier')" class="pm-text-slate-300 hover:pm-text-indigo-500 pm-p-1">
+                                <i class="fa-solid fa-circle-info pm-text-[11px]" id="icon-@script.Id"></i>
+                            </button>
+                        </td>
+                    </tr>
+
+                    <tr id="details-@script.Id" class="pm-hidden pm-bg-slate-50/30">
+                        <td colspan="5" class="pm-p-0 pm-border-l-2 pm-border-indigo-400">
+                            <div id="content-@script.Id" class="pm-px-12 pm-py-3">
+                                <div class="pm-flex pm-items-center pm-gap-2 pm-animate-pulse">
+                                    <div class="pm-w-1 pm-h-1 pm-bg-indigo-400 pm-rounded-full"></div>
+                                    <span class="pm-text-[9px] pm-text-slate-400 pm-uppercase pm-font-bold pm-tracking-widest">Retrieving inputs...</span>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                }
+                @if (!Model.Any())
+                {
+                    <tr>
+                        <td colspan="5" class="pm-py-12 pm-text-center">
+                            <i class="fa-solid fa-box-open pm-text-slate-200 pm-text-3xl pm-mb-3"></i>
+                            <p class="pm-text-[10px] pm-text-slate-400 pm-uppercase pm-font-bold pm-tracking-widest">No scripts indexed in library</p>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+
+</div>
+
+
+@section Scripts {
+    <script src="~/processing/js/pages/home/script-list.js" asp-append-version="true"></script>
+}
+@* 
+<script>
+    let selectedScriptIds = [];
+
+    function toggleScriptId(id) {
+        const index = selectedScriptIds.indexOf(id);
+        if (index === -1) {
+            selectedScriptIds.push(id);
+        } else {
+            selectedScriptIds.splice(index, 1);
+        }
+    }
+
+    function toggleSelectionRow(id) {
+        const chk = document.getElementById('chk-' + id);
+        if (chk && !chk.disabled) {
+            chk.checked = !chk.checked;
+            toggleScriptId(id);
+        }
+    }
+
+    function submitSelection() {
+        if (selectedScriptIds.length === 0) {
+            alert("Please select at least one script from the library to proceed.");
+            return;
+        }
+
+        const form = document.getElementById('launchForm');
+        document.getElementById('selectedScripts').value = selectedScriptIds.join(',');
+        form.submit();
+    }
+
+    async function toggleDetails(id, scriptIdentifier) {
+        const row = document.getElementById('details-' + id);
+        const content = document.getElementById('content-' + id);
+        const icon = document.getElementById('icon-' + id);
+
+        if (row.classList.contains('pm-hidden')) {
+            row.classList.remove('pm-hidden');
+            icon.classList.add('pm-text-indigo-500');
+            try {
+                const response = await fetch(`/processing/Home/GetScriptDetails?scriptIdentifier=${scriptIdentifier}`);
+                content.innerHTML = await response.text();
+            } catch (err) {
+                content.innerHTML = '<span class="pm-text-[9px] pm-text-red-400">;Error loading details.</span>';
+            }
+        } else {
+            row.classList.add('pm-hidden');
+            icon.classList.remove('pm-text-indigo-500');
+        }
+    }
+
+    function runReindex() {
+        const icon = document.getElementById('reindexIcon');
+        icon.classList.add('fa-spin');
+        window.location.href = '/Processing/Admin/ReindexLogs';
+    }
+
+
+</script> *@

@@ -1,39 +1,42 @@
 ﻿@{
-    ViewData["Title"] = "Home Page";
+    ViewData["Title"] = "Operational Hub";
     bool isAjax = Context.Request.Headers["X-Requested-With"] == "XMLHttpRequest";
 }
 
 <div id="dashboard-hub-wrapper" data-script-id="main-dashboard" class="mm-p-6">
-@*     <div class="mm-mb-8 mm-flex mm-justify-between mm-items-end">
-        <div>
-            <h1 class="mm-text-3xl mm-font-black mm-text-gray-900 mm-tracking-tight">Main</h1>
-            <p class="mm-text-[10px] mm-font-black mm-text-gray-400 mm-uppercase mm-tracking-[0.3em]">Operational Intelligence Hub</p>
-        </div>
-    </div> *@
+    <div id="expanded-grid-container" class="mm-grid mm-grid-cols-1 md:mm-grid-cols-2 lg:mm-grid-cols-3 mm-gap-6 mm-items-start mm-mb-12">
+        @* Active Widgets *@
+    </div>
 
-    @* The dynamic grid *@
-    <div id="widget-grid-container" class="mm-grid mm-grid-cols-1 md:mm-grid-cols-2 lg:mm-grid-cols-3 mm-gap-6 mm-items-start">
-        <div class="mm-col-span-full mm-py-20 mm-flex mm-flex-col mm-items-center mm-gap-4 mm-opacity-20">
-            <i class="fa-solid fa-layer-group mm-text-4xl"></i>
-            <span class="mm-text-[10px] mm-font-black mm-uppercase mm-tracking-widest">Building Workspace...</span>
+    <div class="mm-border-t mm-border-slate-200 mm-pt-8 mm-mt-8">
+        <div class="mm-flex mm-items-center mm-gap-3 mm-mb-6 mm-opacity-40">
+            <i class="fa-solid fa-box-archive mm-text-xs"></i>
+            <span class="mm-text-[10px] mm-font-black mm-uppercase mm-tracking-widest">Minimized Tray</span>
+        </div>
+        <div id="minimized-tray-container" class="mm-flex mm-flex-wrap mm-gap-4 mm-items-start">
+            @* Collapsed Widgets *@
         </div>
     </div>
 
-    @* Reusable Widget Shell Template *@
     <template id="widget-shell-template">
-        <div class="widget-shell mm-bg-white mm-rounded-3xl mm-border mm-shadow-sm mm-transition-all">
-            <div class="widget-header mm-px-5 mm-py-3 mm-border-b mm-flex mm-justify-between mm-items-center mm-cursor-pointer">
-                <div class="mm-flex mm-items-center mm-gap-3">
-                    <i class="widget-icon"></i>
-                    <span class="widget-title mm-text-[10px] mm-font-black mm-text-slate-500 mm-uppercase mm-tracking-widest"></span>
+        @* overflow-hidden prevents title bleed in minimized state *@
+        <div class="widget-shell mm-bg-white mm-rounded-3xl mm-border mm-shadow-sm mm-transition-all mm-flex mm-flex-col mm-overflow-hidden">
+            <div class="widget-header mm-px-5 mm-py-3 mm-border-b mm-flex mm-justify-between mm-items-center mm-min-w-0">
+                <div class="mm-flex mm-items-center mm-gap-3 mm-min-w-0 mm-mr-4">
+                    <i class="widget-icon mm-text-slate-400 mm-text-xs mm-flex-shrink-0"></i>
+                    @* truncate ensures title stays within small header bounds *@
+                    <span class="widget-title mm-text-[10px] mm-font-black mm-text-slate-500 mm-uppercase mm-tracking-widest mm-truncate"></span>
                 </div>
-                <i class="fa-solid fa-chevron-down mm-text-[10px] mm-text-slate-300"></i>
-            </div>
-            <div class="widget-body">
-                <div class="mm-loading-spinner mm-p-10 mm-flex mm-justify-center mm-opacity-20">
-                    <i class="fa-solid fa-circle-notch fa-spin"></i>
+                <div class="mm-flex mm-items-center mm-gap-3 mm-flex-shrink-0">
+                    <button class="refresh-btn mm-text-slate-300 hover:mm-text-indigo-500 mm-transition-all active:mm-rotate-180">
+                        <i class="fa-solid fa-arrows-rotate mm-text-[10px]"></i>
+                    </button>
+                    <button class="chevron-trigger mm-p-1 mm-text-slate-300 hover:mm-text-slate-600">
+                        <i class="fa-solid fa-chevron-down mm-text-[10px] mm-transition-transform mm-duration-300" id="chevron-icon"></i>
+                    </button>
                 </div>
             </div>
+            <div class="widget-body"></div>
         </div>
     </template>
 

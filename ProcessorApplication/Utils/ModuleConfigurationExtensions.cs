@@ -36,19 +36,17 @@ public static class ModuleConfigurationExtensions
         return services;
     }
 
-    public static IConfigurationBuilder AddModuleJsonFiles(this IConfigurationBuilder builder, string contentRootPath)
+    public static IConfigurationBuilder AddModuleJsonFiles(
+        this IConfigurationBuilder builder,
+        string contentRootPath,
+        string environment)
     {
-        // --- 1. Handle Main Module (Root Directory) ---
-        // We hardcode "main" here or you can pass it as a constant
+        // --- 1. Handle Main Module ---
         string mainArea = "Main";
-        string mainFile = Path.Combine(contentRootPath, $"appsettings.main.json");
 
-        if (File.Exists(mainFile))
-        {
-            LoadAndPrefixJson(builder, mainArea, mainFile);
-        }
+        LoadModuleConfig(builder, contentRootPath, mainArea, "appsettings.main", environment);
 
-        // --- 2. Handle Sub-Modules (Modules Directory) ---
+        // --- 2. Handle Sub-Modules ---
         string modulesPath = Path.Combine(contentRootPath, "Modules");
 
         if (Directory.Exists(modulesPath))
@@ -56,19 +54,47 @@ public static class ModuleConfigurationExtensions
             foreach (var dir in Directory.GetDirectories(modulesPath))
             {
                 var dirName = Path.GetFileName(dir);
-                var areaName = dirName.EndsWith("Module", StringComparison.OrdinalIgnoreCase)
-                   ? dirName.Substring(0, dirName.Length - 6)
-                   : dirName; // e.g., "P2P"
-                var settingsFile = Path.Combine(dir, $"appsettings.{areaName}.json");
 
-                if (File.Exists(settingsFile))
-                {
-                    LoadAndPrefixJson(builder, areaName, settingsFile);
-                }
+                var areaName = dirName.EndsWith("Module", StringComparison.OrdinalIgnoreCase)
+                    ? dirName.Substring(0, dirName.Length - 6)
+                    : dirName;
+
+                var baseFileName = $"appsettings.{areaName.ToLower()}";
+
+                LoadModuleConfig(builder, dir, areaName, baseFileName, environment);
             }
         }
 
         return builder;
+    }
+
+    private static void LoadModuleConfig(
+    IConfigurationBuilder builder,
+    string basePath,
+    string areaName,
+    string baseFileName,
+    string environment)
+    {
+        // 1. Load Base configuration (Lowest priority - Load FIRST)
+        // Example: appsettings.main.json
+        var defaultFile = Path.Combine(basePath, $"{baseFileName}.json");
+        if (File.Exists(defaultFile))
+        {
+            LoadAndPrefixJson(builder, areaName, defaultFile);
+        }
+
+        // 2. Load Environment override (Higher priority - Load SECOND)
+        // Example: appsettings.main.Development.json
+        if (!string.IsNullOrEmpty(environment))
+        {
+            var envFile = Path.Combine(basePath, $"{baseFileName}.{environment}.json");
+            if (File.Exists(envFile))
+            {
+                // Because this is added to the builder AFTER the default file,
+                // its values will override the default values for the same keys.
+                LoadAndPrefixJson(builder, areaName, envFile);
+            }
+        }
     }
 
     private static void LoadAndPrefixJson(IConfigurationBuilder builder, string areaName, string filePath)

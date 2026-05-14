@@ -10,14 +10,18 @@ window.WidgetLibrary["process-status"] = {
     },
 
     startPolling: function () {
+        if (this.pollTimer) clearInterval(this.pollTimer);
         this.refresh();
-        this.pollTimer = setInterval(() => this.refresh(), 12000); // 12s interval
+        this.pollTimer = setInterval(() => this.refresh(), 12000);
+    },
+
+    stop: function () {
+        if (this.pollTimer) clearInterval(this.pollTimer);
+        this.pollTimer = null;
     },
 
     refresh: async function () {
         const blings = this.shell.querySelectorAll('.status-bling');
-
-        // 1. Modem Logic: Flash to Grey on request
         blings.forEach(b => {
             b.className = 'status-bling mm-w-1.5 mm-h-1.5 mm-rounded-full mm-bg-slate-400 mm-scale-125 mm-transition-all mm-duration-75';
         });
@@ -25,8 +29,7 @@ window.WidgetLibrary["process-status"] = {
         try {
             const res = await fetch(`/Main/Dashboard/GetUpdate?widgetId=process-status`);
             if (res.ok) {
-                const data = await res.json();
-                this.updateUI(data);
+                this.updateUI(await res.json());
             } else {
                 this.updateUI({ eng: 2, idx: 2, ops: 2 });
             }
@@ -37,8 +40,6 @@ window.WidgetLibrary["process-status"] = {
 
     updateUI: function (data) {
         if (!data) return;
-
-        // Update Stats
         const updateText = (id, val) => {
             const el = this.shell.querySelector(id);
             if (el) el.innerText = val !== undefined ? val : '0';
@@ -50,14 +51,10 @@ window.WidgetLibrary["process-status"] = {
         updateText('#stat-today', data.today);
         updateText('#process-sync-time', data.sync || '--:--:--');
 
-        // Apply Bling Colors (0=Green, 1=Yellow, 2=Red)
         const colors = ['mm-bg-green-500', 'mm-bg-amber-500', 'mm-bg-red-500'];
-
-        const setBling = (selector, state) => {
-            const el = this.shell.querySelector(selector);
-            if (el) {
-                el.className = `status-bling mm-w-1.5 mm-h-1.5 mm-rounded-full mm-transition-colors mm-duration-500 ${colors[state] || colors[2]}`;
-            }
+        const setBling = (sel, s) => {
+            const el = this.shell.querySelector(sel);
+            if (el) el.className = `status-bling mm-w-1.5 mm-h-1.5 mm-rounded-full mm-transition-colors mm-duration-500 ${colors[s] || colors[2]}`;
         };
 
         setBling('#bling-eng', data.eng);
@@ -66,6 +63,6 @@ window.WidgetLibrary["process-status"] = {
     },
 
     dispose: function () {
-        if (this.pollTimer) clearInterval(this.pollTimer);
+        this.stop();
     }
 };

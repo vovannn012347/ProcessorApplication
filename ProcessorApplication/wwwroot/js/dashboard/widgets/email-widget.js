@@ -10,23 +10,27 @@ window.WidgetLibrary["main-email-status"] = {
     },
 
     startPolling: function () {
+        if (this.pollTimer) clearInterval(this.pollTimer);
         this.refresh();
         this.pollTimer = setInterval(() => this.refresh(), 10000);
     },
 
+    stop: function () {
+        if (this.pollTimer) clearInterval(this.pollTimer);
+        this.pollTimer = null;
+        console.log("[Email Widget] Polling stopped for standby.");
+    },
+
     refresh: async function () {
         const bling = this.shell.querySelector('.status-bling');
-
-        // Blink to Grey on Request Start
         if (bling) {
-            bling.className = 'status-bling mm-w-2 mm-h-2 mm-rounded-full mm-bg-slate-400 mm-scale-110 mm-transition-all mm-duration-75';
+            bling.className = 'status-bling mm-w-2 mm-h-2 mm-rounded-full mm-bg-slate-400 mm-scale-125 mm-transition-all mm-duration-75';
         }
 
         try {
             const res = await fetch(`/Main/Dashboard/GetUpdate?widgetId=main-email-status`);
             if (res.ok) {
-                const data = await res.json();
-                this.updateUI(data);
+                this.updateUI(await res.json());
             } else {
                 this.updateUI({ state: 2 });
             }
@@ -37,14 +41,13 @@ window.WidgetLibrary["main-email-status"] = {
 
     updateUI: function (data) {
         if (!data) return;
-
+        const bling = this.shell.querySelector('.status-bling');
         const addrEl = this.shell.querySelector('#email-address-display');
         const statusEl = this.shell.querySelector('#email-status-text');
         const syncEl = this.shell.querySelector('#email-last-sync');
-        const bling = this.shell.querySelector('.status-bling');
 
         if (addrEl) addrEl.innerText = data.address || 'N/A';
-        if (statusEl) statusEl.innerText = data.statusText || 'Sync Error';
+        if (statusEl) statusEl.innerText = data.statusText || 'Error';
         if (syncEl) syncEl.innerText = data.lastChecked || '--:--:--';
 
         if (bling) {
@@ -54,6 +57,6 @@ window.WidgetLibrary["main-email-status"] = {
     },
 
     dispose: function () {
-        if (this.pollTimer) clearInterval(this.pollTimer);
+        this.stop();
     }
 };

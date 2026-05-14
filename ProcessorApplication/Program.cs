@@ -21,25 +21,16 @@ if (!Directory.Exists(modulesRoot)) Directory.CreateDirectory(modulesRoot);
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+//builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
 builder.Configuration
+    .SetBasePath(AppContext.BaseDirectory)
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true);
 
 // 2. Load Module JSON Files (Prefixed with Area)
 // This adds "Main:SecuritySettings:..." from the file to the config
-builder.Configuration.AddModuleJsonFiles(AppContext.BaseDirectory);
+builder.Configuration.AddModuleJsonFiles(AppContext.BaseDirectory, builder.Environment.EnvironmentName);
 
-//if (Directory.Exists(modulesRoot))
-//{
-//    foreach (var dir in Directory.GetDirectories(modulesRoot))
-//    {
-//        var moduleName = Path.GetFileName(dir);
-//        var file = Path.Combine(dir, $"appsettings.{moduleName}.json");
-//        if (File.Exists(file))
-//            builder.Configuration.AddJsonFile(file, optional: true, reloadOnChange: true);
-//    }
-//}
 
 var modules = ModuleLoader.DiscoverModules(AppContext.BaseDirectory);
 var main = (IModule)Activator.CreateInstance(typeof(MainModule))!;

@@ -10,23 +10,26 @@ window.WidgetLibrary["main-user-stats"] = {
     },
 
     startPolling: function () {
+        if (this.pollTimer) clearInterval(this.pollTimer);
         this.refresh();
         this.pollTimer = setInterval(() => this.refresh(), 15000);
     },
 
+    stop: function () {
+        if (this.pollTimer) clearInterval(this.pollTimer);
+        this.pollTimer = null;
+    },
+
     refresh: async function () {
         const bling = this.shell.querySelector('.status-bling');
-
-        // Modem logic: Turn Grey while requesting
         if (bling) {
-            bling.className = 'status-bling mm-w-2 mm-h-2 mm-rounded-full mm-bg-slate-400 mm-scale-110 mm-transition-all mm-duration-75';
+            bling.className = 'status-bling mm-w-2 mm-h-2 mm-rounded-full mm-bg-slate-400 mm-scale-125 mm-transition-all mm-duration-75';
         }
 
         try {
             const res = await fetch(`/Main/Dashboard/GetUpdate?widgetId=main-user-stats`);
             if (res.ok) {
-                const data = await res.json();
-                this.updateUI(data);
+                this.updateUI(await res.json());
             } else {
                 this.updateUI({ state: 2 });
             }
@@ -37,17 +40,15 @@ window.WidgetLibrary["main-user-stats"] = {
 
     updateUI: function (data) {
         if (!data) return;
-
+        const bling = this.shell.querySelector('.status-bling');
         const totalEl = this.shell.querySelector('#user-total-count');
         const activeEl = this.shell.querySelector('#user-active-count');
         const syncEl = this.shell.querySelector('#users-last-sync');
-        const bling = this.shell.querySelector('.status-bling');
 
         if (totalEl) totalEl.innerText = data.total || 0;
         if (activeEl) activeEl.innerText = data.active || 0;
         if (syncEl) syncEl.innerText = data.lastChecked || '--:--:--';
 
-        // Apply health state color
         if (bling) {
             const colors = ['mm-bg-green-500', 'mm-bg-amber-500', 'mm-bg-red-500'];
             bling.className = `status-bling mm-w-2 mm-h-2 mm-rounded-full mm-transition-colors mm-duration-500 ${colors[data.state] || colors[2]}`;
@@ -55,6 +56,6 @@ window.WidgetLibrary["main-user-stats"] = {
     },
 
     dispose: function () {
-        if (this.pollTimer) clearInterval(this.pollTimer);
+        this.stop();
     }
 };

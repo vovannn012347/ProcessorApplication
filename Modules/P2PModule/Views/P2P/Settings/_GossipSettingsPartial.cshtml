@@ -1,0 +1,52 @@
+﻿@model P2PModule.Controllers.ViewModels.P2PSettingsViewModel
+
+<div class="p2p-space-y-6">
+    <div class="p2p-border-b p2p-border-gray-100 p2p-pb-2">
+        <h3 class="p2p-text-sm p2p-font-bold p2p-text-slate-800">Gossip & Peer Discovery Rates</h3>
+        <p class="p2p-text-xs p2p-text-slate-500 p2p-mt-0.5">Configure network amplification fanout targets, anti-dos drip limits, and caching parameters.</p>
+    </div>
+
+    <div class="p2p-grid p2p-grid-cols-1 md:p2p-grid-cols-3 p2p-gap-4">
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Trottle node ingress</label>
+            <input type="number" name="Gossip.MaxNewNodesDrip" value="@Model.Gossip.MaxNewNodesDrip" min="1" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500 focus:p2p-outline-none" />
+            <p class="p2p-text-[11px] p2p-text-slate-400 p2p-mt-1">Up to those new nodes can be saved on disk with each disk flush (flood prevention).</p>
+        </div>
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Node Drip Penalty</label>
+            <input type="number" name="Gossip.NodeDripPenalty" value="@Model.Gossip.NodeDripPenalty" min="0" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500 focus:p2p-outline-none" />
+            <p class="p2p-text-[11px] p2p-text-slate-400 p2p-mt-1">Reputation penalty to nodes spamming new nodes per quota (flood prevention).</p>
+        </div>
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Node Gossip Flush Window (Seconds)</label>
+            <input type="number" name="Gossip.GossipNodesSeconds" value="@Model.Gossip.GossipNodesSeconds" min="1" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500 focus:p2p-outline-none" />
+            <p class="p2p-text-[11px] p2p-text-slate-400 p2p-mt-1">Gossip about new nodes every x seconds.</p>
+        </div>
+    </div>
+
+    <div class="p2p-grid p2p-grid-cols-1 md:p2p-grid-cols-3 p2p-gap-4 p2p-mt-4">
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Fanout Target Count</label>
+            <input type="number" name="Gossip.FanoutTargetCount" value="@Model.Gossip.FanoutTargetCount" min="1" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500 focus:p2p-outline-none" />
+            <p class="p2p-text-[11px] p2p-text-slate-400 p2p-mt-1">Number of active neighborhood peers selected randomly to receive fresh state signals.</p>
+        </div>
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Gossip Batch Array Cap</label>
+            <input type="number" name="Gossip.GossipInBatches" value="@Model.Gossip.GossipInBatches" min="1" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500 focus:p2p-outline-none" />
+            <p class="p2p-text-[11px] p2p-text-slate-400 p2p-mt-1">Maximum updates in a single gossip.</p>
+        </div>
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Stale Gossip Expiry (Ms)</label>
+            <input type="number" name="Gossip.GossipStaleAgeMs" value="@Model.Gossip.GossipStaleAgeMs" min="1" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500 focus:p2p-outline-none" />
+            <p class="p2p-text-[11px] p2p-text-slate-400 p2p-mt-1">Gossips that are aged over this time since creation are dropped.</p>
+        </div>
+    </div>
+
+    <div class="p2p-grid p2p-grid-cols-1 p2p-gap-4 p2p-mt-4">
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Gossip memory (Minutes)</label>
+            <input type="number" name="Gossip.SeenReportCacheTtlMinutes" value="@Model.Gossip.SeenReportCacheTtlMinutes" min="1" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500 focus:p2p-outline-none" />
+            <p class="p2p-text-[11px] p2p-text-slate-400 p2p-mt-1">Time during which gossip is remembered (gossip loop prevention).</p>
+        </div>
+    </div>
+</div>

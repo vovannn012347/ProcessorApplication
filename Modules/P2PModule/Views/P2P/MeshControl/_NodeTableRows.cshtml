@@ -1,0 +1,112 @@
+﻿@model List<P2PModule.Controllers.MeshPeerDisplayItem>
+
+@if (Model == null || !Model.Any())
+{
+    <tr>
+        <td colspan="6" class="p2p-p-8 p2p-text-center p2p-text-sm p2p-text-gray-400 p2p-italic">
+            Isolated node state. No remote neighborhood peer definitions indexed yet.
+        </td>
+    </tr>
+}
+else
+{
+    foreach (var node in Model)
+    {
+        <tr class="p2p-border-b p2p-border-gray-100 hover:p2p-bg-slate-50/50 transition">
+            <!-- Node ID -->
+            <td class="p2p-p-4 p2p-font-mono p2p-text-xs p2p-text-slate-900">
+                <div class="p2p-flex p2p-items-center p2p-gap-2">
+                    <i class="fa-solid fa-server p2p-text-slate-400"></i>
+                    <span class="p2p-font-bold">@node.NodeId</span>
+                </div>
+            </td>
+
+            <!-- Capabilities/Roles -->
+            <td class="p2p-p-4">
+                <div class="p2p-flex p2p-flex-wrap p2p-gap-1">
+                    @if (node.Roles != null && node.Roles.Any())
+                    {
+                        foreach (var role in node.Roles)
+                        {
+                            <span class="p2p-px-2 p2p-py-0.5 p2p-bg-blue-50 p2p-text-blue-700 p2p-text-[10px] p2p-font-bold p2p-rounded">@role</span>
+                        }
+                    }
+                    else
+                    {
+                        <span class="p2p-px-2 p2p-py-0.5 p2p-bg-gray-50 p2p-text-gray-400 p2p-text-[10px] p2p-font-bold p2p-rounded">---</span>
+                    }
+                </div>
+            </td>
+
+            <!-- Endpoint(s) -->
+            <td class="p2p-p-4 p2p-text-xs p2p-text-slate-600">
+                <div class="p2p-flex p2p-flex-col p2p-gap-0.5">
+                    @if (node.Endpoints != null && node.Endpoints.Any())
+                    {
+                        foreach (var endpoint in node.Endpoints)
+                        {
+                            <div class="p2p-truncate max-w-xs p2p-text-slate-600 p2p-font-mono">@endpoint</div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="p2p-truncate max-w-xs p2p-text-slate-300 p2p-font-mono">---</div>
+                    }
+                </div>
+            </td>
+
+            <!-- Trust Score: [overridden (normal) / max] -->
+            <td class="p2p-p-4 p2p-text-right">
+                @{
+                    bool hasOverride = Math.Abs(node.EffectiveTrustScore - node.NormalTrustScore) > 0.01;
+                    var trustClass = node.EffectiveTrustScore >= 80 ? "p2p-text-emerald-600" :
+                    node.EffectiveTrustScore >= 40 ? "p2p-text-amber-500" : "p2p-text-rose-600";
+                }
+                <div class="p2p-text-xs p2p-font-black @trustClass">
+                    @if (hasOverride)
+                    {
+                        <span>@node.EffectiveTrustScore.ToString("F0") <span class="p2p-text-[10px] p2p-text-slate-400 p2p-font-normal">(@node.NormalTrustScore.ToString("F0"))</span> / @node.MaxTrustScore.ToString("F0")</span>
+                    }
+                    else
+                    {
+                        <span>@node.NormalTrustScore.ToString("F0") / @node.MaxTrustScore.ToString("F0")</span>
+                    }
+                </div>
+            </td>
+
+            <!-- Current State of Peer and Connection -->
+            <td class="p2p-p-4 p2p-text-right">
+                <div class="p2p-flex p2p-items-center p2p-justify-end p2p-gap-1.5 p2p-flex-wrap">
+                    @if (node.IsConnected)
+                    {
+                        <span class="p2p-px-2 p2p-py-0.5 p2p-bg-emerald-100 p2p-text-emerald-800 p2p-text-[10px] p2p-font-bold p2p-rounded-full">Connected</span>
+                    }
+                    else
+                    {
+                        <span class="p2p-px-2 p2p-py-0.5 p2p-bg-slate-100 p2p-text-slate-500 p2p-text-[10px] p2p-font-bold p2p-rounded-full">Offline</span>
+                    }
+
+                    @if (node.IsHandshaked)
+                    {
+                        <span class="p2p-px-2 p2p-py-0.5 p2p-bg-blue-100 p2p-text-blue-800 p2p-text-[10px] p2p-font-bold p2p-rounded-full">Handshaked</span>
+                    }
+
+                    @if (node.IsVerified)
+                    {
+                        <span class="p2p-px-2 p2p-py-0.5 p2p-bg-indigo-100 p2p-text-indigo-800 p2p-text-[10px] p2p-font-bold p2p-rounded-full">Verified</span>
+                    }
+
+                    @foreach (var connType in node.ConnectionTypes)
+                    {
+                        <span class="p2p-px-1.5 p2p-py-0.5 p2p-bg-slate-200 p2p-text-slate-700 p2p-text-[9px] p2p-rounded">@connType</span>
+                    }
+                </div>
+            </td>
+
+            <!-- Seen / Activity Date -->
+            <td class="p2p-p-4 p2p-text-right p2p-text-xs p2p-text-slate-500 p2p-font-mono">
+                @(node.LastSeenOrActiveUtc == DateTime.MinValue ? "Never" : node.LastSeenOrActiveUtc.ToString("yyyy-MM-dd HH:mm:ss"))
+            </td>
+        </tr>
+    }
+}

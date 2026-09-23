@@ -6,6 +6,8 @@
     const SCRIPT_ID = "providerless-settings";
     const WRAPPER_ID = "providerless-settings-wrapper";
 
+    root = {};
+
     window.ModuleRegistry = window.ModuleRegistry || {};
 
     window.ModuleRegistry[SCRIPT_ID] = {
@@ -14,7 +16,7 @@
          * @param {HTMLElement} el - The wrapper element hooked via data-script-id
          */
         init: function (el) {
-            const root = el || document.getElementById(WRAPPER_ID);
+            root = el || document.getElementById(WRAPPER_ID);
             if (!root) return;
 
             console.log(`[${SCRIPT_ID}] Initializing settings logic...`);
@@ -38,7 +40,7 @@
         /**
          * AJAX Save Handling
          */
-        handleSave: function (root, form) {
+        handleSave: function (form) {
             const btn = root.querySelector('#saveProviderlessSettingsButton');
             const url = form.action;
             const formData = new FormData(form);

@@ -44,7 +44,7 @@
         };
 
         // --- Module Initialization ---
-        fetch('/Navigation/GetModules')
+        fetch('/Main/Navigation/GetModules')
             .then(res => res.json())
             .then(modules => buildModuleNav(modules));
 
@@ -178,6 +178,6 @@
             }
         });
 
-        loadContent(`/Navigation/GetModuleMenu?moduleId=${id}`, contextualMenu);
+        loadContent(`/Main/Navigation/GetModuleMenu?moduleId=${id}`, contextualMenu);
     }
 })();

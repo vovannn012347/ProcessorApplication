@@ -5,6 +5,8 @@
 (function () {
     const SCRIPT_ID = "processor-preparejob";
 
+    root = {}
+
     window.ModuleRegistry = window.ModuleRegistry || {};
 
     window.ModuleRegistry[SCRIPT_ID] = {
@@ -13,7 +15,7 @@
          * @param {HTMLElement} el - The wrapper element hooked via data-script-id
          */
         init: function (el) {
-            const root = el || document.getElementById('prepare-job-wrapper');
+            root = el || document.getElementById('prepare-job-wrapper');
             if (!root) return;
 
             console.log(`[${SCRIPT_ID}] Initializing job configuration...`);
@@ -23,7 +25,7 @@
         /**
          * Scoped form listener for submission state
          */
-        attachFormListener: function (root) {
+        attachFormListener: function () {
             const form = root.querySelector('#jobForm');
             const btn = root.querySelector('#submitBtn');
             if (!form || !btn) return;
@@ -40,7 +42,7 @@
         /**
          * Handles the dynamic preview of selected files or folders
          */
-        handleFileSelect: function (input, key, root) {
+        handleFileSelect: function (input, key) {
             const preview = root.querySelector('#preview_' + key);
             if (!preview) return;
 

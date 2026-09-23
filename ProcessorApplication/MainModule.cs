@@ -9,6 +9,7 @@ using Common.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.AspNetCore.Mvc.Razor;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 
@@ -18,8 +19,8 @@ using ProcessorApplication.Dashboard;
 using ProcessorApplication.Database;
 using ProcessorApplication.Database.Models;
 using ProcessorApplication.Infrastructure;
+using ProcessorApplication.Infrastructure.Web;
 using ProcessorApplication.Models.Settings;
-using ProcessorApplication.Models.User;
 using ProcessorApplication.Policy;
 using ProcessorApplication.Services;
 using ProcessorApplication.Services.Email;
@@ -31,18 +32,19 @@ using ProcessorApplication.Utils;
 namespace ProcessorApplication;
 public class MainModule : IModule
 {
-    public const string MainId = "Main";
+    public const string MODULE_ID = "Main";
+    public const string MODULE_NAMESPACE = "ProcessorApplication";
     public string Name => "Main module";
-    public string ModuleId => MainId;
+    public string ModuleId => MODULE_ID;
 
     public Version Version => new Version("1.0.0.0");
-
+    public IEnumerable<string> ListAdvertisedCapabilities() => Array.Empty<string>();
     public ModuleDependency[] Dependencies => new ModuleDependency[] { };
 
     public virtual IEnumerable<string> GetDefinedRoles() => new[] { "Admin", "User" };
 
     public IEnumerable<string> GetRequiredRoles() => Array.Empty<string>();
-    public List<MenuItemViewModel> GetMenuItems(IServiceProvider services)
+    public IEnumerable<MenuItemViewModel> GetMenuItems(IServiceProvider services)
     {
         return new List<MenuItemViewModel>
         {
@@ -69,19 +71,17 @@ public class MainModule : IModule
                 Url = "/Main/Users/Index",
                 Roles = "Admin"
             },
-            new MenuItemViewModel {
-                Name = "Server log",
-                IconClass = "fa-solid fa-file-lines",
-                Url = "/Main/Log/Index",
-                Roles = "Admin"
-            }
+            //new MenuItemViewModel {
+            //    Name = "Server log",
+            //    IconClass = "fa-solid fa-file-lines",
+            //    Url = "/Main/Log/Index",
+            //    Roles = "Admin"
+            //}
         };
     }
 
     public void ConfigureServices(IServiceCollection services, IConfiguration config)
     {
-        //var value = config.GetSection<List<EmailProviderGuesserRule>>("EmailProviderGuessRules");
-
         //email config
         services.Configure<List<EmailProviderGuesserRule>>(
             config.GetSection("EmailProviderGuessRules"));
@@ -111,6 +111,7 @@ public class MainModule : IModule
 
         services.AddScoped<ISettingService, SettingService>();
         services.AddHostedService<SettingsInitializer>();
+        services.AddModuleSettings<RegisteringSettings>(config, ModuleId);
         services.AddModuleSettings<SecuritySettings>(config, ModuleId);
         services.AddModuleSettings<EmailSettings>(config, ModuleId); 
         
@@ -160,14 +161,14 @@ public class MainModule : IModule
         {
             options.AddPolicy("LocalhostOnly", policy =>
             {
-                policy.Requirements.Add(new LocalhostRequirement());
+                policy.Requirements.Add(new LocalRequirement());
             });
 
             options.AddPolicy("AdminLocalPolicy", policy =>
             {
                 policy.RequireAuthenticatedUser();
                 policy.RequireRole("Admin");
-                policy.AddRequirements(new LocalhostRequirement());
+                policy.AddRequirements(new LocalRequirement());
             });
 
             options.FallbackPolicy = options.DefaultPolicy;
@@ -197,33 +198,10 @@ public class MainModule : IModule
             {
                 FileProvider = new PhysicalFileProvider(wwwroot),
                 // This allows <link href="/Main/css/output.css" />
-                RequestPath = $"/{MainId}"
+                RequestPath = $"/{MODULE_ID}"
             });
         }
     }
-
-    //public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
-    //{
-    //    var assemblyLocation = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-    //    var wwwroot = Path.Combine(assemblyLocation!, "wwwroot");
-
-    //    if (Directory.Exists(wwwroot))
-    //    {
-    //        app.UseStaticFiles(new StaticFileOptions
-    //        {
-    //            FileProvider = new PhysicalFileProvider(wwwroot),
-    //            RequestPath = ""
-    //        });
-    //    }
-
-    //    // 2. Self-Resolving Routing
-    //    //app.UseRouting();
-    //    //app.UseAuthorization();
-    //    //app.UseEndpoints(endpoints =>
-    //    //{
-    //    //    endpoints.MapControllers();
-    //    //});
-    //}
 
     public void PrestartInit(IHost host)
     {
@@ -276,11 +254,27 @@ public class MainModule : IModule
         }
     }
 
+    public void ConfigureEndpoints(IEndpointRouteBuilder endpoints)
+    {
+        endpoints.MapHub<DashboardHub>("/dashboardHub");
+
+        // Root Redirect
+        endpoints.MapGet("/", context => {
+            context.Response.Redirect("/Main/Home/Dashboard");
+            return Task.CompletedTask;
+        });
+    }
+
     public IEnumerable<IConfigurationSource> GetConfigurationSources(IConfiguration initialConfig)
     {
         var sqliteCs = initialConfig.GetConnectionString("SQLite");
         if (string.IsNullOrEmpty(sqliteCs))
             sqliteCs = initialConfig.GetValue<string>("Main:ConnectionStrings:SQLite");
+
+        //foreach (var kv in initialConfig.AsEnumerable())
+        //{
+        //    Console.WriteLine($"{kv.Key} = {kv.Value}");
+        //}
 
         if (string.IsNullOrWhiteSpace(sqliteCs))
         {

@@ -62,7 +62,7 @@ public class MainWidgetProvider : WidgetProviderAbstract
             catch (Exception ex)
             {
                 // In a medical system, we log the failure but don't crash the entire provider
-                // _logger.LogError(ex, "Failed to register widget type {TypeName}", type.Name);
+                //_logger.LogError(ex, "Failed to register widget type {TypeName}", type.Name);
             }
         }
 

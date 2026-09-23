@@ -26,7 +26,7 @@ public class ProcessingStatusWidget : IDashboardWidget, IDisposable
         Name = "Compute Engine",
         IconClass = "fa-solid fa-microchip",
         Roles = "Admin,ProcessRunner",
-        ViewPath = $"~/Views/{ProcessorModule.MODULE_ID}/DashboardWidgets/_ProcessStatus.cshtml",
+        ViewPath = $"~/Views/{ProcessorModuleEntryPoint.MODULE_ID}/DashboardWidgets/_ProcessStatus.cshtml",
         ScriptPath = "/Processing/js/dashboard/widgets/process-widget.js"
     };
 

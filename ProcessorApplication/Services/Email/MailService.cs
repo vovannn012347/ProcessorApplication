@@ -151,9 +151,17 @@ public class EmailService : IEmailService, IDisposable
             }
 
             // 2c. Connect
-            var socketOptions = settings.Server.UseSsl
-                ? SecureSocketOptions.SslOnConnect
-                : SecureSocketOptions.StartTls;
+            SecureSocketOptions socketOptions = settings.Server.Security switch
+            {
+                "None" => SecureSocketOptions.None,
+                "StartTls" => SecureSocketOptions.StartTls,
+                "SslOnConnect" => SecureSocketOptions.SslOnConnect,
+                "Auto" => SecureSocketOptions.Auto,
+                _ => throw new InvalidOperationException()
+            };
+            //var socketOptions = settings.Server.UseSsl
+            //    ? SecureSocketOptions.SslOnConnect
+            //    : SecureSocketOptions.StartTls;
 
             await client.ConnectAsync(settings.Server.SmtpHost, settings.Server.SmtpPort, socketOptions);
 
@@ -219,7 +227,16 @@ public class EmailService : IEmailService, IDisposable
             client.ClientCertificates.Add(cert);
         }
 
-        var socketOptions = settings.Server.UseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls;
+        SecureSocketOptions socketOptions = settings.Server.Security switch
+        {
+            "None" => SecureSocketOptions.None,
+            "StartTls" => SecureSocketOptions.StartTls,
+            "SslOnConnect" => SecureSocketOptions.SslOnConnect,
+            "Auto" => SecureSocketOptions.Auto,
+            _ => throw new InvalidOperationException()
+        };
+
+        //var socketOptions = settings.Server.UseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls;
 
         await client.ConnectAsync(settings.Server.SmtpHost, settings.Server.SmtpPort, socketOptions);
 

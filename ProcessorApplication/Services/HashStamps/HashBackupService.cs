@@ -1,22 +1,9 @@
-﻿using System.Collections.Concurrent;
-using System.ComponentModel.DataAnnotations;
-using System.Reflection;
-using System.Security.Cryptography;
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 
-using Common.Attributes;
-using Common.Code;
-using Common.Interfaces;
-using Common.Models.Database;
-
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
-using MongoDB.Bson;
-
 using ProcessorApplication.Configuration.Settings;
-using ProcessorApplication.Database;
 using ProcessorApplication.Database.Models;
 using ProcessorApplication.Infrastructure;
 using ProcessorApplication.Models;

@@ -16,19 +16,19 @@ public class CloudflareSettings : ITunnelSettings
     /// If null or cannot conenct to - a 'Quick Tunnel' (random URL) will be created.
     /// </summary>
     [Display(Name = "Tunnel Token (Optional)")]
-    public string TunnelToken { get; set; }
+    public string TunnelToken { get; set; } = string.Empty;
 
     /// <summary>
     /// If tunnel is not provided - agent will neeed provisioning done
     /// accoutn id, zone id and provision token should be set for this
     /// </summary>
     [Display(Name = "Account ID")]
-    public string AccountId { get; set; }
+    public string AccountId { get; set; } = string.Empty;
     [Display(Name = "Zone ID")]
-    public string ZoneId { get; set; }
+    public string ZoneId { get; set; } = string.Empty;
 
     [Display(Name = "Provision Token")]
-    public string ProvisionToken { get; set; }
+    public string ProvisionToken { get; set; } = string.Empty;
     /// <summary>
     /// If tunnel token is provided, the agent will assume user knows what it is doing.
     /// If null or cannot conenct to - a 'Quick Tunnel' (random URL) will be created.

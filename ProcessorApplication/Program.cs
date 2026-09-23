@@ -1,17 +1,16 @@
-﻿
+﻿using Common.Models;
+
 using Infrastructure.Monitoring;
 
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.AspNetCore.Mvc.ApplicationParts;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Mvc.Razor;
+using Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation;
 
 using ProcessorApplication;
 using ProcessorApplication.Attributes;
-using ProcessorApplication.Dashboard;
+using ProcessorApplication.Configuration;
 using ProcessorApplication.Infrastructure;
+using ProcessorApplication.Infrastructure.Web;
 using ProcessorApplication.Services;
 using ProcessorApplication.Utils;
 
@@ -21,7 +20,6 @@ if (!Directory.Exists(modulesRoot)) Directory.CreateDirectory(modulesRoot);
 
 var builder = WebApplication.CreateBuilder(args);
 
-//builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
 builder.Configuration
     .SetBasePath(AppContext.BaseDirectory)
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
@@ -31,8 +29,10 @@ builder.Configuration
 // This adds "Main:SecuritySettings:..." from the file to the config
 builder.Configuration.AddModuleJsonFiles(AppContext.BaseDirectory, builder.Environment.EnvironmentName);
 
+var modules = ModuleLoader.DiscoverModules(builder.Services, builder.Configuration, AppContext.BaseDirectory);
 
-var modules = ModuleLoader.DiscoverModules(AppContext.BaseDirectory);
+ModuleRegistry.InstallResolutionDivert(); //important, do not touch
+
 var main = (IModule)Activator.CreateInstance(typeof(MainModule))!;
 modules = modules.Prepend(main).ToList();
 
@@ -44,6 +44,7 @@ foreach (var m in modules)
     }
 }
 
+
 // core services
 var mvcBuilder = builder.Services.AddControllersWithViews(options =>
     {
@@ -51,9 +52,47 @@ var mvcBuilder = builder.Services.AddControllersWithViews(options =>
     })
     .ConfigureApplicationPartManager(apm =>
     {
-        // Your custom code goes here
+        // Remove the default provider that uses reflection on Default ALC
+        //var featureProvider = apm.FeatureProviders.OfType<ControllerFeatureProvider>().FirstOrDefault();
+        //if (featureProvider != null) apm.FeatureProviders.Remove(featureProvider);
+
+        //// Add our custom provider that forces scan inside isolated ALCs
+        //apm.FeatureProviders.Add(new ModuleControllerFeatureProvider());
     });
-builder.Services.AddRazorPages();
+
+builder.Services.AddRazorPages().AddRazorRuntimeCompilation();
+builder.Services.Configure<MvcRazorRuntimeCompilationOptions>(options =>
+{
+    // Clear default providers (stops looking at the source code folder)
+    //options.FileProviders.Clear();
+
+    options.FileProviders.Add(new Microsoft.Extensions.FileProviders.PhysicalFileProvider(AppContext.BaseDirectory));
+
+    // 2. Explicitly add each Module's folder to the provider chain
+    var modulesPath = Path.Combine(AppContext.BaseDirectory, "Modules");
+    if (Directory.Exists(modulesPath))
+    {
+        foreach (var dir in Directory.GetDirectories(modulesPath))
+        {
+            options.FileProviders.Add(new Microsoft.Extensions.FileProviders.PhysicalFileProvider(dir));
+        }
+    }
+
+    // 3. Register module assemblies into the Compilation metadata reference list
+    // This allows the Razor compiler to resolve types (@model, etc.) across ALC boundaries
+    foreach (var alc in ProcessorApplication.Infrastructure.ModuleRegistry.Contexts)
+    {
+        foreach (var assembly in alc.Assemblies)
+        {
+            var assemblyPath = assembly.Location;
+            // Only add paths that exist and aren't already covered by the host's primary runtime
+            if (!string.IsNullOrEmpty(assemblyPath) && File.Exists(assemblyPath))
+            {
+                options.AdditionalReferencePaths.Add(assemblyPath);
+            }
+        }
+    }
+});
 
 builder.Services.AddSingleton<IModuleService, ModuleService>();
 builder.Services.AddMemoryCache();
@@ -68,15 +107,43 @@ builder.Services.AddSession(options =>
 });
 
 // module discovery and registration
+
+builder.Services.Configure<RazorViewEngineOptions>(options =>
+{
+    options.ViewLocationExpanders.Add(new UniversalViewLocationExpander());
+});
+
+
+var aggregatedCapabilities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+
 foreach (var m in modules)
 {
     builder.Services.AddSingleton(m);
 
     var assembly = m.GetType().Assembly;
     mvcBuilder.AddApplicationPart(assembly);
+
+
+    // Statically harvest advertised capabilities from the module descriptor
+    var capabilities = m.ListAdvertisedCapabilities();
+    if (capabilities != null)
+    {
+        foreach (var cap in capabilities)
+        {
+            if (!string.IsNullOrWhiteSpace(cap))
+            {
+                aggregatedCapabilities.Add(cap);
+            }
+        }
+    }
+
     m.ConfigureServices(builder.Services, builder.Configuration.GetSection(m.ModuleId));
 }
 
+// Register the strongly-typed AdvertisedCapabilitiesRegistry container as a Singleton
+var capabilitiesRegistry = new AdvertisedCapabilitiesRegistry(aggregatedCapabilities);
+builder.Services.AddSingleton(capabilitiesRegistry);
 builder.Services.AddSingleton<UserPresenceStore>();
 
 // build
@@ -84,8 +151,11 @@ var app = builder.Build();
 
 // prestart init actions
 var moduleInstances = app.Services.GetServices<IModule>();
+
 foreach (var m in moduleInstances)
     m.PrestartInit(app);
+
+await ConfigurationBootstrapper.SeedAsync(app, moduleInstances);
 
 // hot reload
 if (app.Environment.IsDevelopment())
@@ -145,15 +215,11 @@ app.UseEndpoints(endpoints =>
     endpoints.MapControllers();
     endpoints.MapRazorPages();
 
-    endpoints.MapHub<DashboardHub>("/dashboardHub");
-
-    // Root Redirect
-    endpoints.MapGet("/", context => {
-        context.Response.Redirect("/Main/Home/Dashboard");
-        return Task.CompletedTask;
-    });
-
-}); 
+    foreach(var module in modules)
+    {
+        module.ConfigureEndpoints(endpoints);
+    }
+});
 
 
 /*
@@ -174,5 +240,28 @@ foreach (var endpoint in endpointDataSource.Endpoints.OfType<RouteEndpoint>())
         methods is null ? "ANY" : string.Join(",", methods),
         endpoint.RoutePattern.RawText);
 }*/
+/*
+var endpointDataSource = app.Services.GetRequiredService<EndpointDataSource>();
+
+Console.WriteLine("==========================================================");
+Console.WriteLine("[DI ROUTE EXPLORER] REGISTERED ENDACTION MATRICES");
+Console.WriteLine("==========================================================");
+
+foreach (var endpoint in endpointDataSource.Endpoints.OfType<RouteEndpoint>())
+{
+    var displayName = endpoint.DisplayName;
+    var routePattern = endpoint.RoutePattern.RawText;
+    var order = endpoint.RoutePattern.InboundPrecedence;
+
+    // Extract bound routing parameters (like controller defaults, areas, actions)
+    var defaults = string.Join(", ", endpoint.RoutePattern.Defaults.Select(d => $"{d.Key}={d.Value}"));
+
+    Console.WriteLine($"Pattern: /{routePattern}");
+    Console.WriteLine($"   Handler: {displayName}");
+    Console.WriteLine($"   Defaults:  [{defaults}]");
+    Console.WriteLine("----------------------------------------------------------");
+}
+Console.WriteLine("==========================================================");
+*/
 
 await app.RunAsync();

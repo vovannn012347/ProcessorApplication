@@ -1,0 +1,57 @@
+﻿@model P2PModule.Controllers.ViewModels.P2PSettingsViewModel
+
+<div class="p2p-space-y-6">
+    <div class="p2p-border-b p2p-border-gray-100 p2p-pb-2">
+        <h3 class="p2p-text-sm p2p-font-bold p2p-text-slate-800">Trust Scoring Coefficients & Consensus Metrics</h3>
+        <p class="p2p-text-xs p2p-text-slate-500 p2p-mt-0.5">Configure reputation increments, sliding trust decay values, seniority protection curves, and Byzantine consensus weights.</p>
+    </div>
+
+    <div class="p2p-grid p2p-grid-cols-1 md:p2p-grid-cols-3 p2p-gap-4">
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Handshake Rep Delta</label>
+            <input type="number" step="0.01" name="Rating.HandshakeRepDelta" value="@Model.Rating.HandshakeRepDelta" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500 focus:p2p-outline-none" />
+            <p class="p2p-text-[11px] p2p-text-slate-400 p2p-mt-1">Reputation reward upon completing a successful connection verification.</p>
+        </div>
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Seniority Smoothing Coeficcient</label>
+            <input type="number" step="0.01" name="Rating.SenioritySmoothingCoefficient" value="@Model.Rating.SenioritySmoothingCoefficient" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500 focus:p2p-outline-none" />
+            <p class="p2p-text-[11px] p2p-text-slate-400 p2p-mt-1">Logarithmic damping applied to long living nodes.</p>
+        </div>
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Minimum Trust Threshold</label>
+            <input type="number" step="0.01" name="Rating.MinimumTrustThreshold" value="@Model.Rating.MinimumTrustThreshold" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500 focus:p2p-outline-none" />
+            <p class="p2p-text-[11px] p2p-text-slate-400 p2p-mt-1">Lower score boundary cap floor. Peers dropping below this limit trigger immediate automated block.</p>
+        </div>
+    </div>
+
+    <div class="p2p-grid p2p-grid-cols-1 md:p2p-grid-cols-2 p2p-gap-4 p2p-mt-4">
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Trust Decay Rate</label>
+            <input type="number" step="0.01" name="Rating.PositiveTrustDecayRate" value="@Model.Rating.PositiveTrustDecayRate" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500 focus:p2p-outline-none" />
+            <p class="p2p-text-[11px] p2p-text-slate-400 p2p-mt-1">How fast trust expires upon node not beign active.</p>
+        </div>
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Trust Indulgence Rate</label>
+            <input type="number" step="0.01" name="Rating.NegativeTrustIndulgenceRate" value="@Model.Rating.NegativeTrustIndulgenceRate" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500 focus:p2p-outline-none" />
+            <p class="p2p-text-[11px] p2p-text-slate-400 p2p-mt-1">How fast bad behavior is forgotten.</p>
+        </div>
+    </div>
+
+    <div class="p2p-grid p2p-grid-cols-1 md:p2p-grid-cols-3 p2p-gap-4 p2p-mt-4">
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Consensus Self-Trust Weight</label>
+            <input type="number" step="0.01" name="Rating.ConsensusSelfTrust" value="@Model.Rating.ConsensusSelfTrust" min="0" max="1" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500 focus:p2p-outline-none" />
+            <p class="p2p-text-[11px] p2p-text-slate-400 p2p-mt-1">Controls how much we trust rating that we do know ourselves. Setting to 1.0 completely removes other node`s rating opinions.</p>
+        </div>
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Consensus Out-Of-Time Trust Threshold</label>
+            <input type="number" step="0.01" name="Rating.ConsensusOutOfTImeStartThreshold" value="@Model.Rating.ConsensusOutOfTImeStartThreshold" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500 focus:p2p-outline-none" />
+            <p class="p2p-text-[11px] p2p-text-slate-400 p2p-mt-1">Nodes below this rating will not be considered for consensus requests and will be ignored when requesting consensus when not in consensus time.</p>
+        </div>
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Consensus Out-Of-Time Trust Penalty</label>
+            <input type="number" step="0.01" name="Rating.ConsensusOutOfTImePrice" value="@Model.Rating.ConsensusOutOfTImePrice" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500 focus:p2p-outline-none" />
+            <p class="p2p-text-[11px] p2p-text-slate-400 p2p-mt-1">Direct penalty applied to trust score of out of time consensus.</p>
+        </div>
+    </div>
+</div>

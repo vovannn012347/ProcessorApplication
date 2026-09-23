@@ -1,0 +1,77 @@
+﻿@model List<FileSharingModule.Models.FileArchiveItemRecord>
+
+<div class="overflow-x-auto">
+    <table class="w-full text-left border-collapse text-xs">
+        <thead>
+            <tr class="bg-slate-50 border-b border-gray-200 text-slate-500 uppercase tracking-wider text-[10px]">
+                <th class="py-3 px-4 font-semibold">File Name</th>
+                <th class="py-3 px-4 font-semibold">Content Hash (InfoHash)</th>
+                <th class="py-3 px-4 font-semibold">Size</th>
+                <th class="py-3 px-4 font-semibold">Blocks</th>
+                <th class="py-3 px-4 font-semibold">Visibility</th>
+                <th class="py-3 px-4 font-semibold">Uploaded</th>
+                <th class="py-3 px-4 font-semibold text-right">Actions</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100 text-slate-700">
+            @if (Model == null || Model.Count == 0)
+            {
+                <tr>
+                    <td colspan="7" class="py-8 text-center text-slate-400">
+                        <i class="fa-solid fa-box-open text-2xl mb-2 block"></i>
+                        No files currently tracked or seeded on this node.
+                    </td>
+                </tr>
+            }
+            else
+            {
+                @foreach (var item in Model)
+                {
+                    <tr class="hover:bg-slate-50/70 transition">
+                        <td class="py-3 px-4 font-semibold text-slate-900 flex items-center gap-2">
+                            <i class="fa-regular fa-file-zipper text-indigo-500"></i>
+                            @item.Manifest.FileName
+                        </td>
+                        <td class="py-3 px-4 font-mono text-[11px] text-slate-500" title="@item.Manifest.ContentHash">
+                            @item.Manifest.ContentHash.Substring(0, Math.Min(12, item.Manifest.ContentHash.Length))...
+                        </td>
+                        <td class="py-3 px-4 text-slate-600">
+                            @((item.Manifest.TotalSizeBytes / 1024.0 / 1024.0).ToString("F2")) MB
+                        </td>
+                        <td class="py-3 px-4 text-slate-600">
+                            @item.Manifest.TotalBlocksCount blk
+                        </td>
+                        <td class="py-3 px-4">
+                            @if (item.IsHidden)
+                            {
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800">
+                                    <i class="fa-solid fa-eye-slash mr-1"></i> Hidden
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-800">
+                                    <i class="fa-solid fa-globe mr-1"></i> Public
+                                </span>
+                            }
+                        </td>
+                        <td class="py-3 px-4 text-slate-500 text-[11px]">
+                            @((item.TotalUploadedBytes / 1024.0 / 1024.0).ToString("F2")) MB
+                        </td>
+                        <td class="py-3 px-4 text-right space-x-1">
+                            <a href="@Url.Action("DownloadManifest", "FileArchive", new { contentHash = item.Manifest.ContentHash })" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-medium inline-block" title="Download .ptorrent metadata">
+                                <i class="fa-solid fa-download"></i> .ptorrent
+                            </a>
+                            <button type="button" data-action="toggle-visibility" data-hash="@item.Manifest.ContentHash" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-medium" title="Toggle visibility">
+                                <i class="fa-solid @(item.IsHidden ? "fa-eye" : "fa-eye-slash")"></i>
+                            </button>
+                            <button type="button" data-action="delete-file" data-hash="@item.Manifest.ContentHash" class="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded text-[11px] font-medium" title="Stop & Delete">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>

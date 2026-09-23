@@ -1,0 +1,118 @@
+﻿@model SettingsViewModel
+@using Microsoft.AspNetCore.Mvc.ModelBinding
+@using ProcessorApplication.Models
+@using ProcessorApplication.ViewModels
+
+<div id="settings-partial-wrapper" data-script-id="main-settings">
+
+    <h1 class="mm-text-3xl mm-font-bold mm-text-gray-900 mm-mb-6">Main Module Configuration</h1>
+
+    <div id="global-messages">
+        @{
+            var globalMessage = ViewData["GlobalMessage"] as string;
+            var messageType = ViewData["MessageType"] as string;
+
+            if (!string.IsNullOrEmpty(globalMessage))
+            {
+                var isSuccess = messageType == "Success";
+                var icon = isSuccess ? "fa-check-circle" : "fa-circle-exclamation";
+                var color = isSuccess ? "green" : "red";
+
+                <div class="mm-rounded-md mm-bg-@color-50 mm-p-4 mm-mb-6">
+                    <div class="mm-flex">
+                        <div class="mm-flex-shrink-0 mm-text-@color-400">
+                            <i class="fa-solid @icon"></i>
+                        </div>
+                        <div class="mm-ml-3">
+                            <h3 class="mm-text-sm mm-font-medium mm-text-@color-800">@(isSuccess ? "Success" : "Error")</h3>
+                            <p class="mm-mt-2 mm-text-sm mm-text-@color-700">@globalMessage</p>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+
+    <div id="validation-messages" class="mm-mb-4" style="@(ViewData.ModelState.IsValid ? "display: none;" : "")">
+        @if (!ViewData.ModelState.IsValid)
+        {
+            <div class="mm-rounded-md mm-bg-yellow-50 mm-p-4 mm-border mm-border-yellow-200">
+                <h3 class="mm-text-sm mm-font-medium mm-text-yellow-800 mm-flex mm-items-center mm-mb-2">
+                    <i class="fa-solid fa-triangle-exclamation mm-mr-2 mm-text-yellow-500"></i> Please correct the following errors:
+                </h3>
+                <ul class="mm-list-disc mm-ml-6 mm-text-sm mm-text-yellow-700 mm-space-y-1">
+                    @foreach (var state in ViewData.ModelState.Values)
+                    {
+                        @foreach (var error in state.Errors)
+                        {
+                            <li>@error.ErrorMessage</li>
+                        }
+                    }
+                </ul>
+            </div>
+        }
+    </div>
+
+
+    <!-- wrap all tabs -->
+    <form id="masterSettingsForm"
+        asp-area="Main"
+        asp-controller="Settings" 
+        asp-action="ProcessAllSettings" method="post">
+
+        <div class="mm-flex mm-flex-col md:mm-flex-row mm-space-x-0 md:mm-space-x-8">
+
+            <!-- Tab Navigation -->
+            <div id="settings-tab-nav" class="mm-flex mm-flex-row md:mm-flex-col mm-space-x-2 md:mm-space-x-0 md:mm-space-y-2 mm-mb-4 md:mm-mb-0 mm-pb-2 md:mm-pb-0 mm-overflow-x-auto mm-border-b md:mm-border-b-0 md:mm-border-r mm-border-gray-200 md:mm-w-48 mm-flex-shrink-0">
+
+                <button type="button" data-tab="security" class="tab-button mm-inline-flex mm-items-center mm-px-4 mm-py-2 mm-text-sm mm-font-medium mm-rounded-md mm-transition mm-duration-150 mm-bg-indigo-600 mm-text-white mm-shadow-md" aria-selected="true">
+                    <i class="fa-solid fa-shield-halved mm-mr-2"></i> Security
+                </button>
+
+                <button type="button" data-tab="email" class="tab-button mm-inline-flex mm-items-center mm-px-4 mm-py-2 mm-text-sm mm-font-medium mm-rounded-md mm-transition mm-duration-150 mm-bg-indigo-600 mm-text-white mm-shadow-md" aria-selected="true">
+                    <i class="fa-solid fa-square-envelope mm-mr-2"></i> Email
+                </button>
+
+                <button type="button" data-tab="registering" class="tab-button mm-inline-flex mm-items-center mm-px-4 mm-py-2 mm-text-sm mm-font-medium mm-rounded-md mm-transition mm-duration-150 mm-bg-indigo-600 mm-text-white mm-shadow-md" aria-selected="true">
+                    <i class="fa-solid fa-cash-register mm-mr-2"></i> Registering
+                </button>
+
+            </div>
+
+            <!-- Tab Content -->
+            <div class="mm-flex-1 mm-min-w-0 mm-p-2">
+
+                <!-- Tab 1: Security Settings -->
+                <div id="tab-security" class="tab-content mm-space-y-4">
+                    <h2 class="mm-text-xl mm-font-semibold mm-mb-3 mm-border-b mm-pb-2">Security</h2>
+                    <partial name="_SecurityTabPartial" model="Model.Security" view-data='new ViewDataDictionary(ViewData) { { "ModelPrefix", "Security" } }' />
+                </div>
+
+                <div id="tab-email" class="tab-content mm-space-y-4">
+                    <h2 class="mm-text-xl mm-font-semibold mm-mb-3 mm-border-b mm-pb-2">Email</h2>
+                    <partial name="_EmailTabPartial" model="Model.Email" view-data='new ViewDataDictionary(ViewData) { { "ModelPrefix", "Email" } }' />
+                </div>
+
+                <div id="tab-registering" class="tab-content mm-space-y-4">
+                    <h2 class="mm-text-xl mm-font-semibold mm-mb-3 mm-border-b mm-pb-2">Registering</h2>
+                    <partial name="_RegisteringTabPartial" model="Model.Registering" view-data='new ViewDataDictionary(ViewData) { { "ModelPrefix", "Registering" } }' />
+                </div>
+
+                @Html.AntiForgeryToken()
+
+            </div>
+        </div>
+
+        <!-- Global Save Button -->
+        <div class="mm-mt-8 mm-pt-4 mm-border-t mm-border-gray-200">
+            <button type="submit" id="masterSaveButton" class="mm-justify-center mm-rounded-md mm-border mm-border-transparent mm-bg-indigo-600 mm-py-2 mm-px-4 mm-text-sm mm-font-medium mm-text-white mm-shadow-md hover:mm-bg-indigo-700 focus:mm-outline-none focus:mm-ring-2 focus:mm-ring-indigo-500 focus:mm-ring-offset-2 mm-transition mm-duration-150">
+                <i class="fa-solid fa-save mm-mr-2"></i> Save All
+            </button>
+        </div>
+    </form>
+</div>
+
+
+@section Scripts {
+    <script src="~/js/pages/settings/index.js" asp-append-version="true"></script>
+}

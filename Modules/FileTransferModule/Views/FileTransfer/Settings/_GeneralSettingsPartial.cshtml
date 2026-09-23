@@ -1,0 +1,59 @@
+﻿@model FileSharingModule.Configuration.FileSharingSettings
+
+<div class="space-y-6">
+    <div>
+        <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider pb-2 border-b border-gray-100">Storage & Sandbox Layout</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+            <div>
+                <label class="block text-[11px] font-bold text-slate-600 mb-1">Sandboxed Storage Root Path</label>
+                <input type="text" name="StorageRootPath" value="@Model.StorageRootPath" class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:ring-1 focus:ring-indigo-500" required />
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-slate-600 mb-1">Pending Downloads Path</label>
+                <input type="text" name="PendingDownloadsPath" value="@Model.PendingDownloadsPath" class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:ring-1 focus:ring-indigo-500" required />
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-[11px] font-bold text-slate-600 mb-1">Manifests (.ptorrent) Path</label>
+                <input type="text" name="ManifestsPath" value="@Model.ManifestsPath" class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:ring-1 focus:ring-indigo-500" required />
+            </div>
+        </div>
+    </div>
+
+    <div>
+        <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider pb-2 border-b border-gray-100">Chunking & Protocol Bounds</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+            <div>
+                <label class="block text-[11px] font-bold text-slate-600 mb-1">Block Verification Size (Bytes)</label>
+                <input type="number" name="BlockSizeBytes" value="@Model.BlockSizeBytes" class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2" required />
+                <p class="text-[10px] text-slate-400 mt-0.5">e.g., 2097152 (2 MB) or 5242880 (5 MB)</p>
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-slate-600 mb-1">Wire Slice Size (Bytes)</label>
+                <input type="number" name="SliceSizeBytes" value="@Model.SliceSizeBytes" class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2" required />
+                <p class="text-[10px] text-slate-400 mt-0.5">Standard WebRTC chunk: 65536 (64 KB)</p>
+            </div>
+        </div>
+    </div>
+
+    <div>
+        <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider pb-2 border-b border-gray-100">Swarm Concurrency & Timeouts</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mt-3">
+            <div>
+                <label class="block text-[11px] font-bold text-slate-600 mb-1">Max Uploads</label>
+                <input type="number" name="MaxActiveUploads" value="@Model.MaxActiveUploads" class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2" required />
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-slate-600 mb-1">Max Downloads</label>
+                <input type="number" name="MaxActiveDownloads" value="@Model.MaxActiveDownloads" class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2" required />
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-slate-600 mb-1">Slice Timeout (s)</label>
+                <input type="number" name="SliceRequestTimeoutSeconds" value="@Model.SliceRequestTimeoutSeconds" class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2" required />
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-slate-600 mb-1">Discovery Timeout (s)</label>
+                <input type="number" name="SeederDiscoveryTimeoutSeconds" value="@Model.SeederDiscoveryTimeoutSeconds" class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2" required />
+            </div>
+        </div>
+    </div>
+</div>

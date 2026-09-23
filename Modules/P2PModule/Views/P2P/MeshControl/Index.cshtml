@@ -1,0 +1,127 @@
+﻿@model List<P2PModule.Controllers.MeshPeerDisplayItem>
+@{
+    ViewData["Title"] = "P2P Mesh Network Overview";
+    var isAjax = Context.Request.Headers["X-Requested-With"] == "XMLHttpRequest";
+    if (isAjax) { Layout = null; }
+}
+
+@section Styles {
+    <link rel="stylesheet" href="/p2p/css/p2p.min.css" asp-append-version="true" />
+}
+
+<link rel="stylesheet" href="/p2p/css/p2p.min.css" asp-append-version="true" />
+
+<div id="p2p-mesh-wrapper" data-script-id="p2p-mesh-overview" class="p2p-container p2p-mx-auto p2p-py-8 p2p-px-4">
+
+    <!-- Hidden class palette for Tailwind CSS JIT compiler scanner -->
+    <div class="p2p-hidden" aria-hidden="true">
+        <span class="p2p-px-2 p2p-py-0.5 p2p-bg-emerald-100 p2p-text-emerald-800 p2p-bg-slate-100 p2p-text-slate-500 p2p-bg-blue-100 p2p-text-blue-800 p2p-bg-indigo-100 p2p-text-indigo-800 p2p-bg-slate-200 p2p-text-slate-700 p2p-text-amber-500 p2p-text-rose-600 p2p-text-emerald-600 p2p-text-blue-700 p2p-bg-blue-50 p2p-bg-gray-50 p2p-text-gray-400 p2p-font-mono p2p-font-bold p2p-text-[10px] p2p-text-[9px] p2p-rounded p2p-rounded-full"></span>
+    </div>
+
+    <!-- HTML Templates for JS Cloning -->
+    <template id="tmpl-console-log-line">
+        <div class="console-line p2p-font-mono p2p-text-xs p2p-text-green-400"></div>
+    </template>
+
+    <!-- 1. LOCAL NODE PARAMETERS READOUT -->
+    <div class="p2p-bg-slate-900 p2p-text-white p2p-p-6 p2p-rounded-xl p2p-shadow-md p2p-mb-6">
+        <div>
+            <div class="p2p-mt-4 p2p-pt-4 p2p-border-t p2p-border-slate-800 p2p-flex p2p-justify-between p2p-items-center">
+                <h2 class="p2p-text-lg p2p-font-bold p2p-mb-3 p2p-text-slate-200">Local Station Parameters</h2>
+                <form asp-action="ChangeIdentity" method="post">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="p2p-px-4 p2p-py-2 p2p-bg-amber-600 hover:p2p-bg-amber-700 p2p-text-white p2p-text-xs p2p-font-bold p2p-rounded-lg transition p2p-flex p2p-items-center p2p-gap-2">
+                        <i class="fa-solid fa-key"></i> Identity Change (NOW)
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="p2p-grid p2p-grid-cols-1 md:p2p-grid-cols-3 p2p-gap-4 p2p-text-xs p2p-mb-4">
+            <div>
+                <span class="p2p-text-slate-400 p2p-block">Node Identifier</span>
+                <strong class="p2p-font-mono p2p-text-white">@ViewData["LocalNodeId"]</strong>
+            </div>
+            <div>
+                <span class="p2p-text-slate-400 p2p-block">Active Node Roles</span>
+                <strong class="p2p-text-emerald-400">@ViewData["LocalNodeRoles"]</strong>
+            </div>
+        </div>
+        <div class="p2p-grid p2p-grid-cols-1 md:p2p-grid-cols-2 p2p-gap-4 p2p-text-xs">
+            <div>
+                <span class="p2p-text-slate-400 p2p-block">Current Encryption Key (base64)</span>
+                <span class="p2p-font-mono p2p-text-slate-300 p2p-break-all">@ViewData["LocalEncryptionKey"]</span>
+            </div>
+            <div>
+                <span class="p2p-text-slate-400 p2p-block">Current Verification Key (base64)</span>
+                <span class="p2p-font-mono p2p-text-slate-300 p2p-break-all">@ViewData["LocalVerifyKey"]</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. BATCH TARGET INGESTION ENTRY LINES -->
+    <div class="p2p-bg-white p2p-border p2p-border-gray-200 p2p-p-5 p2p-rounded-xl p2p-shadow-sm p2p-mb-6">
+        <h3 class="p2p-text-sm p2p-font-bold p2p-text-slate-800 p2p-mb-2">Manual Peer Add (One URL endpoint or Node ID per line)</h3>
+        <form id="form-unified-discovery" class="p2p-discovery-ajax-form" method="post">
+            @Html.AntiForgeryToken()
+
+            <textarea id="p2p-batch-input-source" rows="4" class="p2p-w-full p2p-border p2p-border-gray-300 p2p-rounded-lg p2p-p-2.5 p2p-font-mono p2p-text-xs focus:p2p-ring-1 focus:p2p-ring-blue-500 focus:p2p-outline-none"
+                      placeholder="http://192.168.1.100:5001&#10;node-abcde1234567890a..."></textarea>
+
+            <div class="p2p-grid p2p-grid-cols-1 sm:p2p-grid-cols-2 p2p-gap-4 p2p-mt-3">
+                <button type="submit" data-action="ConnectByHttp" data-param="rawUrls"
+                        class="p2p-w-full p2p-bg-blue-600 hover:p2p-bg-blue-700 p2p-text-white p2p-text-xs p2p-font-bold p2p-py-2.5 p2p-rounded-lg transition shadow-sm">
+                    Connect By HTTP(s) URL / IP address
+                </button>
+                <button type="submit" data-action="ConnectByNodeId" data-param="rawIds"
+                        class="p2p-w-full p2p-bg-slate-800 hover:p2p-bg-slate-700 p2p-text-white p2p-text-xs p2p-font-bold p2p-py-2.5 p2p-rounded-lg transition shadow-sm">
+                    Connect By Peer ID (Mesh graph lookup)
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- CONSOLE OUTPUT PANEL -->
+    <div id="console-expander-panel" class="p2p-mb-6 p2p-hidden">
+        <div class="p2p-bg-slate-950 p2p-rounded-xl p2p-p-4 p2p-shadow-inner">
+            <div class="p2p-flex p2p-justify-between p2p-items-center p2p-mb-2">
+                <span class="p2p-text-xs p2p-font-bold p2p-text-slate-400 p2p-uppercase p2p-tracking-wider">Active Connection Progress Trace</span>
+                <button type="button" id="btn-close-console" class="p2p-text-slate-500 hover:p2p-text-slate-300 p2p-text-xs transition">Collapse Panel</button>
+            </div>
+            <textarea id="mesh-processing-output-area" readonly class="p2p-w-full p2p-h-64 p2p-bg-slate-900 p2p-text-green-400 p2p-p-3 p2p-font-mono p2p-text-xs p2p-rounded-lg p2p-border p2p-border-slate-800 p2p-resize-y" placeholder="Awaiting manual peer discovery signal dispatch..."></textarea>
+        </div>
+    </div>
+
+    <div class="p2p-flex p2p-justify-between p2p-items-center p2p-mb-6">
+        <div>
+            <h1 class="p2p-text-3xl p2p-font-extrabold p2p-text-slate-900 p2p-tracking-tight">Mesh Topology Monitor</h1>
+            <p class="p2p-text-slate-500">Live operational statuses of active WebRTC connections and indexed neighborhood peers.</p>
+        </div>
+        <button type="button" id="btn-force-refresh-mesh" class="p2p-px-4 p2p-py-2 p2p-bg-slate-800 p2p-text-white p2p-text-xs p2p-font-bold p2p-uppercase p2p-rounded-lg transition p2p-flex p2p-items-center p2p-gap-2">
+            <i class="fa-solid fa-arrows-rotate" id="refresh-icon"></i> Update now
+        </button>
+    </div>
+
+    <!-- MESH TOPOLOGY TABLE -->
+    <div class="p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-xl p2p-shadow-sm p2p-overflow-hidden">
+        <table class="p2p-w-full p2p-text-left p2p-border-collapse">
+            <thead>
+                <tr class="p2p-bg-slate-50 p2p-border-b p2p-border-gray-200">
+                    <th class="p2p-p-4 p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">ID</th>
+                    <th class="p2p-p-4 p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Capabilities</th>
+                    <th class="p2p-p-4 p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Endpoint(s)</th>
+                    <th class="p2p-p-4 p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest p2p-text-right">Trust [Overridden (Normal) / Max]</th>
+                    <th class="p2p-p-4 p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest p2p-text-right">State</th>
+                    <th class="p2p-p-4 p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest p2p-text-right">Seen / Activity</th>
+                </tr>
+            </thead>
+            <tbody id="p2p-node-table-body">
+                @Html.Partial("_NodeTableRows", Model)
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/p2p/js/pages/meshcontrol/index.js" asp-append-version="true"></script>
+}

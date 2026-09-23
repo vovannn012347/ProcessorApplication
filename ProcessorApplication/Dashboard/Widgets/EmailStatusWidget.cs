@@ -18,7 +18,7 @@ public class EmailStatusWidget : IDashboardWidget, IDisposable
         Name = "Dashboard_Email_Widget_Header",
         IconClass = "fa-solid fa-envelope",
         Roles = "Admin",
-        ViewPath = "~/Views/DashboardWidgets/_EmailStatus.cshtml",
+        ViewPath = "~/Views/Main/DashboardWidgets/_EmailStatus.cshtml",
         ScriptPath = "/js/dashboard/widgets/email-widget.js",
     };
 

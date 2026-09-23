@@ -1,20 +1,15 @@
-﻿using System.Collections.Generic;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-using Amazon.Runtime.Internal.Endpoints.StandardLibrary;
-
 using Common.Interfaces;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-
-using Org.BouncyCastle.Asn1.Ocsp;
 
 using ProviderlessModule.Code;
 using ProviderlessModule.Configuration;
@@ -69,6 +64,11 @@ public class CloudflareTunnelProvider : ITunnelProvider, IDisposable
         bool hasProvisioner = !string.IsNullOrEmpty(cfg.ProvisionToken) &&
                               !string.IsNullOrEmpty(cfg.AccountId) &&
                               !string.IsNullOrEmpty(cfg.ZoneId);
+
+        if (!string.IsNullOrEmpty(cfg.ProvisionToken))
+        {
+            _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", cfg.ProvisionToken);
+        }
 
         // STEP 1: Structural & API Validation
         string? tunnelId = TryGetIdFromToken(executionToken);
@@ -184,8 +184,7 @@ public class CloudflareTunnelProvider : ITunnelProvider, IDisposable
             if (localTunnelId == null) return false;
 
             var cfg = _settings.CurrentValue;
-            _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", cfg.ProvisionToken);
-
+            
             // A. Identity Check: Confirm the tunnel name still matches this ID on CF
             var list = await _http.GetFromJsonAsync<CloudflareResponse<List<TunnelResult>>>(
                 $"accounts/{cfg.AccountId}/cfd_tunnel?name=Clinic_{hash}", ct);
@@ -214,7 +213,7 @@ public class CloudflareTunnelProvider : ITunnelProvider, IDisposable
         using var scope = _scopeFactory.CreateScope();
         var settingsService = scope.ServiceProvider.GetRequiredService<ISettingService>();
         string key = ConfigurationPathHelper.GetPath((CloudflareSettings s) => s.TunnelToken);
-        await settingsService.SetAsync(ProviderlessModule.MODULE_ID, key, token ?? "");
+        await settingsService.SetAsync(ProviderlessModuleEntryPoint.MODULE_ID, key, token ?? "");
     }
 
     private async Task<(string Token, string PublicUrl)> OrchestrateInfrastructureAsync(string hash, int port, string scheme, CancellationToken ct)

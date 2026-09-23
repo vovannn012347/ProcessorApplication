@@ -1,0 +1,140 @@
+﻿@model P2PModule.Controllers.ViewModels.P2PSettingsViewModel
+
+<div class="p2p-space-y-4">
+    <h3 class="p2p-text-sm p2p-font-bold p2p-text-slate-800 p2p-border-b p2p-border-gray-100 p2p-pb-2">Identity & Topology</h3>
+    <div class="p2p-grid p2p-grid-cols-1 md:p2p-grid-cols-2 p2p-gap-4">
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Data Storage Path</label>
+            <input type="text" name="General.DataStoragepath" value="@Model.General.DataStoragePath" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
+        </div>
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Target Outbound Connections</label>
+            <input type="number" name="General.TargetOutboundConnections" value="@Model.General.TargetOutboundConnections" min="1" max="50" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
+        </div>
+    </div>
+
+    <div class="p2p-mt-4">
+        <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest p2p-block p2p-mb-2">Node Role Capabilities</label>
+        <div class="p2p-grid p2p-grid-cols-2 sm:p2p-grid-cols-4 p2p-gap-4 p2p-p-3 p2p-bg-gray-50 p2p-border p2p-border-gray-200 p2p-rounded-lg">
+            @foreach (var role in Model.AvailableRoles)
+            {
+                <label class="p2p-flex p2p-items-center p2p-gap-2.5 p2p-text-sm p2p-text-slate-700 p2p-cursor-pointer">
+                    <input type="checkbox" name="General.NodeRoles" value="@role" @(Model.General.NodeRoles.Contains(role) ? "checked" : "") class="p2p-rounded p2p-border-gray-300 p2p-text-blue-600 focus:p2p-ring-blue-500" />
+                    @role
+                </label>
+            }
+        </div>
+    </div>
+</div>
+
+<div class="p2p-border-t p2p-border-gray-100 p2p-pt-6 p2p-mt-6 p2p-space-y-4">
+    <h3 class="p2p-text-sm p2p-font-bold p2p-text-slate-800 p2p-border-b p2p-border-gray-100 p2p-pb-2">Discovery & Infrastructure Nodes</h3>
+
+    <div class="p2p-space-y-2">
+        <div class="p2p-flex p2p-items-center p2p-justify-between">
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Advertised Node Access Endpoints (One per line)</label>
+
+            <div class="p2p-relative p2p-inline-block p2p-text-left" id="p2pAutoDiscoverDropdownContainer">
+                <button type="button" id="p2pDropdownToggleBtn" class="p2p-inline-flex p2p-justify-center p2p-rounded-md p2p-border p2p-border-gray-300 p2p-bg-white p2p-px-3 p2p-py-1.5 p2p-text-xs p2p-font-medium p2p-text-gray-700 p2p-shadow-sm hover:p2p-bg-gray-50 focus:p2p-outline-none">
+                    Add Endpoints
+                    <i class="fa-solid fa-chevron-down p2p-ml-1.5 p2p-text-[10px] p2p-text-gray-400"></i>
+                </button>
+                <div id="p2pDropdownMenu" class="p2p-hidden p2p-absolute p2p-right-0 p2p-z-50 p2p-mt-2 p2p-w-56 p2p-origin-top-right p2p-rounded-md p2p-bg-white p2p-shadow-lg p2p-ring-1 p2p-ring-black p2p-ring-opacity-5 focus:p2p-outline-none">
+                    <div class="p2p-py-1 p2p-max-h-60 p2p-overflow-y-auto" role="menu" id="p2pDropdownItemsList">
+
+                        @if (Model.EndpointProvisions == null || !Model.EndpointProvisions.Any())
+                        {
+                            <div class="p2p-px-4 p2p-py-3 p2p-text-center p2p-text-xs p2p-text-gray-400 p2p-italic">
+                                No active endpoints found
+                            </div>
+                        }
+                        else
+                        {
+                            <div id="p2pDynamicItemsContainer">
+                                @foreach (var source in Model.EndpointProvisions)
+                                {
+                                    <button type="button"
+                                            data-action="@source"
+                                            class="p2p-text-gray-700 p2p-block p2p-w-full p2p-text-left p2p-px-4 p2p-py-2 p2p-text-xs hover:p2p-bg-gray-100 hover:p2p-text-gray-900"
+                                            role="menuitem">
+                                        @source
+                                    </button>
+                                }
+                            </div>
+                        }
+
+                    </div>
+                </div>
+            </div>
+        </div>
+        <textarea id="p2pNodeAccessTextArea"
+                  name="General.Endpoints"
+                  rows="3"
+                  placeholder="Local endpoints advertised to mesh, one per line"
+                  class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm p2p-resize-y focus:p2p-border-blue-500">@(Model.General.Endpoints != null ? string.Join("\n", Model.General.Endpoints) : "")</textarea>
+    </div>
+
+    <div>
+        <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Seed Trackers List (One per line)</label>
+        <textarea name="General.SeedTrackers"
+                  rows="3"
+                  placeholder="e.g., https://tracker1.domain.xyz, https://tracker2.domain.xyz"
+                  class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm p2p-resize-y focus:p2p-border-blue-500">@(Model.General.SeedEndpoints != null ? string.Join("\n", Model.General.SeedEndpoints) : "")</textarea>
+    </div>
+
+    <div>
+        <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">STUN Infrastructure Servers (One per line)</label>
+        <textarea name="General.StunServers"
+                  rows="3"
+                  placeholder="e.g., stun:stun.l.google.com:19302"
+                  class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm p2p-resize-y focus:p2p-border-blue-500">@(Model.General.StunServers != null ? string.Join("\n", Model.General.StunServers) : "")</textarea>
+    </div>
+</div>
+
+<div class="p2p-border-t p2p-border-gray-100 p2p-pt-6 p2p-mt-6 p2p-space-y-4">
+    <h3 class="p2p-text-sm p2p-font-bold p2p-text-slate-800 p2p-border-b p2p-border-gray-100 p2p-pb-2">Liveness & Network Timeouts</h3>
+    <div class="p2p-grid p2p-grid-cols-1 sm:p2p-grid-cols-2 md:p2p-grid-cols-3 p2p-gap-4">
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Startup Delay (Sec)</label>
+            <input type="number" name="General.StartupDelaySeconds" value="@Model.General.StartupDelaySeconds" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
+        </div>
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Backup Dump Period (Sec)</label>
+            <input type="number" name="General.ActiveNodeSecondsBackupPeriod" value="@Model.General.ActiveNodeSecondsBackupPeriod" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
+        </div>
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Connection Heartbeat Keepalives (Milliseconds)</label>
+            <input type="number" name="General.KeepAlivePeriodMs" value="@Model.General.KeepAlivePeriodMs" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
+        </div>
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Topology Update Period (Ms)</label>
+            <input type="number" name="General.TopologyMaintenannceIntervalMs" value="@Model.General.TopologyMaintenannceIntervalMs" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
+        </div>
+    </div>
+
+    <div class="p2p-grid p2p-grid-cols-1 sm:p2p-grid-cols-2 md:p2p-grid-cols-3 p2p-gap-4">
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">HTTP Requests Timeout (Sec)</label>
+            <input type="number" name="General.HttpTimeoutSeconds" value="@Model.General.HttpTimeoutSeconds" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
+        </div>
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Default Handshake Timeout (Sec)</label>
+            <input type="number" name="General.DefaultHandshakeTimeoutSeconds" value="@Model.General.DefaultHandshakeTimeoutSeconds" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
+        </div>
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Unhandshaked Connection Timeout (Sec)</label>
+            <input type="number" name="General.MaxRelayInactivitySeconds" value="@Model.General.MaxRelayInactivitySeconds" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
+        </div>
+    </div>
+
+    <div class="p2p-grid p2p-grid-cols-1 sm:p2p-grid-cols-2 p2p-gap-4">
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">General P2P Request Timeout (Sec)</label>
+            <input type="number" name="General.DefaultRequestTimeoutSeconds" value="@Model.General.DefaultRequestTimeoutSeconds" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
+        </div>
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Time Synchronization Interval (Sec)</label>
+            <input type="number" name="General.TimeSyncIntervalSeconds" value="@Model.General.TimeSyncIntervalSeconds" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
+        </div>
+    </div>
+</div>

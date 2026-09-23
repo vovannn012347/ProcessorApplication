@@ -29,7 +29,7 @@ using ProcessingModule.Utils;
 namespace ProcessingModule.Controllers;
 
 [Authorize]
-[ModuleRoute(ProcessorModule.MODULE_ID)]
+[ModuleRoute(ProcessorModuleEntryPoint.MODULE_ID)]
 [Route("")]
 [Route("[controller]/[action]/{id?}")]
 public class HomeController : Controller

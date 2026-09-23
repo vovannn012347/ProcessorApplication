@@ -24,8 +24,8 @@ public class UserStatsWidget : IDashboardWidget, IDisposable
         Id = "main-user-stats",
         Name = "Node Activity",
         IconClass = "fa-solid fa-users",
-        Roles = "Admin,Registrature",
-        ViewPath = "~/Views/DashboardWidgets/_UserStats.cshtml",
+        Roles = "Admin,User,Registrature",
+        ViewPath = "~/Views/Main/DashboardWidgets/_UserStats.cshtml",
         ScriptPath = "/js/dashboard/widgets/users-widget.js"
     };
 

@@ -21,7 +21,7 @@ public class WindowsOsUserManagementService : IOsUserManagementService
     private readonly ProcessorSettings _general;
     private readonly PythonProcessingSettings _python;
     private readonly ISettingService _settingsService;
-    public string ModuleId => ProcessorModule.MODULE_ID;
+    public string ModuleId => ProcessorModuleEntryPoint.MODULE_ID;
 
     public WindowsOsUserManagementService(
         IOptionsMonitor<OsSandboxSettings> settings,

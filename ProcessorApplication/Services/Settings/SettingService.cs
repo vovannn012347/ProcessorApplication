@@ -54,7 +54,7 @@ public class SettingService : ISettingService
 
     public async Task SeedDefaultsIfEmptyAsync(CancellationToken stoppingToken)
     {
-        var area = MainModule.MainId;
+        var area = MainModule.MODULE_ID;
         // Use the application's root directory for the main appsettings file
         var mainSettingsFile = Path.Combine(_env.ContentRootPath, $"appsettings.{area}.json");
 
@@ -145,48 +145,19 @@ public class SettingService : ISettingService
         }
 
         await _db.SaveChangesAsync(stoppingToken);
-
-        /*
-        var options = new JsonSerializerOptions
-        {
-            ReadCommentHandling = JsonCommentHandling.Skip,
-            AllowTrailingCommas = true
-        };
-
-        var json = await File.ReadAllTextAsync(filePath, stoppingToken);
-        var dict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json, options);
-
-        foreach (var section in dict!)
-        {
-            if (section.Key.Contains("ConnectionStrings", StringComparison.OrdinalIgnoreCase)) continue;
-            if (section.Key.Contains("EmailProviderGuessRules", StringComparison.CurrentCulture)) continue;
-
-            var prefix = $"{section.Key}:"; // e.g. "SecuritySettings:"
-
-            foreach (var prop in section.Value.EnumerateObject())
-            {
-                var key = prefix + prop.Name; // e.g. "SecuritySettings:HashStampGenerationPeriod"
-                var value = prop.Value.ToString();
-
-                var dbSetting = _db.Settings.FirstOrDefault(e => e.Key == key && e.Area == area);
-
-                if (dbSetting == null)
-                {
-                    _db.Settings.Add(new Setting
-                    {
-                        Area = area,
-                        Key = key,
-                        Value = value
-                    });
-                }
-            }
-        }*/
     }
 
     private void FlattenJsonElement(JsonElement element, string path, Dictionary<string, string> results)
     {
         switch (element.ValueKind)
         {
+            case JsonValueKind.Array:
+                for (int i = 0; i < element.GetArrayLength(); i++)
+                {
+                    var newPath = path + ":" + i;
+                    FlattenJsonElement(element[i], newPath, results);
+                }
+                break;
             case JsonValueKind.Object:
                 foreach (var property in element.EnumerateObject())
                 {
@@ -195,13 +166,13 @@ public class SettingService : ISettingService
                 }
                 break;
 
-            case JsonValueKind.Array:
-                for (int i = 0; i < element.GetArrayLength(); i++)
-                {
-                    var newPath = path + $"[{i}]";
-                    FlattenJsonElement(element[i], newPath, results);
-                }
-                break;
+            //case JsonValueKind.Array:
+            //    for (int i = 0; i < element.GetArrayLength(); i++)
+            //    {
+            //        var newPath = path + $"[{i}]";
+            //        FlattenJsonElement(element[i], newPath, results);
+            //    }
+            //    break;
 
             case JsonValueKind.String:
             case JsonValueKind.Number:
@@ -216,40 +187,126 @@ public class SettingService : ISettingService
                 break;
         }
     }
-    
+
     public async Task SetAsync<T>(string area, string key, T value)
     {
-        string? valueToSave = SerializeValue(value);
+        // 1. Serialize the incoming value stream to an intermediate JSON format document structure
+        string rawJson = JsonSerializer.Serialize(value, _jsonOptions);
+        using var doc = JsonDocument.Parse(rawJson);
 
-        var entry = await _db.Settings.FirstOrDefaultAsync(s => s.Area == area && s.Key == key);
-        if (entry == null)
+        var incomingFlattenedMap = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+
+        // Detect if a key targets an exact leaf index item pathway directly (e.g., "GeneralSettings:Endpoints:0")
+        bool isPreBuiltArrayLeafPath = System.Text.RegularExpressions.Regex.IsMatch(key, @":\d+$");
+
+        if (isPreBuiltArrayLeafPath)
         {
-            entry = new Setting { Area = area, Key = key };
-            _db.Settings.Add(entry);
+            // 🛠️ MATCH DATA TYPES EXACTLY LIKE IN YOUR VISIT_ELEMENT FUNCTIONS
+            var rootElement = doc.RootElement;
+            switch (rootElement.ValueKind)
+            {
+                case JsonValueKind.String:
+                    incomingFlattenedMap[key] = rootElement.GetString();
+                    break;
+
+                case JsonValueKind.Number:
+                case JsonValueKind.True:
+                case JsonValueKind.False:
+                    incomingFlattenedMap[key] = rootElement.ToString();
+                    break;
+
+                case JsonValueKind.Null:
+                case JsonValueKind.Undefined:
+                    incomingFlattenedMap[key] = null;
+                    break;
+
+                default:
+                    // Fallback for fallback safety if complex objects leak into an array-leaf key context
+                    incomingFlattenedMap[key] = rootElement.ToString();
+                    break;
+            }
+        }
+        else
+        {
+            // Recursively shred arrays or complex classes using your exact colon-separated flattening rules
+            FlattenJsonElement(doc.RootElement, key, incomingFlattenedMap);
         }
 
-        entry.Value = valueToSave;
+        // 2. FETCH CURRENT DATABASE TRACKING CONTEXT STATE:
+        string childPathPrefixPattern = key + ":";
+
+        var existingRowsInDb = await _db.Settings
+            .Where(s => s.Area == area && (s.Key == key || s.Key.StartsWith(childPathPrefixPattern)))
+            .ToListAsync();
+
+        var dbRowsMap = existingRowsInDb.ToDictionary(s => s.Key, s => s, StringComparer.OrdinalIgnoreCase);
+
+        // 3. EXECUTE RECONCILIATION STEP (Upsert Operations Loop):
+        foreach (var incomingNode in incomingFlattenedMap)
+        {
+            if (dbRowsMap.TryGetValue(incomingNode.Key, out var matchingDbRow))
+            {
+                // Update value inline on tracked instance safely
+                matchingDbRow.Value = incomingNode.Value;
+                dbRowsMap.Remove(incomingNode.Key);
+            }
+            else
+            {
+                // Insert entirely new atomic entry safely
+                _db.Settings.Add(new Setting
+                {
+                    Area = area,
+                    Key = incomingNode.Key,
+                    Value = incomingNode.Value
+                });
+            }
+        }
+
+        // 4. PURGE REMAINING ORPHANED ROWS:
+        if (dbRowsMap.Any())
+        {
+            _db.Settings.RemoveRange(dbRowsMap.Values);
+        }
+
         await _db.SaveChangesAsync();
 
+        // Hot-reload option updates immediately inside configuration providers
         if (_autoUpdateSettings) ForceUpdateOptionsMonitor();
     }
 
-    private string? SerializeValue<T>(T value)
-    {
-        if (value == null) return null;
-        if (value is string s) return s;
+    //public async Task SetAsync<T>(string area, string key, T value)
+    //{
+    //    string? valueToSave = SerializeValue(value);
 
-        var type = typeof(T);
-        var underlyingType = Nullable.GetUnderlyingType(type) ?? type;
+    //    var entry = await _db.Settings.FirstOrDefaultAsync(s => s.Area == area && s.Key == key);
+    //    if (entry == null)
+    //    {
+    //        entry = new Setting { Area = area, Key = key };
+    //        _db.Settings.Add(entry);
+    //    }
 
-        if (underlyingType.IsPrimitive || underlyingType.IsEnum || underlyingType == typeof(decimal) || 
-            underlyingType == typeof(double) || underlyingType == typeof(DateTime) || underlyingType == typeof(Guid))
-        {
-            return Convert.ToString(value, CultureInfo.InvariantCulture);
-        }
+    //    entry.Value = valueToSave;
+    //    await _db.SaveChangesAsync();
 
-        return JsonSerializer.Serialize(value, _jsonOptions);
-    }
+    //    if (_autoUpdateSettings) ForceUpdateOptionsMonitor();
+    //}
+
+    //private string? SerializeValue<T>(T value)
+    //{
+    //    if (value == null) return null;
+    //    if (value is string s) return s;
+
+    //    var type = typeof(T);
+    //    var underlyingType = Nullable.GetUnderlyingType(type) ?? type;
+
+    //    if (underlyingType.IsPrimitive || underlyingType.IsEnum || underlyingType == typeof(decimal) || 
+    //        underlyingType == typeof(double) || underlyingType == typeof(DateTime) || underlyingType == typeof(Guid))
+    //    {
+    //        return Convert.ToString(value, CultureInfo.InvariantCulture);
+    //    }
+
+    //    return JsonSerializer.Serialize(value, _jsonOptions);
+    //}
 
     public async Task<T> GetAsync<T>(string area, string key, T defaultValue) where T : class, new()
     {

@@ -7,12 +7,12 @@ using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace ProcessorApplication.Policy;
 
-public class LocalhostRequirement : IAuthorizationRequirement { }
+public class LocalRequirement : IAuthorizationRequirement { }
 
 // 2. Handler: Checks the IP address
-public class LocalhostHandler : AuthorizationHandler<LocalhostRequirement>
+public class LocalhostHandler : AuthorizationHandler<LocalRequirement>
 {
-    protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, LocalhostRequirement requirement)
+    protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, LocalRequirement requirement)
     {
         var connection = (context.Resource as HttpContext)?.Connection;
 

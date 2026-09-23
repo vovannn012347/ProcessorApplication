@@ -13,7 +13,8 @@ using ProcessorApplication.Infrastructure;
 namespace ProcessorApplication.Controllers;
 
 [AllowAnonymous]
-[Route("/Navigation/[action]/{id?}")]
+[ModuleRoute("Main")]
+[Route("/[area]/[controller]/[action]/{id?}")]
 public class NavigationController : Controller
 {
     private readonly IServiceProvider _services;

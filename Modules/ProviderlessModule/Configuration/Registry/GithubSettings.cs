@@ -13,30 +13,30 @@ public class GithubSettings : IRegistrySettings
 
 
     [Required]
-    public string GitHubUrl { get; set; }
+    public string GitHubUrl { get; set; } = string.Empty;
 
     /// <summary>
     /// Fine-grained PAT with write access to the DATA repository.
     /// </summary>
     [Required]
     [DataType(DataType.Password)]
-    public string GitHubToken { get; set; }
+    public string GitHubToken { get; set; } = string.Empty;
 
     /// <summary>
     /// The repository storing JSON files (e.g., 'user/medical-portal-data').
     /// </summary>
     [Required]
-    public string RepositoryName { get; set; }
+    public string RepositoryName { get; set; } = string.Empty;
 
     /// <summary>
     /// The URL of your hosted static resolver site (e.g., 'https://user.github.io/resolver/').
     /// </summary>
     [Required]
-    public string ResolverSiteUrl { get; set; }
+    public string ResolverSiteUrl { get; set; } = string.Empty;
 
-    public string Branch { get; set; }
+    public string Branch { get; set; } = string.Empty;
 
-    public string RegistryPath { get; set; }
+    public string RegistryPath { get; set; } = string.Empty;
 
     /// <summary>
     /// How often (in hours) to force a registry update even if the URL is the same.

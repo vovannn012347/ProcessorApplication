@@ -22,6 +22,13 @@ public class ModuleRoutingConvention : IControllerModelConvention
         var moduleAttribute = controller.Attributes.OfType<ModuleRouteAttribute>().FirstOrDefault();
         if (moduleAttribute == null) return;
 
+        if (!controller.RouteValues.ContainsKey("area"))
+        {
+            var areaName = moduleAttribute.RouteValue;
+            controller.RouteValues["area"] = areaName;
+        }
+
+        //controller.ControllerName = $"{moduleAttribute.RouteValue}_{controller.ControllerName}";
         var prefix = moduleAttribute.RouteValue;
 
         // Prefix Controller-level routes

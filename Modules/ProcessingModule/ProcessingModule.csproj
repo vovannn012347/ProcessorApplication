@@ -7,6 +7,8 @@
     
     <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <Configurations>Debug;Release;TrackerDebug;ClientDebug;NodeTracker1Debug;NodeTracker2Debug;NodeClient1Debug;NodeClient2Debug</Configurations>
+    <ModuleKey>Processing</ModuleKey>
   </PropertyGroup>
 
 
@@ -28,21 +30,18 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="6.0.35" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\ProcessorApplication\ProcessorApplication.csproj">
-      <!--<PrivateAssets>all</PrivateAssets>
-      <ExcludeAssets>runtime</ExcludeAssets>-->
-      <!--<Private>True</Private>-->
       <CopyLocalSatelliteAssemblies>True</CopyLocalSatelliteAssemblies>
-      <Private>True</Private>
+      <Private>False</Private>
       <IncludeAssets>all</IncludeAssets>
     </ProjectReference>
   </ItemGroup>
 
   <ItemGroup>
+    <Folder Include="configFiles\Debug\" />
     <Folder Include="Models\Scripts\" />
   </ItemGroup>  
 

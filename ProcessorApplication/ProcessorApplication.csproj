@@ -5,28 +5,29 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <DefaultItemExcludes>$(DefaultItemExcludes);node_modules\**;package*.json;tailwind.config.js;Styles\**</DefaultItemExcludes>
+    <Configurations>Debug;Release;NodeTracker1Debug;NodeTracker2Debug;NodeClient1Debug;NodeClient2Debug</Configurations>
+
+    <!--for appsettings hook in build.props-->
+    <ModuleKey>main</ModuleKey>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="LiteNetLib" Version="1.2.0" />
-    <PackageReference Include="MailKit" Version="4.14.1" />
+    <PackageReference Include="MailKit" Version="4.16.0" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="6.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation" Version="6.0.35" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="6.0.35" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="6.0.35">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="6.0.35" />
-    <PackageReference Include="MongoDB.Driver" Version="2.28.0" />
+    <!--<PackageReference Include="MongoDB.Driver" Version="2.28.0" />-->
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Common\Common.csproj" />
   </ItemGroup>
   
-  <ItemGroup>
-    <Folder Include="Modules\" />
-  </ItemGroup>
   <ItemGroup>
     <Content Update="wwwroot\**\*" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
@@ -35,6 +36,18 @@
     <Compile Remove="Services\MessageHubService.cs" />
     <Compile Remove="Services\SqliteConfigurationProvider.cs" />
     <Compile Remove="Services\SqliteConfigurationSource.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Remove="D:\Shared\Kursova\ProcessorApplication\ProcessorApplication\appsettings..Development.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Remove="medicalsystem.db" />
+    <None Remove="medicalsystem.db-shm" />
+    <None Remove="medicalsystem.db-wal" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="package-lock.json" />
+    <Content Include="package.json" />
   </ItemGroup>
   <ItemGroup>
     <None Include="tailwind.config.js" />

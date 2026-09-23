@@ -5,6 +5,8 @@
 (function () {
     const SCRIPT_ID = "processor-reindex-logs";
 
+    root = {}
+
     window.ModuleRegistry = window.ModuleRegistry || {};
 
     window.ModuleRegistry[SCRIPT_ID] = {
@@ -15,7 +17,7 @@
          * @param {HTMLElement} el - The wrapper element hooked via data-script-id
          */
         init: function (el) {
-            const root = el || document.getElementById('reindex-console-wrapper');
+            root = el || document.getElementById('reindex-console-wrapper');
             if (!root) return;
 
             const output = root.querySelector('#consoleOutput');

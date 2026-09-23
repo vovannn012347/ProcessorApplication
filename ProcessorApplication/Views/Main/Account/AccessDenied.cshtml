@@ -1,0 +1,42 @@
+﻿@model string
+@{
+    ViewData["Title"] = "Access Denied";
+    Layout = "_LayoutLogin";
+}
+
+<div class="mm-flex mm-items-center mm-justify-center mm-h-screen mm-bg-gray-50">
+    <div class="mm-max-w-md mm-w-full mm-p-8 mm-space-y-6 mm-bg-white mm-rounded-xl mm-shadow-2xl mm-border mm-border-gray-200">
+        <div class="mm-text-center">
+            <i class="fa-solid fa-shield-halved mm-text-red-500 fa-3x mm-mb-4"></i>
+            <h1 class="mm-text-3xl mm-font-extrabold mm-text-gray-900">Access Denied</h1>
+        </div>
+
+        <div class="mm-mt-4 mm-text-center mm-space-y-4">
+            <p class="mm-text-sm mm-text-gray-600">
+                You are not logged in OR your account does not possess the privileges to interact with this specific url.
+            </p>
+
+            @if (!string.IsNullOrEmpty(Model))
+            {
+                <div class="mm-p-3 mm-bg-gray-100 mm-rounded-lg mm-text-left">
+                    <span class="mm-text-[10px] mm-font-bold mm-text-gray-400 mm-block mm-uppercase mm-tracking-wider">Attempted Endpoint Target</span>
+                    <span class="mm-font-mono mm-text-xs mm-text-gray-700 mm-break-all">@Model</span>
+                </div>
+            }
+
+            <hr class="mm-border-gray-200 mm-my-4" />
+
+            <div class="mm-flex mm-flex-col mm-gap-3">
+                <a href="/"
+                   class="mm-w-full mm-inline-flex mm-items-center mm-justify-center mm-px-4 mm-py-2.5 mm-border mm-border-gray-300 hover:mm-bg-gray-50 mm-text-gray-700 mm-text-xs mm-font-bold mm-uppercase mm-tracking-wider mm-rounded-lg mm-transition mm-duration-150">
+                    <i class="fa-solid fa-house mm-mr-2"></i> Return to Dashboard
+                </a>
+
+                <a href="@Url.Action("Login", "Account", new { returnUrl = Model })"
+                   class="mm-w-full mm-inline-flex mm-items-center mm-justify-center mm-px-4 mm-py-2.5 mm-border mm-border-gray-300 hover:mm-bg-gray-50 mm-text-gray-700 mm-text-xs mm-font-bold mm-uppercase mm-tracking-wider mm-rounded-lg mm-transition mm-duration-150">
+                    <i class="fa-solid fa-user-shield mm-mr-2"></i> Login
+                </a>
+            </div>
+        </div>
+    </div>
+</div>

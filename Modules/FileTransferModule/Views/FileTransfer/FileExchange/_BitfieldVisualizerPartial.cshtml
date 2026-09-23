@@ -1,0 +1,21 @@
+﻿@model FileSharingModule.Models.SwarmTransferTaskState
+
+<div class="space-y-4">
+    <div>
+        <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Block Availability Map (2-5 MB per box)</h4>
+        <div class="grid grid-cols-8 sm:grid-cols-12 md:grid-cols-16 gap-1.5 max-h-56 overflow-y-auto p-2 bg-slate-50 border border-gray-200 rounded-lg">
+            @for (int i = 0; i < Model.Bitfield.TotalBlocks; i++)
+            {
+                bool hasBlock = Model.Bitfield.HasBlock(i);
+                <div class="w-full aspect-square rounded text-[9px] flex items-center justify-center font-mono font-bold @(hasBlock ? "bg-indigo-600 text-white" : "bg-gray-200 text-gray-500")" title="Block #@i: @(hasBlock ? "Verified" : "Pending")">
+                    @i
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="border-t border-gray-100 pt-3">
+        <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Active WebRTC Data Lanes</h4>
+        @await Html.PartialAsync("_PeerLanesPartial", Model)
+    </div>
+</div>

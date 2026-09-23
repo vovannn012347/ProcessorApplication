@@ -22,10 +22,10 @@ namespace ProviderlessModule.Controllers;
 
 [Authorize(Policy = "AdminLocalPolicy")]
 [ModuleRoute("Providerless")]
-[Route("[controller]/[action]/{id?}")]
+[Route("/[area]/[controller]/[action]/{id?}")]
 public class SettingsController : Controller
 {
-    public string ModuleId => ProviderlessModule.MODULE_ID;
+    public string ModuleId => ProviderlessModuleEntryPoint.MODULE_ID;
 
     private readonly ISettingService _settingsService;
     private readonly IOptionsMonitor<PortalAccessSettings> _general;
@@ -38,6 +38,7 @@ public class SettingsController : Controller
         _general = general;
     }
 
+    [HttpGet]
     public IActionResult Index()
     {
         var model = new ProviderlessSettingsViewModel
@@ -51,7 +52,8 @@ public class SettingsController : Controller
         // We scan all assemblies but filter out any types that don't belong 
         // to the "Providerless" ecosystem.
         var settingsTypes = AppDomain.CurrentDomain.GetAssemblies()
-                .SelectMany(a => {
+                .SelectMany(a =>
+                {
                     try { return a.GetTypes(); }
                     catch { return Type.EmptyTypes; }
                 })
@@ -88,7 +90,17 @@ public class SettingsController : Controller
         model.RegistryOptions = model.RegistryOptions.OrderBy(x => x.Text).ToList();
         model.TunnelOptions = model.TunnelOptions.OrderBy(x => x.Text).ToList();
 
-        return Request.IsAjaxRequest() ? PartialView(model) : View(model);
+        IActionResult view = null;
+        if (Request.IsAjaxRequest())
+        {
+            view = PartialView(model);
+        }
+        else
+        {
+            view = View(model);
+        }
+
+        return view; 
     }
 
     [HttpPost]
@@ -158,7 +170,7 @@ public class SettingsController : Controller
             await _settingsService.SetAsync(ModuleId, settingKey, value);
         }
     }
-
+    
     private void CleanPluginModelState(ProviderlessSettingsViewModel model)
     {
         // Ensure we have the current active keys to compare against

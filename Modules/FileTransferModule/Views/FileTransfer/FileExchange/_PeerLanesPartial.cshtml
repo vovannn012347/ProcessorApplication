@@ -1,0 +1,20 @@
+﻿@model FileSharingModule.Models.SwarmTransferTaskState
+
+<ul class="divide-y divide-gray-100 text-xs text-slate-600 bg-slate-50 border border-gray-200 rounded-lg max-h-36 overflow-y-auto">
+    @if (Model.ConnectedPeerIds == null || Model.ConnectedPeerIds.Count == 0)
+    {
+        <li class="p-3 text-center text-slate-400">No remote peers actively connected to this swarm lane.</li>
+    }
+    else
+    {
+        @foreach (var peerId in Model.ConnectedPeerIds)
+        {
+            <li class="p-2.5 flex justify-between items-center font-mono">
+                <span class="truncate">@peerId</span>
+                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800">
+                    Connected
+                </span>
+            </li>
+        }
+    }
+</ul>

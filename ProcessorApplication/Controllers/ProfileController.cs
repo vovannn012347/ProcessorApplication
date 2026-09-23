@@ -20,7 +20,7 @@ namespace ProcessorApplication.Controllers;
 [Authorize]
 [SessionKeyRequired("UselessInfoHash")]
 [ModuleRoute("Main")]
-[Route("[controller]/[action]/{id?}")]
+[Route("/[area]/[controller]/[action]/{id?}")]
 public class ProfileController : Controller
 {
     private readonly AppDbContext _dbContext;
@@ -198,6 +198,7 @@ public class ProfileController : Controller
 
         if (isAdmin)
         {
+            //only admin can edit roles
             var currentRoles = await _userManager.GetRolesAsync(user);
 
             var selectedRoles = model.RoleSelections
@@ -210,12 +211,25 @@ public class ProfileController : Controller
 
             if (rolesToAdd.Any()) await _userManager.AddToRolesAsync(user, rolesToAdd);
             if (rolesToRemove.Any()) await _userManager.RemoveFromRolesAsync(user, rolesToRemove);
+
         }
 
         var result = await _userManager.UpdateAsync(user);
 
         if (result.Succeeded)
         {
+            if (isSelfEdit)
+            {
+                var userKey = HttpContext.Session.GetString("UselessInfoHash");
+                await _signInManager.RefreshSignInAsync(user);
+
+                if (!string.IsNullOrEmpty(userKey))
+                {
+                    // You can re-validate or re-store if needed
+                    HttpContext.Session.SetString("UselessInfoHash", userKey);
+                }
+            }
+
             TempData["StatusMessage"] = "Profile updated successfully.";
             return RedirectToAction("Index", new { userName = isAdmin && !isSelfEdit ? user.UserName : "" });
         }

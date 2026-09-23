@@ -24,7 +24,7 @@ public class EmailHealthMonitor : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            var minutes = _optionsMonitor.Get(MainModule.MainId).HealthCheckPeriodMinutes;
+            var minutes = _optionsMonitor.Get(MainModule.MODULE_ID).HealthCheckPeriodMinutes;
             if (minutes < 1) minutes = 1;
 
             await Task.Delay(TimeSpan.FromMinutes(minutes), stoppingToken);

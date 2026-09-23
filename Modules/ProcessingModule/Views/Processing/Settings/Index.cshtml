@@ -48,10 +48,10 @@
             }
         </div>
 
+        @* asp-action should be SaveProcessor to hit correct method on correct controller, 
+               otherwise it may hit SettingsController in another module *@
         <form id="processorSettingsForm"
               asp-controller="Settings"
-              @* should be SaveProcessor to hit correct method on correct controller, 
-               otherwise it may hit SettingsController in another module *@
               asp-action="SaveProcessor" method="post" class="pm-space-y-6">
             @* General Paths Section *@
             <div class="pm-bg-white pm-shadow-sm pm-border pm-border-slate-200 pm-rounded-xl pm-overflow-hidden">

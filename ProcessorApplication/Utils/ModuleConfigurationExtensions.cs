@@ -69,11 +69,11 @@ public static class ModuleConfigurationExtensions
     }
 
     private static void LoadModuleConfig(
-    IConfigurationBuilder builder,
-    string basePath,
-    string areaName,
-    string baseFileName,
-    string environment)
+        IConfigurationBuilder builder,
+        string basePath,
+        string areaName,
+        string baseFileName,
+        string environment)
     {
         // 1. Load Base configuration (Lowest priority - Load FIRST)
         // Example: appsettings.main.json
@@ -120,11 +120,15 @@ public static class ModuleConfigurationExtensions
     {
         var dict = new Dictionary<string, string?>();
         var bytes = Encoding.UTF8.GetBytes(json);
+
         var reader = new Utf8JsonReader(bytes, new JsonReaderOptions
         {
-            CommentHandling = JsonCommentHandling.Skip
+            CommentHandling = JsonCommentHandling.Skip,
+            AllowTrailingCommas = true
         });
+
         using var document = JsonDocument.ParseValue(ref reader);
+
         VisitElement(document.RootElement, string.Empty, dict);
         return dict;
     }

@@ -5,6 +5,8 @@
 (function () {
     const SCRIPT_ID = "processor-queue";
 
+    root = {}
+
     window.ModuleRegistry = window.ModuleRegistry || {};
 
     window.ModuleRegistry[SCRIPT_ID] = {
@@ -13,7 +15,7 @@
          * @param {HTMLElement} el - The wrapper element hooked via data-script-id
          */
         init: function (el) {
-            const root = el || document.getElementById('queue-page-wrapper');
+            root = el || document.getElementById('queue-page-wrapper');
             if (!root) return;
 
             console.log(`[${SCRIPT_ID}] Initializing history orchestrator...`);
@@ -22,7 +24,7 @@
         /**
          * Toggles the visibility of the sub-job (steps) row
          */
-        toggleRow: function (id, root) {
+        toggleRow: function (id) {
             const row = root.querySelector(`#${id}`);
             if (row) row.classList.toggle('pm-hidden');
         },
@@ -30,7 +32,7 @@
         /**
          * Sends control signals (Pause/Stop/Resume) to the backend
          */
-        controlTask: async function (id, action, root) {
+        controlTask: async function (id, action) {
             // Use a custom UI confirm if possible, otherwise standard confirm
             if (!confirm(`Are you sure you want to ${action} this task?`)) return;
 
@@ -57,7 +59,7 @@
         /**
          * Lazy-loads sub-job details/artifacts
          */
-        loadDetails: async function (parentId, subId, btn, root) {
+        loadDetails: async function (parentId, subId, btn) {
             const container = root.querySelector(`#details-${subId}`);
             const icon = root.querySelector(`#icon-${subId}`);
 

@@ -1,0 +1,74 @@
+﻿@model P2PModule.Controllers.HistoricalNodeDetailsViewModel
+
+@if (Model == null || Model.NodeIds == null || !Model.NodeIds.Any())
+{
+    <p class="p2p-text-xs p2p-text-gray-400 p2p-italic p2p-text-center p2p-py-4">No node record files exist in this epoch partition.</p>
+}
+else
+{
+    <ul class="p2p-space-y-2 p2p-font-mono p2p-text-xs p2p-text-slate-700">
+        @foreach (var nodeId in Model.NodeIds)
+        {
+            <li class="node-accordion-item p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-md p2p-shadow-sm p2p-overflow-hidden"
+                data-node-id="@nodeId"
+                data-target-date="@Model.TargetDate">
+
+                <!-- Main Header Row -->
+                <div class="node-header-row p2p-flex p2p-items-center p2p-justify-between p2p-p-3 p2p-cursor-pointer hover:p2p-bg-slate-50 transition">
+                    <div class="p2p-flex p2p-items-center p2p-gap-2.5">
+                        <i class="fa-solid fa-chevron-right node-chevron p2p-text-slate-400 p2p-text-[10px] transition-transform duration-200"></i>
+                        <i class="fa-solid fa-server p2p-text-slate-500"></i>
+                        <span class="p2p-font-bold p2p-text-slate-800">@nodeId</span>
+                    </div>
+                    <div class="p2p-flex p2p-items-center p2p-gap-2">
+                        <span class="p2p-text-[10px] p2p-bg-slate-100 p2p-text-slate-600 p2p-px-2 p2p-py-0.5 p2p-rounded">Historic Record</span>
+                    </div>
+                </div>
+
+                <!-- Expandable Details Drawer -->
+                <div class="node-details-drawer p2p-hidden p2p-border-t p2p-border-gray-100 p2p-bg-slate-50/50 p2p-p-4 p2p-space-y-3">
+                    <!-- Drawer Loading Placeholder -->
+                    <div class="drawer-loading p2p-flex p2p-items-center p2p-justify-center p2p-py-4 p2p-text-slate-400">
+                        <i class="fa-solid fa-spinner fa-spin p2p-mr-2"></i> Loading historical record details...
+                    </div>
+
+                    <!-- Drawer Detail Content (Hidden until loaded) -->
+                    <div class="drawer-content p2p-hidden p2p-space-y-3">
+                        <div class="p2p-grid p2p-grid-cols-2 p2p-gap-4">
+                            <div>
+                                <span class="p2p-text-[10px] p2p-text-slate-400 p2p-uppercase p2p-block">Verification State</span>
+                                <span class="badge-verification p2p-font-bold p2p-text-xs"></span>
+                            </div>
+                            <div>
+                                <span class="p2p-text-[10px] p2p-text-slate-400 p2p-uppercase p2p-block">Trust Rating</span>
+                                <span class="lbl-trust-score p2p-font-bold p2p-text-xs"></span>
+                            </div>
+                            <div>
+                                <span class="p2p-text-[10px] p2p-text-slate-400 p2p-uppercase p2p-block">Last Seen</span>
+                                <span class="lbl-last-seen p2p-text-xs p2p-text-slate-600"></span>
+                            </div>
+                            <div>
+                                <span class="p2p-text-[10px] p2p-text-slate-400 p2p-uppercase p2p-block">Signature Time</span>
+                                <span class="lbl-signature-time p2p-text-xs p2p-text-slate-600"></span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <span class="p2p-text-[10px] p2p-text-slate-400 p2p-uppercase p2p-block p2p-mb-1">Roles & Capabilities</span>
+                            <div class="container-roles p2p-flex p2p-wrap p2p-gap-1">
+                                <!-- Roles inserted via DOM template cloning -->
+                            </div>
+                        </div>
+
+                        <div>
+                            <span class="p2p-text-[10px] p2p-text-slate-400 p2p-uppercase p2p-block p2p-mb-1">Signaling Endpoints</span>
+                            <ul class="container-endpoints p2p-space-y-0.5 p2p-text-xs p2p-text-slate-600">
+                                <!-- Endpoints inserted via DOM template cloning -->
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </li>
+        }
+    </ul>
+}

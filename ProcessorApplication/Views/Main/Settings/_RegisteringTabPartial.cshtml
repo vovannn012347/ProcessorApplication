@@ -1,0 +1,91 @@
+﻿@model RegisteringSettingsViewModel
+@using System.Linq
+@using ProcessorApplication.Configuration.Settings
+@using ProcessorApplication.Models.Settings
+@using ProcessorApplication.ViewModels
+@{
+    var prefix = ViewData["ModelPrefix"]?.ToString() ?? string.Empty;
+}
+
+<div class="mm-space-y-6 mm-max-w-xl">
+    <div class="mm-bg-white mm-rounded-lg mm-border mm-border-gray-200 mm-p-6 mm-shadow-sm">
+        <h3 class="mm-text-lg mm-font-medium mm-leading-6 mm-text-gray-900 mm-border-b mm-pb-2 mm-mb-4">
+            Registration & Role Settings
+        </h3>
+
+        <div class="mm-space-y-4">
+            <div>
+                <label class="mm-block mm-text-sm mm-font-medium mm-text-gray-700">
+                    Default Roles for New Users
+                </label>
+                <p class="mm-text-xs mm-text-gray-500 mm-mt-1">
+                    Select which system access roles will be assigned by default when a new user signs up.
+                </p>
+            </div>
+
+            <!-- Role Selection Grid/List -->
+            <div class="mm-mt-4 mm-space-y-3">
+                @if (Model.DefaultRolesSelection != null && Model.DefaultRolesSelection.Any())
+                {
+                    for (int i = 0; i < Model.DefaultRolesSelection.Count; i++)
+                    {
+                        <div class="mm-relative mm-flex mm-items-start mm-p-2 mm-rounded-md hover:mm-bg-gray-50 mm-transition-colors">
+                            <div class="mm-flex mm-items-center mm-h-5">
+                                @* Bind the RoleName back dynamically so the postback preserves the string identity *@
+                                <input type="hidden"
+                                       name="@(prefix).DefaultRolesSelection[@i].RoleName"
+                                       value="@Model.DefaultRolesSelection[i].RoleName" />
+
+                                @* ASP.NET Core custom binding fallback for checkbox false status *@
+                                <input type="hidden"
+                                       name="@(prefix).DefaultRolesSelection[@i].IsSelected"
+                                       value="false" />
+
+                                <input type="checkbox"
+                                       id="role_checkbox_@i"
+                                       name="@(prefix).DefaultRolesSelection[@i].IsSelected"
+                                       value="true"
+                                       @(Model.DefaultRolesSelection[i].IsSelected ? "checked" : "")
+                                       class="mm-h-4 mm-w-4 mm-rounded mm-border-gray-300 mm-text-indigo-600 focus:mm-ring-indigo-500" />
+                            </div>
+                            <div class="mm-ml-3 mm-text-sm">
+                                <label for="role_checkbox_@i" class="mm-font-medium mm-text-gray-700 mm-cursor-pointer mm-select-none">
+                                    @Model.DefaultRolesSelection[i].RoleName
+                                </label>
+                                <p class="mm-text-gray-500 mm-text-xs">
+                                    Assign users to the "@Model.DefaultRolesSelection[i].RoleName" system pool automatically upon creation.
+                                </p>
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="mm-p-4 mm-rounded-md mm-bg-yellow-50 mm-border mm-border-yellow-200">
+                        <p class="mm-text-sm mm-text-yellow-700">
+                            <i class="fa-solid fa-triangle-exclamation mm-mr-1"></i>
+                            No roles loaded from the system store. Please ensure database seed roles exist.
+                        </p>
+                    </div>
+                }
+            </div>
+
+            <span asp-validation-for="DefaultRoles" class="mm-mt-2 mm-text-sm mm-text-red-600 mm-block"></span>
+        </div>
+    </div>
+
+    <!-- Future expansion block (referenced in Controller TODOs) -->
+@*     <div class="mm-bg-gray-50 mm-rounded-lg mm-border mm-border-dashed mm-border-gray-300 mm-p-6">
+        <div class="mm-flex">
+            <div class="mm-flex-shrink-0 mm-text-gray-400">
+                <i class="fa-solid fa-code-fork mm-text-lg"></i>
+            </div>
+            <div class="mm-ml-3">
+                <h4 class="mm-text-xs mm-font-semibold mm-text-gray-600 mm-uppercase mm-tracking-wider">Planned Features</h4>
+                <p class="mm-text-xs mm-text-gray-500 mm-mt-1">
+                    Registration codes, organizational unit mappings, and automated API-token provisioning configurations will be displayed here in upcoming patches.
+                </p>
+            </div>
+        </div>
+    </div> *@
+</div>

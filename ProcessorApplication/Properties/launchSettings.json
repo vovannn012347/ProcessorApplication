@@ -1,28 +1,62 @@
-﻿{
+{
+  "profiles": {
+    "µProcessorApplication": {
+      "commandName": "Project",
+      "workingDirectory": "$(TargetDir)",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "dotnetRunMessages": true,
+      "applicationUrl": "https://localhost:7106;http://localhost:5043"
+    },
+    "µProcessorClient1": {
+      "commandName": "Project",
+      "workingDirectory": "$(TargetDir)",
+      "launchBrowser": false,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "NodeClient1Debug"
+      },
+      "dotnetRunMessages": true,
+      "applicationUrl": "https://localhost:7109;http://localhost:5046"
+    },
+    "µProcessorClient2": {
+      "commandName": "Project",
+      "workingDirectory": "$(TargetDir)",
+      "launchBrowser": false,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "NodeClient2Debug"
+      },
+      "dotnetRunMessages": true,
+      "applicationUrl": "https://localhost:7106;http://localhost:5043"
+    },
+    "µProcessorTracker1": {
+      "commandName": "Project",
+      "workingDirectory": "$(TargetDir)",
+      "launchBrowser": false,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "NodeTracker1Debug"
+      },
+      "dotnetRunMessages": true,
+      "applicationUrl": "https://localhost:7107;http://localhost:5044"
+    },
+    "µProcessorTracker2": {
+      "commandName": "Project",
+      "workingDirectory": "$(TargetDir)",
+      "launchBrowser": false,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "NodeTracker2Debug"
+      },
+      "dotnetRunMessages": true,
+      "applicationUrl": "https://localhost:7108;http://localhost:5045"
+    }
+  },
   "iisSettings": {
     "windowsAuthentication": false,
     "anonymousAuthentication": true,
     "iisExpress": {
       "applicationUrl": "http://localhost:43255",
       "sslPort": 44301
-    }
-  },
-  "profiles": {
-    "µProcessorApplication": {
-      "commandName": "Project",
-      "dotnetRunMessages": true,
-      "launchBrowser": true,
-      "applicationUrl": "https://localhost:7106;http://localhost:5043",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "IIS Express": {
-      "commandName": "IISExpress",
-      "launchBrowser": true,
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
     }
   }
 }

@@ -1,20 +1,17 @@
-﻿using System.Reflection;
+﻿using System.Collections.Concurrent;
+using System.Reflection;
 using System.Runtime.Loader;
-
-using Common;
-using Common.Models;
 
 namespace ProcessorApplication.Infrastructure;
 public static class ModuleLoader
 {
-    public static IEnumerable<IModule> DiscoverModules(string basePath)
+    public static IEnumerable<IModule> DiscoverModules(IServiceCollection hostServices, IConfiguration config, string basePath)
     {
         var modulesPath = Path.Combine(basePath, "Modules");
-        var list = new List<IModule>();
+        var modulesList = new List<IModule>();
 
-        if (!Directory.Exists(modulesPath)) return list;
+        if (!Directory.Exists(modulesPath)) return modulesList;
 
-        // Process each directory in the Modules folder
         foreach (var dir in Directory.GetDirectories(modulesPath))
         {
             var dllPath = Directory.GetFiles(dir, "*.dll")
@@ -25,84 +22,81 @@ public static class ModuleLoader
             try
             {
                 var alc = new ModuleAssemblyLoadContext(dllPath);
-
-                // Add to registry so subsequent modules can resolve shared dependencies
                 ModuleRegistry.Contexts.Add(alc);
 
                 var asm = alc.LoadFromAssemblyPath(dllPath);
                 var viewsDllPath = dllPath.Replace(".dll", ".Views.dll");
-                if (File.Exists(viewsDllPath))
-                {
-                    // Load the views assembly into the SAME context
-                    alc.LoadFromAssemblyPath(viewsDllPath);
-                }
+                if (File.Exists(viewsDllPath)) alc.LoadFromAssemblyPath(viewsDllPath);
 
-                // Find the class that implements IModule
-                var type = asm.GetTypes()
-                    .FirstOrDefault(t => typeof(IModule).IsAssignableFrom(t) && !t.IsAbstract);
-
+                var type = asm.GetTypes().FirstOrDefault(t => typeof(IModule).IsAssignableFrom(t) && !t.IsAbstract);
                 if (type == null) continue;
 
                 var instance = (IModule)Activator.CreateInstance(type)!;
-                list.Add(instance);
+                modulesList.Add(instance);
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                foreach (var ex1 in ex.LoaderExceptions)
+                {
+                    Console.WriteLine(ex);
+
+                    if (ex1 is FileNotFoundException fnf)
+                    {
+                        Console.WriteLine(fnf.FileName);
+                        Console.WriteLine(fnf.FusionLog);
+                    }
+                }
+
+                //foreach (var t in ex.Types)
+                //    Console.WriteLine(t?.FullName ?? "<null>");
+
+                foreach (var e in ex.LoaderExceptions)
+                    Console.WriteLine(e);
+
+                throw;
             }
             catch (Exception ex)
             {
-                // In a modular system, one failing module shouldn't crash the host
                 Console.WriteLine($"[ModuleLoader] Failed to load {dir}: {ex.Message}");
             }
         }
 
-        return list;
+        return modulesList;
     }
 }
 
 public class ModuleAssemblyLoadContext : AssemblyLoadContext
 {
     private readonly AssemblyDependencyResolver _resolver;
+    private readonly string _modulePath;
 
     public ModuleAssemblyLoadContext(string modulePath) : base(isCollectible: true)
     {
+        _modulePath = modulePath;
         _resolver = new AssemblyDependencyResolver(modulePath);
     }
 
     protected override Assembly? Load(AssemblyName assemblyName)
     {
-        // 1. HOST-FIRST: If the Host already has this assembly (System, Microsoft, or Main Project),
-        // we MUST return null to force the module to use the Host's version.
-        try
-        {
-            // This checks the Default context without loading the assembly if it's not there
-            var hostAssembly = Default.LoadFromAssemblyName(assemblyName);
-            if (hostAssembly != null) return null;
-        }
-        catch { /* Not found in Host, continue to module resolution */ }
-
-        // 2. PEER-RESOLUTION: Check if another module already loaded this dependency
-        var sharedAsm = ModuleRegistry.ResolveFromAnyModule(assemblyName);
-        if (sharedAsm != null) return sharedAsm;
-
-        // 3. LOCAL-RESOLUTION: Try to find it in the module's own folder via .deps.json
         string? assemblyPath = _resolver.ResolveAssemblyToPath(assemblyName);
+
         if (assemblyPath != null)
         {
+            // If the map points to a path, we load it. 
+            // If the map points to a framework assembly, the resolver 
+            // usually returns null (delegating to the default context).
             return LoadFromAssemblyPath(assemblyPath);
         }
 
-        return null;
-    }
-
-    protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
-    {
-        string? libraryPath = _resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
-        if (libraryPath != null) return LoadUnmanagedDllFromPath(libraryPath);
-        return IntPtr.Zero;
+        // 2. Fallback: If resolver doesn't know, it's likely a shared host assembly.
+        // Returning null here tells the runtime: "Check the Default Load Context."
+        // This is where the magic happens: the Host's context finds it immediately.
+        return base.Load(assemblyName);
     }
 }
 
 public static class ModuleRegistry
 {
-    // Keeps track of all loaded module contexts
     public static readonly List<ModuleAssemblyLoadContext> Contexts = new();
 
     public static Assembly? ResolveFromAnyModule(AssemblyName name)
@@ -114,5 +108,61 @@ public static class ModuleRegistry
             if (loaded != null) return loaded;
         }
         return null;
+    }
+
+    public static readonly ConcurrentDictionary<string, Assembly> DefaultContexts = new();
+    public static readonly ConcurrentDictionary<string, Assembly> DomainContexts = new();
+
+    // ASP.NET Core/CLR may perform reflection from the Default AssemblyLoadContext.
+    // Plugin assemblies live in isolated collectible ALCs, so Default cannot resolve
+    // them by name. This registry bridges that gap by returning already-loaded plugin
+    // assemblies instead of letting the runtime fail with FileNotFoundException.
+    public static void InstallResolutionDivert()
+    {
+        // crutch for assembly resolutions
+        // really whatever i tired - it is still has to be in here :(
+        // Hook 1: Satisfies the modern AssemblyLoadContext metadata tracking engine
+        System.Runtime.Loader.AssemblyLoadContext.Default.Resolving += (context, assemblyName) =>
+        {
+            if(DefaultContexts.TryGetValue(assemblyName.FullName, out var assembly)){
+                return assembly;
+            }
+            else
+            {
+                foreach (var alc in ProcessorApplication.Infrastructure.ModuleRegistry.Contexts)
+                {
+                    var match = alc.Assemblies.FirstOrDefault(a => a.GetName().FullName == assemblyName.FullName);
+                    if (match != null)
+                    {
+                        DefaultContexts[assemblyName.FullName] = match;
+                        return match;
+                    }
+                }
+            }
+
+            return null;
+        };
+        // Hook 2: Satisfies the legacy AppDomain reflection engine used by deep CLR calls like _CreateCaObject
+        AppDomain.CurrentDomain.AssemblyResolve += (sender, args) =>
+        {
+            var reqName = new System.Reflection.AssemblyName(args.Name).Name;
+            if (DomainContexts.TryGetValue(reqName, out var assembly))
+            {
+                return assembly;
+            }
+            else
+            {
+                foreach (var alc in ProcessorApplication.Infrastructure.ModuleRegistry.Contexts)
+                {
+                    var match = alc.Assemblies.FirstOrDefault(a => a.GetName().Name == reqName);
+                    if (match != null)
+                    {
+                        DomainContexts[reqName] = match;
+                        return match;
+                    }
+                }
+            }
+            return null;
+        };
     }
 }

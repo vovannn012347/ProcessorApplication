@@ -6,6 +6,8 @@
     const SCRIPT_ID = "processor-settings";
     const WRAPPER_ID = "settings-partial-wrapper";
 
+    root = {}
+
     window.ModuleRegistry = window.ModuleRegistry || {};
 
     window.ModuleRegistry[SCRIPT_ID] = {
@@ -14,7 +16,7 @@
          * @param {HTMLElement} el - The wrapper element hooked via data-script-id
          */
         init: function (el) {
-            const root = el || document.getElementById(WRAPPER_ID);
+            root = el || document.getElementById(WRAPPER_ID);
             if (!root) return;
 
             console.log(`[${SCRIPT_ID}] Initializing...`);
@@ -24,7 +26,7 @@
         /**
          * Scoped form listener attachment
          */
-        attachFormListener: function (root) {
+        attachFormListener: function () {
             const form = root.querySelector('#processorSettingsForm');
             if (!form) return;
 
@@ -38,7 +40,7 @@
         /**
          * AJAX Save Handling
          */
-        handleSave: function (root, form) {
+        handleSave: function (root) {
             const btn = root.querySelector('#saveSettingsButton');
             const url = form.action;
             const formData = new FormData(form);

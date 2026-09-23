@@ -10,6 +10,7 @@ public interface IWidgetProvider
     // Returns the data update for specific widgets
     Task<Dictionary<string, object>> GetUpdatesAsync(string userId, IEnumerable<string> widgetIds);
 }
+#pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
 
 public class WidgetManifest
 {
@@ -21,3 +22,4 @@ public class WidgetManifest
     public string ViewPath { get; set; } // default vew path, "~/Views/Access/Widgets/_Status.cshtml"
     public string ScriptPath { get; set; } // e.g., "/_content/AccessModule/js/widget.js"
 }
+#pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.

@@ -1,0 +1,114 @@
+﻿@model P2PModule.Controllers.ViewModels.P2PSettingsViewModel
+@{
+    ViewData["Title"] = "P2P Configuration Settings";
+    var isAjax = Context.Request.Headers["X-Requested-With"] == "XMLHttpRequest";
+    if (isAjax) { 
+        Layout = null; 
+    }
+}
+
+@section Styles {
+    <link rel="stylesheet" href="/p2p/css/p2p.min.css" asp-append-version="true" />
+}
+
+@* AJAX-safe link for dynamic content loading *@
+<link rel="stylesheet" href="/p2p/css/p2p.min.css" asp-append-version="true" />
+<div id="p2p-settings-wrapper" data-script-id="p2p-settings">
+    <div class="p2p-container p2p-mx-auto p2p-py-8 p2p-px-4">
+        <div class="p2p-mb-8">
+            <h1 class="p2p-text-3xl p2p-font-extrabold p2p-text-slate-900 p2p-tracking-tight">P2P Module Settings</h1>
+            <p class="p2p-text-slate-500">Configure topology distribution, gossip data exchanges, and peer trust constraints.</p>
+        </div>
+
+        <div id="settings-messages" class="p2p-mb-6 p2p-space-y-4">
+            @if (TempData["SuccessMessage"] != null)
+            {
+                <div class="p2p-p-4 p2p-bg-green-50 p2p-border-l-4 p2p-border-green-500 p2p-text-green-700 p2p-text-sm p2p-rounded-r-lg">
+                    @TempData["SuccessMessage"]
+                </div>
+            }
+            @if (!ViewData.ModelState.IsValid)
+            {
+                <div class="p2p-p-4 p2p-bg-red-50 p2p-border-l-4 p2p-border-red-500 p2p-text-red-700 p2p-text-sm p2p-rounded-r-lg">
+                    <div asp-validation-summary="All"></div>
+                </div>
+            }
+        </div>
+
+        <form id="p2pSettingsForm" asp-area="P2P" asp-controller="Settings" asp-action="SaveP2P" method="post" autocomplete="off">
+            @Html.AntiForgeryToken()
+
+            <div class="p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-xl p2p-p-6 p2p-space-y-6 p2p-shadow-sm">
+
+                <div>
+                    @await Html.PartialAsync("_GeneralSettingsPartial", Model)
+                </div>
+                <div>
+                    @await Html.PartialAsync("_StorageSettingsPartial", Model)
+                </div>
+                <div>
+                    @await Html.PartialAsync("_GossipSettingsPartial", Model)
+                </div>
+                <div>
+                    @await Html.PartialAsync("_RatingSettingsPartial", Model)
+                </div>
+@* 
+                <div class="p2p-border-t p2p-border-gray-100 p2p-pt-6">
+                    <h3 class="p2p-text-sm p2p-font-bold p2p-text-slate-800 p2p-mb-4">Storage Metrics</h3>
+                    <div class="p2p-grid p2p-grid-cols-1 md:plss-grid-cols-2 p2p-gap-4">
+                        <div>
+                            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Flush Interval (Seconds)</label>
+                            <input type="number" name="Storage.PersistTimePeriodSeconds" value="@Model.Storage.PersistTimePeriodSeconds" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:plss-border-blue-500" />
+                        </div>
+                        <div>
+                            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">History Retention Epochs</label>
+                            <input type="number" name="Storage.RetainedHistoryEpochsCount" value="@Model.Storage.RetainedHistoryEpochsCount" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:plss-border-blue-500" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p2p-border-t p2p-border-gray-100 p2p-pt-6">
+                    <h3 class="p2p-text-sm p2p-font-bold p2p-text-slate-800 p2p-mb-4">Gossip Matrix Controls</h3>
+                    <div class="p2p-grid p2p-grid-cols-1 md:plss-grid-cols-3 p2p-gap-4">
+                        <div>
+                            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Fanout Targets</label>
+                            <input type="number" name="Gossip.FanoutTargetCount" value="@Model.Gossip.FanoutTargetCount" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:plss-border-blue-500" />
+                        </div>
+                        <div>
+                            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Batch Threshold Array</label>
+                            <input type="number" name="Gossip.GossipInBatches" value="@Model.Gossip.GossipInBatches" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:plss-border-blue-500" />
+                        </div>
+                        <div>
+                            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Stale Ingress Gap (Ms)</label>
+                            <input type="number" name="Gossip.GossipStaleAgeMs" value="@Model.Gossip.GossipStaleAgeMs" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:plss-border-blue-500" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p2p-border-t p2p-border-gray-100 p2p-pt-6">
+                    <h3 class="p2p-text-sm p2p-font-bold p2p-text-slate-800 p2p-mb-4">Trust Scoring Matrix</h3>
+                    <div class="p2p-grid p2p-grid-cols-1 md:plss-grid-cols-2 p2p-gap-4">
+                        <div>
+                            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Handshake Rep Delta</label>
+                            <input type="number" step="0.01" name="Rating.HandshakeRepDelta" value="@Model.Rating.HandshakeRepDelta" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:plss-border-blue-500" />
+                        </div>
+                        <div>
+                            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Minimum Entry Trust Threshold</label>
+                            <input type="number" step="0.01" name="Rating.MinimumTrustThreshold" value="@Model.Rating.MinimumTrustThreshold" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:plss-border-blue-500" />
+                        </div>
+                    </div>
+                </div> *@
+
+                <div class="p2p-border-t p2p-border-gray-100 p2p-pt-6 p2p-flex p2p-justify-end">
+                    <button type="submit" id="saveP2PSettingsButton" class="p2p-px-6 p2p-py-3 p2p-bg-blue-600 p2p-hover:plss-bg-blue-700 p2p-text-white p2p-text-xs p2p-font-bold p2p-uppercase p2p-tracking-widest p2p-rounded-lg p2p-shadow-sm focus:plss-outline-none transition">
+                        Save Settings
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/p2p/js/pages/settings/index.js" asp-append-version="true"></script>
+}

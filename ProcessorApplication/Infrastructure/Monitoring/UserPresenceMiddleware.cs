@@ -33,10 +33,10 @@ public class UserPresenceMiddleware
         }
         else
         {
-            if (!context.Request.Cookies.TryGetValue("X-Visitor-Id", out visitorId))
+            if (!context.Request.Cookies.TryGetValue(ANON_COOKIE, out visitorId))
             {
                 visitorId = System.Guid.NewGuid().ToString();
-                context.Response.Cookies.Append("X-Visitor-Id", visitorId, new CookieOptions
+                context.Response.Cookies.Append(ANON_COOKIE, visitorId, new CookieOptions
                 {
                     HttpOnly = true,
                     Expires = System.DateTimeOffset.UtcNow.AddDays(1)

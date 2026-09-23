@@ -15,9 +15,8 @@ public class PortalState
     /// </summary>
     [Display(Name = "Live Tunnel URL")]
     public string? CurrentTunnelUrl { get; set; }
-    public string? CurrentQrUrl { get; set; }
     public bool IsActive { get; set; }
     public DateTime TunnelStartedAt { get; set; }
-    public string LastError { get; set; }
+    public string? LastError { get; set; }
     public bool RestartRequested { get; set; }
 }

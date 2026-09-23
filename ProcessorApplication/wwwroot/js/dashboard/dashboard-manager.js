@@ -7,6 +7,8 @@
     const WRAPPER_ID = "dashboard-hub-wrapper";
     const HEARTBEAT_INTERVAL = 20000; // 20s server-side session keep-alive
 
+    root = {};
+
     window.ModuleRegistry = window.ModuleRegistry || {};
 
     window.ModuleRegistry[SCRIPT_ID] = {
@@ -20,7 +22,7 @@
          * Entry point for the dashboard system.
          */
         init: async function (el) {
-            const root = el || document.getElementById(WRAPPER_ID);
+            root = el || document.getElementById(WRAPPER_ID);
             if (!root) return;
 
             try {
@@ -31,7 +33,7 @@
                 await this.initSession();
 
                 // 2. Perform initial physical layout
-                this.renderDashboard(root);
+                this.renderDashboard();
 
                 // 3. Start global maintenance loop
                 this.startHeartbeatLoop();
@@ -81,7 +83,7 @@
         /**
          * INITIAL RENDER: Creates physical DOM nodes once.
          */
-        renderDashboard: function (root) {
+        renderDashboard: function () {
             const expanded = root.querySelector('#expanded-grid-container');
             const tray = root.querySelector('#minimized-tray-container');
             if (!expanded || !tray) return;

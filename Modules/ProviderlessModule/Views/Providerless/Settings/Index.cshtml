@@ -1,13 +1,10 @@
-﻿@using Microsoft.AspNetCore.Authorization
-@using ProviderlessModule.Infrastructure.Interfaces
-@model ProviderlessSettingsViewModel
-@inject IAuthorizationService AuthorizationService
+﻿@using ProviderlessModule.Infrastructure.Interfaces
+@model ProviderlessModule.Models.ProviderlessSettingsViewModel
 
 @section Styles {
     <link rel="stylesheet" href="/Providerless/css/providerless.min.css" asp-append-version="true" />
 }
 
-@* AJAX-safe link for dynamic content loading *@
 <link rel="stylesheet" href="/Providerless/css/providerless.min.css" asp-append-version="true" />
 
 <div id="providerless-settings-wrapper" data-script-id="providerless-settings">
@@ -17,7 +14,6 @@
             <p class="plss-text-slate-500">Manage discovery registries and tunneling infrastructure for the Clinic Gateway.</p>
         </div>
 
-        @* Validation and Status Message Area [cite: 43-47] *@
         <div id="settings-messages" class="plss-mb-6 plss-space-y-4">
             @if (TempData["SuccessMessage"] != null)
             {
@@ -43,18 +39,15 @@
             }
         </div>
 
-        @* Explicitly define Area/Controller/Action to fix routing  *@
         <form id="providerlessSettingsForm"
+              asp-area="Providerless"
               asp-controller="Settings"
               asp-action="SaveProviderless"
               method="post"
               class="plss-space-y-6">
-            @* should be SaveProviderless to hit correct method on correct controller, 
-               otherwise it hits SettingsController in another module *@
 
             @Html.AntiForgeryToken()
 
-            @* Core Settings Section *@
             <div class="plss-bg-white plss-shadow-sm plss-border plss-border-slate-200 plss-rounded-xl plss-overflow-hidden">
                 <div class="plss-bg-slate-50 plss-px-6 plss-py-3 plss-border-b plss-border-slate-200">
                     <h2 class="plss-text-sm plss-font-bold plss-text-slate-700 plss-uppercase plss-tracking-wider">Core Connectivity</h2>
@@ -73,11 +66,11 @@
                         </div>
                         <div class="plss-space-y-4">
                             <div>
-                                <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Clinic ID</label>
-                                <input asp-for="General.ComputerId" class="plss-w-full plss-mt-1 plss-p-3 plss-bg-gray-100 plss-border plss-rounded-lg plss-text-sm plss-font-mono" readonly />
+                                <label asp-for="General.EnforcedPCIdentifier" class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Clinic ID</label>
+                                <input asp-for="General.EnforcedPCIdentifier" class="plss-w-full plss-mt-1 plss-p-3 plss-bg-gray-100 plss-border plss-rounded-lg plss-text-sm plss-font-mono" readonly />
                             </div>
                             <div>
-                                <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Security Secret</label>
+                                <label asp-for="General.SharedSecret" class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Security Secret</label>
                                 <input asp-for="General.SharedSecret" class="plss-w-full plss-mt-1 plss-p-3 plss-bg-gray-100 plss-border plss-rounded-lg plss-text-sm plss-font-mono" readonly />
                             </div>
                         </div>
@@ -85,7 +78,6 @@
                 </div>
             </div>
 
-            @* Discovery Section *@
             <div class="plss-bg-white plss-shadow-sm plss-border plss-border-slate-200 plss-rounded-xl plss-overflow-hidden">
                 <div class="plss-bg-slate-50 plss-px-6 plss-py-3 plss-border-b plss-border-slate-200">
                     <h2 class="plss-text-sm plss-font-bold plss-text-slate-700 plss-uppercase plss-tracking-wider">Discovery Methods</h2>
@@ -109,7 +101,6 @@
                 </div>
             </div>
 
-            @* Tunnel Section *@
             <div class="plss-bg-white plss-shadow-sm plss-border plss-border-slate-200 plss-rounded-xl plss-overflow-hidden">
                 <div class="plss-bg-slate-50 plss-px-6 plss-py-3 plss-border-b plss-border-slate-200">
                     <h2 class="plss-text-sm plss-font-bold plss-text-slate-700 plss-uppercase plss-tracking-wider">Tunneling Infrastructure</h2>
@@ -133,7 +124,6 @@
                 </div>
             </div>
 
-            @* Save Button at bottom [cite: 58] *@
             <div class="plss-mt-8 plss-pt-4 plss-border-t plss-border-gray-200">
                 <button type="submit" id="saveProviderlessSettingsButton" class="plss-inline-flex plss-items-center plss-justify-center plss-rounded-md plss-bg-blue-600 plss-py-2.5 plss-px-6 plss-text-sm plss-font-bold plss-text-white plss-shadow-md hover:plss-bg-blue-700 plss-transition">
                     <i class="fa-solid fa-floppy-disk plss-mr-2"></i> Save Configuration
@@ -141,54 +131,8 @@
             </div>
         </form>
     </div>
-
-    @* AJAX Script: Logic mirrored from Processor Index [cite: 59-66] *@
-   @*  <script>
-        (function() {
-            const form = document.getElementById('providerlessSettingsForm');
-            if (!form) return;
-
-            form.addEventListener('submit', function(event) {
-                event.preventDefault();
-
-                const currentForm = event.target;
-                const url = currentForm.action;
-                const container = document.getElementById('providerless-settings-wrapper');
-                const button = document.getElementById('saveProviderlessSettingsButton');
-                const formData = new FormData(currentForm);
-
-                const originalHtml = button.innerHTML;
-                button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin plss-mr-2"></i> Synchronizing...';
-                button.disabled = true;
-
-                fetch(url, {
-                    method: 'POST',
-                    body: formData,
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
-                })
-                .then(response => {
-                    if (!response.ok) throw new Error(`Server returned status ${response.status}`);
-                    return response.text();
-                })
-                .then(html => {
-                    if (container) {
-                        container.innerHTML = html;
-                        // Scroll to top of settings on update
-                        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }
-                })
-                .catch(error => {
-                    button.innerHTML = originalHtml;
-                    button.disabled = false;
-                    console.error('Providerless update failed:', error);
-                    alert('Failed to save settings. Please verify the connection.');
-                });
-            });
-        })();
-    </script> *@
 </div>
 
 @section Scripts {
-    @* <script src="/Providerless/lib/qrcodejs/qrcode.min.js"></script> *@
     <script src="~/providerless/js/pages/settings/index.js" asp-append-version="true"></script>
 }

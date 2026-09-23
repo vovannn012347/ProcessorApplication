@@ -1,0 +1,190 @@
+﻿@model List<string>
+@{
+    ViewData["Title"] = "P2P History Monitor";
+    var isAjax = Context.Request.Headers["X-Requested-With"] == "XMLHttpRequest";
+    if (isAjax) { Layout = null; }
+}
+
+<link rel="stylesheet" href="/p2p/css/p2p.min.css" asp-append-version="true" />
+
+<div id="p2p-consensus-wrapper" data-script-id="p2p-consensus-monitor" class="p2p-container p2p-mx-auto p2p-py-8 p2p-px-4">
+    <div class="p2p-flex p2p-justify-between p2p-items-center p2p-mb-6">
+        <div>
+            <h1 class="p2p-text-3xl p2p-font-extrabold p2p-text-slate-900 p2p-tracking-tight">History Monitor</h1>
+            <p class="p2p-text-slate-500">Live consensus monitor & historical daily sharded ledger audit.</p>
+        </div>
+    </div>
+
+    @Html.AntiForgeryToken()
+
+    <!-- Navigation Tabs -->
+    <div class="p2p-border-b p2p-border-gray-200 p2p-mb-6">
+        <nav class="p2p-flex p2p-space-x-8">
+            <button type="button" data-tab="active-session" class="nav-tab-btn p2p-py-3 p2p-px-1 p2p-border-b-2 p2p-border-blue-600 p2p-font-bold p2p-text-sm p2p-text-blue-600 transition">
+                <i class="fa-solid fa-satellite-dish p2p-mr-2"></i>Active Session Telemetry
+            </button>
+            <button type="button" data-tab="historical-ledger" class="nav-tab-btn p2p-py-3 p2p-px-1 p2p-border-b-2 p2p-border-transparent p2p-font-medium p2p-text-sm p2p-text-slate-500 hover:p2p-text-slate-700 transition">
+                <i class="fa-solid fa-boxes-stacked p2p-mr-2"></i>Historical Partition Explorer
+            </button>
+        </nav>
+    </div>
+
+    <!-- TAB 1: ACTIVE SESSION TELEMETRY -->
+    <div id="tab-active-session" class="tab-content p2p-space-y-6">
+        <div class="p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-xl p2p-p-6 p2p-shadow-sm">
+            <div class="p2p-flex p2p-items-center p2p-justify-between p2p-mb-4">
+                <div class="p2p-flex p2p-items-center p2p-gap-3">
+                    <h2 class="p2p-text-lg p2p-font-bold p2p-text-slate-800">Consensus Engine Status</h2>
+                    <span id="sessionStatusBadge" class="p2p-px-2.5 p2p-py-1 p2p-text-xs p2p-font-bold p2p-rounded-full p2p-bg-slate-100 p2p-text-slate-600">IDLE / STANDBY</span>
+                </div>
+                <button type="button" id="btn-trigger-consensus" class="p2p-bg-blue-600 hover:p2p-bg-blue-700 p2p-text-white p2p-text-xs p2p-font-bold p2p-px-4 p2p-py-2 p2p-rounded-lg p2p-shadow-sm transition">
+                    <i class="fa-solid fa-play p2p-mr-1.5"></i>Trigger Manual Consensus
+                </button>
+                <button type="button" id="btn-abort-consensus" class="p2p-bg-rose-600 hover:p2p-bg-rose-700 p2p-text-white p2p-text-xs p2p-font-bold p2p-px-4 p2p-py-2 p2p-rounded-lg p2p-shadow-sm transition">
+                    <i class="fa-solid fa-stop p2p-mr-1.5"></i>Abort Consensus
+                </button>
+            </div>
+
+            <div class="p2p-grid p2p-grid-cols-1 md:p2p-grid-cols-3 p2p-gap-4 p2p-p-4 p2p-bg-slate-50 p2p-rounded-lg p2p-border p2p-border-slate-100 p2p-font-mono p2p-text-xs">
+                <div>
+                    <span class="p2p-text-[10px] p2p-text-slate-400 p2p-uppercase p2p-block">Active Session ID</span>
+                    <span id="lblSessionId" class="p2p-font-bold p2p-text-slate-800">None</span>
+                </div>
+                <div>
+                    <span class="p2p-text-[10px] p2p-text-slate-400 p2p-uppercase p2p-block">Target Sync Date</span>
+                    <span id="lblTargetDate" class="p2p-font-bold p2p-text-slate-800">N/A</span>
+                </div>
+                <div>
+                    <span class="p2p-text-[10px] p2p-text-slate-400 p2p-uppercase p2p-block">Initiator Station</span>
+                    <span id="lblInitiator" class="p2p-font-bold p2p-text-slate-800">N/A</span>
+                </div>
+                <div>
+                    <span class="p2p-text-[10px] p2p-text-slate-400 p2p-uppercase p2p-block">Engaged Target Peer</span>
+                    <span id="lblTargetNode" class="p2p-font-bold p2p-text-blue-600">None (Broadcasting)</span>
+                </div>
+                <div>
+                    <span class="p2p-text-[10px] p2p-text-slate-400 p2p-uppercase p2p-block">Last Heartbeat Activity</span>
+                    <span id="lblLastActivity" class="p2p-font-bold p2p-text-slate-800">N/A</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="p2p-grid p2p-grid-cols-1 lg:p2p-grid-cols-2 p2p-gap-6">
+            <!-- Visited Nodes Panel -->
+            <div class="p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-xl p2p-p-5 p2p-shadow-sm">
+                <div class="p2p-flex p2p-justify-between p2p-items-center p2p-mb-3">
+                    <h3 class="p2p-text-sm p2p-font-bold p2p-text-slate-800"><i class="fa-solid fa-check-double p2p-text-emerald-500 p2p-mr-2"></i>Visited / Merged Peers</h3>
+                    <span id="lblVisitedCount" class="p2p-text-xs p2p-font-mono p2p-bg-slate-100 p2p-text-slate-600 p2p-px-2 p2p-py-0.5 p2p-rounded-full">0</span>
+                </div>
+                <div id="containerVisitedNodes" class="p2p-flex p2p-wrap p2p-gap-1.5 p2p-min-h-[60px] p2p-p-3 p2p-bg-slate-50 p2p-rounded-lg p2p-border p2p-border-slate-100">
+                    <span class="p2p-text-xs p2p-text-slate-400 p2p-italic">No visited nodes recorded yet.</span>
+                </div>
+            </div>
+
+            <!-- Queued Nodes Panel -->
+            <div class="p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-xl p2p-p-5 p2p-shadow-sm">
+                <div class="p2p-flex p2p-justify-between p2p-items-center p2p-mb-3">
+                    <h3 class="p2p-text-sm p2p-font-bold p2p-text-slate-800"><i class="fa-solid fa-list-check p2p-text-blue-500 p2p-mr-2"></i>Queued Candidates To Visit</h3>
+                    <span id="lblQueuedCount" class="p2p-text-xs p2p-font-mono p2p-bg-slate-100 p2p-text-slate-600 p2p-px-2 p2p-py-0.5 p2p-rounded-full">0</span>
+                </div>
+                <div id="containerQueuedNodes" class="p2p-flex p2p-wrap p2p-gap-1.5 p2p-min-h-[60px] p2p-p-3 p2p-bg-slate-50 p2p-rounded-lg p2p-border p2p-border-slate-100">
+                    <span class="p2p-text-xs p2p-text-slate-400 p2p-italic">Visit queue is empty.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 2: HISTORICAL PARTITION EXPLORER -->
+    <div id="tab-historical-ledger" class="tab-content p2p-hidden p2p-space-y-6">
+        <div class="p2p-flex p2p-justify-between p2p-items-center">
+            <h2 class="p2p-text-lg p2p-font-bold p2p-text-slate-800">Sharded Epoch Partitions</h2>
+            <button type="button" id="btn-force-health-check" class="p2p-bg-slate-100 hover:p2p-bg-slate-200 p2p-text-slate-700 p2p-text-xs p2p-font-bold p2p-px-3 p2p-py-1.5 p2p-rounded-md p2p-border p2p-border-slate-300 transition">
+                <i class="fa-solid fa-shield-halved p2p-mr-1.5"></i>Force Health Audit
+            </button>
+        </div>
+
+        <div class="p2p-grid p2p-grid-cols-1 lg:p2p-grid-cols-3 p2p-gap-6">
+            <!-- Sidebar Date Partition List -->
+            <div class="lg:p2p-col-span-1 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-xl p2p-p-4 p2p-shadow-sm">
+                <h3 class="p2p-text-xs p2p-font-bold p2p-text-slate-400 p2p-uppercase p2p-tracking-wider p2p-mb-3">Available Date Buckets</h3>
+                <div class="p2p-space-y-1 max-h-[500px] p2p-overflow-y-auto p2p-pr-1">
+                    @if (Model == null || !Model.Any())
+                    {
+                        <p class="p2p-text-xs p2p-text-gray-400 p2p-italic p2p-p-2">No historical ledger partitions indexed.</p>
+                    }
+                    else
+                    {
+                        foreach (var day in Model)
+                        {
+                            <div class="partition-date-item p2p-flex p2p-items-center p2p-justify-between p2p-p-2.5 p2p-rounded-lg p2p-border p2p-border-transparent p2p-cursor-pointer hover:p2p-bg-slate-50 transition" data-date-key="@day">
+                                <div class="p2p-flex p2p-items-center p2p-gap-2.5">
+                                    <i class="fa-solid fa-calendar-day p2p-text-slate-400"></i>
+                                    <span class="p2p-text-sm p2p-font-mono p2p-font-bold p2p-text-slate-700">@day</span>
+                                </div>
+                                <i class="fa-solid fa-chevron-right p2p-text-gray-300 p2p-text-xs"></i>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            <!-- Main Record Explorer Box -->
+            <div class="lg:p2p-col-span-2 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-xl p2p-p-6 p2p-shadow-sm flex p2p-flex-col">
+                <div id="emptyDetailsState" class="p2p-my-auto p2p-py-12 p2p-text-center">
+                    <i class="fa-solid fa-folder-tree p2p-text-gray-200 p2p-text-5xl p2p-mb-3"></i>
+                    <p class="p2p-text-sm p2p-text-gray-400">Select an epoch partition from the sidebar to view recorded peer entries.</p>
+                </div>
+
+                <div id="detailsContentPanel" class="p2p-hidden p2p-space-y-4">
+                    <h2 class="p2p-text-base p2p-font-bold p2p-text-slate-800">Partition Date: <span id="lblSelectedDate" class="p2p-font-mono p2p-text-blue-600"></span></h2>
+                    <div id="partitionDisplayBox" class="p2p-min-h-[200px]">
+                        <!-- AJAX loaded _StagingNodesList view goes here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- REUSABLE HTML TEMPLATES FOR JVASCRIPT      -->
+<!-- ========================================== -->
+
+<template id="tmpl-node-tag">
+    <span class="node-tag-text p2p-px-2 p2p-py-1 p2p-bg-slate-100 p2p-text-slate-700 p2p-font-mono p2p-text-xs p2p-rounded p2p-border p2p-border-slate-200"></span>
+</template>
+
+<template id="tmpl-role-badge">
+    <span class="role-badge-text p2p-px-2 p2p-py-0.5 p2p-bg-blue-50 p2p-text-blue-700 p2p-text-[10px] p2p-font-bold p2p-rounded"></span>
+</template>
+
+<template id="tmpl-endpoint-item">
+    <li class="endpoint-item-text p2p-font-mono p2p-text-xs p2p-text-slate-600 p2p-truncate"></li>
+</template>
+
+<template id="tmpl-loading-spinner">
+    <div class="p2p-text-center p2p-py-8 p2p-text-slate-400">
+        <i class="fa-solid fa-spinner fa-spin p2p-text-2xl p2p-mb-2"></i>
+        <p class="msg-loading p2p-text-xs p2p-text-slate-500"></p>
+    </div>
+</template>
+
+<template id="tmpl-error-message">
+    <div class="p2p-text-center p2p-py-4 p2p-text-rose-600">
+        <i class="fa-solid fa-triangle-exclamation p2p-text-xl p2p-mb-1"></i>
+        <p class="msg-error p2p-text-xs"></p>
+    </div>
+</template>
+
+<template id="tmpl-empty-info">
+    <span class="msg-empty p2p-text-xs p2p-text-slate-400 p2p-italic"></span>
+</template>
+
+<!-- HIDDEN TAILWIND JIT CLASS PALETTE -->
+<div class="p2p-hidden" aria-hidden="true">
+    <span class="p2p-bg-emerald-100 p2p-text-emerald-700 p2p-bg-slate-100 p2p-text-slate-600 p2p-bg-emerald-50 p2p-border-emerald-200 p2p-text-emerald-600 p2p-bg-amber-50 p2p-text-amber-500 p2p-border-amber-200 p2p-bg-rose-50 p2p-text-rose-700 p2p-text-rose-600 p2p-border-rose-200 p2p-bg-blue-50 p2p-text-blue-700 p2p-rotate-90 p2p-border-blue-600"></span>
+</div>
+
+@section Scripts {
+    <script src="~/p2p/js/pages/consensusmonitor/index.js" asp-append-version="true"></script>
+}

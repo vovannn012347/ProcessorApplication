@@ -1,8 +1,10 @@
-﻿using Common.Interfaces.Menu;
+﻿using Common.Interfaces;
+using Common.Interfaces.Menu;
 using Common.Models;
 
 namespace ProcessorApplication.Infrastructure;
-public interface IModule
+
+public interface IModule: ICapabilityProvider
 {
     /// <summary>
     /// Identifier for module, human-readable
@@ -25,7 +27,7 @@ public interface IModule
     /// </summary>
     /// <param name="services"></param>
     /// <returns></returns>
-    List<MenuItemViewModel> GetMenuItems(IServiceProvider services);
+    IEnumerable<MenuItemViewModel> GetMenuItems(IServiceProvider services);
     /// <summary>
     /// Roles that module defines
     /// </summary>
@@ -54,6 +56,12 @@ public interface IModule
     /// <param name="app">application provided</param>
     /// <param name="env">web host enviroment provided</param>
     void Configure(IApplicationBuilder app, IWebHostEnvironment env);
+    /// <summary>
+    /// Let modules configure middleware, routes, static files for themselves
+    /// </summary>
+    /// <param name="app">application provided</param>
+    /// <param name="env">web host enviroment provided</param>
+    void ConfigureEndpoints(IEndpointRouteBuilder endpoints);
     /// <summary>
     /// apply prestart initialization actions - like database migrations, etc starting actions
     /// </summary>

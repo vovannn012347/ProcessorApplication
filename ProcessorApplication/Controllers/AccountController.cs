@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 using ProcessorApplication.Attributes;
@@ -21,12 +22,13 @@ namespace ProcessorApplication.Controllers;
 
 [AllowAnonymous]
 [ModuleRoute("Main")]
-[Route("[controller]/[action]/{id?}")]
+[Route("/[area]/[controller]/[action]/{id?}")]
 public class AccountController : Controller
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ProcessorApplicationUserManager _userManager;
     private readonly SignInManager<ApplicationUser> _signInManager;
+    private readonly IOptionsMonitor<RegisteringSettings> _registeringSettings;
     private readonly RoleManager<IdentityRole> _roleManager;
     private readonly ILogger<AccountController> _logger;
 
@@ -34,12 +36,14 @@ public class AccountController : Controller
         IServiceProvider serviceProvider,
         ProcessorApplicationUserManager userManager,
         SignInManager<ApplicationUser> signInManager,
+        IOptionsMonitor<RegisteringSettings> registeringSettings,
         RoleManager<IdentityRole> roleManager,
         ILogger<AccountController> logger)
     {
         _serviceProvider = serviceProvider;
         _userManager = userManager;
         _signInManager = signInManager;
+        _registeringSettings = registeringSettings;
         _roleManager = roleManager;
         _logger = logger;
     }
@@ -48,6 +52,13 @@ public class AccountController : Controller
     public IActionResult SessionTimeout(string returnUrl)
     {
         return View(model:returnUrl);
+    }
+
+
+    [HttpGet]
+    public IActionResult AccessDenied(string returnUrl)
+    {
+        return View(model: returnUrl);
     }
 
 
@@ -97,7 +108,12 @@ public class AccountController : Controller
         if (result.Succeeded)
         {
             user = await _userManager.FindByIdAsync(user.Id);
-            await _userManager.AddToRoleAsync(user, "User");
+
+            var roles = _registeringSettings.CurrentValue.DefaultRoles;
+            foreach(var role in roles)
+            {
+                await _userManager.AddToRoleAsync(user, role);
+            }
 
             await _signInManager.SignInAsync(user, isPersistent: false);
             this.HttpContext.Session.SetString("UselessInfoHash", user.EncryptionHash);
@@ -178,7 +194,12 @@ public class AccountController : Controller
             if (result.Succeeded)
             {
                 user = await _userManager.FindByIdAsync(user.Id);
-                await _userManager.AddToRoleAsync(user, "User");
+
+                var roles = _registeringSettings.CurrentValue.DefaultRoles;
+                foreach (var role in roles)
+                {
+                    await _userManager.AddToRoleAsync(user, role);
+                }
 
                 await _signInManager.SignInAsync(user, isPersistent: false);
                 this.HttpContext.Session.SetString("UselessInfoHash", user.EncryptionHash);
@@ -407,17 +428,25 @@ public class AccountController : Controller
         if (result.Succeeded)
         {
             var settings = _serviceProvider.GetService<IOptionsMonitor<EmailSettings>>() ?? null;
-            string currentEmail = settings != null ? settings.Get(MainModule.MainId).Identity.Email : ""; 
+            string currentEmail = settings != null ? settings.Get(MainModule.MODULE_ID).Identity.Email : ""; 
 
             if (!string.IsNullOrEmpty(model.Email) && string.IsNullOrEmpty(currentEmail))
             {
                 var settingsService = _serviceProvider.GetRequiredService<ISettingService>();
-                await settingsService.SetAsync(MainModule.MainId, "EmailSettings:Email", model.Email);
+                await settingsService.SetAsync(MainModule.MODULE_ID, "EmailSettings:Email", model.Email);
             }
 
 
             user = await _userManager.FindByIdAsync(user.Id);
             await _userManager.AddToRoleAsync(user, "Admin");
+            await _userManager.AddToRoleAsync(user, "User");
+
+            var allRoles = await _roleManager.Roles.AsNoTracking().ToListAsync();
+            foreach(var role in allRoles)
+            {
+                if(role.Name != "Admin" && role.Name != "User")
+                    await _userManager.AddToRoleAsync(user, role.Name);
+            }
 
             await _signInManager.SignInAsync(user, isPersistent: false);
 

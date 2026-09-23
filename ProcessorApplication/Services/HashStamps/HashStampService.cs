@@ -1,26 +1,38 @@
-﻿using System.Reflection;
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
-
-using Common.Attributes;
-using Common.Code;
-using Common.Interfaces;
-using Common.Models.Database;
 
 using Microsoft.EntityFrameworkCore;
-
-using MongoDB.Bson;
 
 using ProcessorApplication.Database;
 using ProcessorApplication.Database.Models;
 using ProcessorApplication.Infrastructure;
 using ProcessorApplication.Models;
 
-using static ProcessorApplication.Services.HashStamps.HashBackupService;
-
 namespace ProcessorApplication.Services.HashStamps;
 
+public interface IHashStampService
+{
+    /// <summary>
+    /// Generates a new, cryptographically secure hash stamp, calculates its PreviousHash, 
+    /// and saves it to the database.
+    /// </summary>
+    Task<ServerHashStamp> GenerateAndSaveNewStampAsync();
+
+    /// <summary>
+    /// Retrieves the hash (key) that was active at or immediately before the specified time.
+    /// </summary>
+    Task<ServerHashStamp> GetHashByTimeAsync(DateTime time);
+
+    /// <summary>
+    /// Retrieves the most recently generated hash (key).
+    /// </summary>
+    Task<ServerHashStamp> GetLatestHashAsync();
+
+    /// <summary>
+    /// Verifies the entire HashStamp chain by recalculating hashes and comparing them.
+    /// </summary>
+    Task<List<CorruptionReport>> VerifyChainIntegrityAsync();
+}
 
 public class HashStampService : IHashStampService
 {

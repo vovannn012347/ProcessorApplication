@@ -17,11 +17,11 @@ using ProcessingModule.Services.Runtime;
 namespace ProcessingModule.Controllers;
 
 [Authorize(Policy = "AdminLocalPolicy")]
-[ModuleRoute(ProcessorModule.MODULE_ID)]
+[ModuleRoute(ProcessorModuleEntryPoint.MODULE_ID)]
 [Route("[controller]/[action]/{id?}")]
 public class SettingsController : Controller
 {
-    public string ModuleId => ProcessorModule.MODULE_ID;
+    public string ModuleId => ProcessorModuleEntryPoint.MODULE_ID;
 
     private readonly ISettingService _settingsService;
     private readonly IOsUserManagementService _osUserService;

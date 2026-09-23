@@ -1,0 +1,19 @@
+/*
+  Local font definition:
+  Declared here for module independence, though the Main Shell already 
+  provides this. Since the name 'Inter' matches, they will share 
+  the same font resources.
+*/
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('/fonts/Inter-VariableFont.ttf') format('truetype');
+}
+
+
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

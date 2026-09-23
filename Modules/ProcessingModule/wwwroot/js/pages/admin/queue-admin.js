@@ -5,6 +5,8 @@
 (function () {
     const SCRIPT_ID = "processor-admin-queue";
 
+    root = {}
+
     window.ModuleRegistry = window.ModuleRegistry || {};
 
     window.ModuleRegistry[SCRIPT_ID] = {
@@ -13,18 +15,18 @@
          * @param {HTMLElement} el - The wrapper element hooked via data-script-id
          */
         init: function (el) {
-            const root = el || document.getElementById('admin-queue-wrapper');
+            root = el || document.getElementById('admin-queue-wrapper');
             if (!root) return;
 
             console.log(`[${SCRIPT_ID}] Administrative monitoring initialized.`);
         },
 
-        toggleRow: function (id, root) {
+        toggleRow: function (id) {
             const row = root.querySelector(`#${id}`);
             if (row) row.classList.toggle('pm-hidden');
         },
 
-        controlTask: async function (id, action, root) {
+        controlTask: async function (id, action) {
             if (!confirm(`ADMIN OVERRIDE: Are you sure you want to ${action} this global task?`)) return;
 
             try {
@@ -44,7 +46,7 @@
         /**
          * CRITICAL: Handles permanent deletion of task data and files
          */
-        purgeJob: async function (id, root) {
+        purgeJob: async function (id) {
             if (!confirm("CRITICAL ACTION: This will permanently delete all task data from the database and the physical disk. This cannot be undone. Proceed?")) return;
 
             // Extract the Anti-Forgery Token from the layout's hidden input
@@ -69,7 +71,7 @@
             }
         },
 
-        loadDetails: async function (parentId, subId, btn, root) {
+        loadDetails: async function (parentId, subId, btn) {
             const container = root.querySelector(`#details-${subId}`);
             const icon = root.querySelector(`#icon-${subId}`);
 
@@ -95,7 +97,7 @@
             }
         },
 
-        runReindex: function (root) {
+        runReindex: function () {
             const icon = root.querySelector('#reindexIcon');
             if (icon) icon.classList.add('fa-spin');
             window.location.href = '/Processing/Admin/ReindexLogs';

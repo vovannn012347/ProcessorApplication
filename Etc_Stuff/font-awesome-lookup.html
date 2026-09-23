@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Font Awesome Offline Extractor</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen p-6">
+
+    <div class="max-w-7xl mx-auto">
+        <header class="mb-8 border-b border-gray-800 pb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-white">Font Awesome Local Library Parser</h1>
+                <p class="text-sm text-gray-400 mt-1">Select or drop your CSS file to view contained icon layouts</p>
+            </div>
+            <div class="flex gap-4 items-center">
+                <input type="file" id="css-picker" accept=".css" 
+                       class="bg-gray-800 border border-gray-700 text-sm rounded px-3 py-1.5 cursor-pointer file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700">
+                
+                <input type="text" id="search" placeholder="Search icons..." disabled
+                       class="bg-gray-800 border border-gray-700 text-white rounded px-4 py-2 w-48 focus:outline-none focus:border-blue-500 opacity-50 cursor-not-allowed">
+                
+                <div class="text-sm bg-gray-800 border border-gray-700 px-3 py-2 rounded">
+                    Icons: <span id="counter" class="font-bold text-green-400">0</span>
+                </div>
+            </div>
+        </header>
+
+        <div id="dropzone" class="border-2 border-dashed border-gray-700 rounded-2xl p-12 text-center text-gray-400 hover:border-blue-500 transition-colors cursor-pointer mb-6">
+            <p class="text-lg font-medium">Drag & Drop your <span class="text-blue-400 font-mono">font-awesome-stylesheet.css</span> file directly here</p>
+            <p class="text-xs text-gray-500 mt-2">Bypasses all browser CORS protection rules securely</p>
+        </div>
+
+        <main id="icon-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4">
+            </main>
+    </div>
+
+    <script>
+        const filePicker = document.getElementById('css-picker');
+        const dropzone = document.getElementById('dropzone');
+        const searchInput = document.getElementById('search');
+
+        // Capture Picker Action
+        filePicker.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) handleFileStream(file);
+        });
+
+        // Capture Drag & Drop events
+        dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('border-blue-500'); });
+        dropzone.addEventListener('dragleave', () => { dropzone.classList.remove('border-blue-500'); });
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('border-blue-500');
+            const file = e.dataTransfer.files[0];
+            if (file) handleFileStream(file);
+        });
+        dropzone.addEventListener('click', () => filePicker.click());
+
+        function handleFileStream(file) {
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                processRawText(evt.target.result);
+                dropzone.classList.add('hidden'); // Clear out interface area
+                searchInput.removeAttribute('disabled');
+                searchInput.classList.remove('opacity-50', 'cursor-not-allowed');
+            };
+            reader.readAsText(file);
+        }
+
+        function processRawText(cssString) {
+            const grid = document.getElementById('icon-grid');
+            const counter = document.getElementById('counter');
+            grid.innerHTML = ''; // Reset frame layout variables
+            
+            const foundIcons = new Set();
+            // Regex handles modern v5/v6 layouts (.fa-name::before) and legacy arrays (.fa-name:before)
+            const faRegex = /\.fa-([a-z0-9\-]+)(?::|::)before/g;
+            let match;
+
+            while ((match = faRegex.exec(cssString)) !== null) {
+                foundIcons.add(match[1]);
+            }
+
+            const sortedIcons = Array.from(foundIcons).sort();
+            counter.textContent = sortedIcons.length;
+
+            if (sortedIcons.length === 0) {
+                alert("No Font Awesome definitions identified inside that CSS file structure.");
+                return;
+            }
+
+            sortedIcons.forEach(iconName => {
+                const card = document.createElement('div');
+                card.className = "icon-card bg-gray-800 border border-gray-700/60 rounded-xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-transform hover:-translate-y-0.5";
+                card.dataset.name = iconName;
+                card.onclick = () => {
+                    navigator.clipboard.writeText(`fa-solid fa-${iconName}`);
+                    alert(`Copied: fa-solid fa-${iconName}`);
+                };
+                card.innerHTML = `
+                    <div class="h-12 text-3xl mb-3 text-gray-300 flex items-center justify-center">
+                        <i class="fa-solid fa-${iconName}"></i>
+                    </div>
+                    <span class="text-xs font-mono text-gray-400 break-all">${iconName}</span>
+                `;
+                grid.appendChild(card);
+            });
+
+            // Re-bind layout lookup listener
+            searchInput.addEventListener('input', (e) => {
+                const query = e.target.value.toLowerCase().trim();
+                document.querySelectorAll('.icon-card').forEach(card => {
+                    card.style.display = card.dataset.name.toLowerCase().includes(query) ? 'flex' : 'none';
+                });
+            });
+        }
+    </script>
+</body>
+</html>

@@ -34,25 +34,25 @@ public class LocalDataProvider : ILocalDataProvider
 
     public string GetEncryptedMachineHash()
     {
-        if (string.IsNullOrWhiteSpace(_settings.CurrentValue.ComputerId))
+        if (string.IsNullOrWhiteSpace(_settings.CurrentValue.EnforcedPCIdentifier))
         {
             lock (_lock)
             {
-                if (string.IsNullOrWhiteSpace(_settings.CurrentValue.ComputerId))
+                if (string.IsNullOrWhiteSpace(_settings.CurrentValue.EnforcedPCIdentifier))
                 {
-                    _settings.CurrentValue.ComputerId = GenerateHardwareHash();
+                    _settings.CurrentValue.EnforcedPCIdentifier = GenerateHardwareHash();
 
                     Task.Run(async () =>
                     {
                         using var scope = _scopeFactory.CreateScope();
                         var settingsService = scope.ServiceProvider.GetRequiredService<ISettingService>();
-                        string key = ConfigurationPathHelper.GetPath((PortalAccessSettings s) => s.ComputerId);
-                        await settingsService.SetAsync(ProviderlessModule.MODULE_ID, key, _settings.CurrentValue.ComputerId);
+                        string key = ConfigurationPathHelper.GetPath((PortalAccessSettings s) => s.EnforcedPCIdentifier);
+                        await settingsService.SetAsync(ProviderlessModuleEntryPoint.MODULE_ID, key, _settings.CurrentValue.EnforcedPCIdentifier);
                     });
                 }
             }
         }
-        return _settings.CurrentValue.ComputerId;
+        return _settings.CurrentValue.EnforcedPCIdentifier;
     }
 
     public string GetSharedSecret()
@@ -70,7 +70,7 @@ public class LocalDataProvider : ILocalDataProvider
                         using var scope = _scopeFactory.CreateScope();
                         var settingsService = scope.ServiceProvider.GetRequiredService<ISettingService>();
                         string key = ConfigurationPathHelper.GetPath((PortalAccessSettings s) => s.SharedSecret);
-                        await settingsService.SetAsync(ProviderlessModule.MODULE_ID, key, _settings.CurrentValue.SharedSecret);
+                        await settingsService.SetAsync(ProviderlessModuleEntryPoint.MODULE_ID, key, _settings.CurrentValue.SharedSecret);
                     });
                 }
             }
@@ -81,8 +81,12 @@ public class LocalDataProvider : ILocalDataProvider
 
     private string GenerateHardwareHash()
     {
+#if DEBUG
+        string raw = $"{Environment.MachineName}-{Environment.ProcessorCount}-{Environment.OSVersion}-{DateTime.UtcNow.ToString()}";
+#else
         // Stable hardware string
         string raw = $"{Environment.MachineName}-{Environment.ProcessorCount}-{Environment.OSVersion}";
+#endif
         byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(raw));
 
         // Take 12 chars from the hex representation

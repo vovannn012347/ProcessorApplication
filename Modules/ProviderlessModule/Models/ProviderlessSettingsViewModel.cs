@@ -15,7 +15,7 @@ namespace ProviderlessModule.Models;
 
 public class ProviderlessSettingsViewModel
 {
-    public PortalAccessSettings General { get; set; }
+    public PortalAccessSettings General { get; set; } = new();
 
     /// <summary>
     /// Key: Tunnel ID (e.g., "cloudflare", "ngrok")

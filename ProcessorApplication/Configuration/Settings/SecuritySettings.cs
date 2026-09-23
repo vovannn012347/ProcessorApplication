@@ -11,6 +11,9 @@ public class SecuritySettings
     [Display(Name = "Hash Generation Period (in hours)")]
     [Range(0.01, 8760.0, ErrorMessage = "Period must be between 0.01 and 8760 hours.")]
     public double HashStampGenerationPeriod { get; set; } = 24;
+
+    [Display(Name = "Generate the hash stamp prior to certain ")]
+    public double HashStampLeadingHours { get; set; } = 1;
     [Display(Name = "Enable hash stamp backup")]
     public bool HashStampBackupEnabled { get; set; } = false;
     [Display(Name = "Forensic backup directory")]

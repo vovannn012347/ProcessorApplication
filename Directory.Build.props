@@ -1,0 +1,103 @@
+<Project>
+  <PropertyGroup>
+    <ConfigurationKey Condition="'$(Configuration)'=='Debug'">Development</ConfigurationKey>
+    <ConfigurationKey Condition="$(Configuration.Contains('Release'))">Production</ConfigurationKey>
+
+    <NodeFolderName>$(Configuration)</NodeFolderName>
+
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'NodeTracker1Debug'">
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ConfigurationKey>NodeTracker1Debug</ConfigurationKey>
+    <NodeFolderName>Tracker1</NodeFolderName>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'NodeTracker2Debug'">
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ConfigurationKey>NodeTracker2Debug</ConfigurationKey>
+    <NodeFolderName>Tracker2</NodeFolderName>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'NodeClient1Debug'">
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ConfigurationKey>NodeClient1Debug</ConfigurationKey>
+    <NodeFolderName>Client1</NodeFolderName>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'NodeClient2Debug'">
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ConfigurationKey>NodeClient2Debug</ConfigurationKey>
+    <NodeFolderName>Client2</NodeFolderName>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <BaseOutputFolder>$(SolutionDir)bin\$(NodeFolderName)</BaseOutputFolder>
+    <OutputPath>$(BaseOutputFolder)\$(MSBuildProjectName)\</OutputPath>
+    
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    
+    <!--razor view-->
+    <RazorCompileOnBuild>false</RazorCompileOnBuild>
+    <RazorCompileOnPublish>false</RazorCompileOnPublish>
+    <MvcRazorCompileOnPublish>false</MvcRazorCompileOnPublish>
+    <CopyRazorGenerateFilesToPublishDirectory>true</CopyRazorGenerateFilesToPublishDirectory>
+    
+    <EnableDefaultContentItems>false</EnableDefaultContentItems>
+    <!--translations-->
+    <SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
+  </PropertyGroup>
+  
+  <!--Apply to all projects-->
+  <ItemGroup>
+    <Content Include="Views\**\*.cshtml" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Areas\**\*.cshtml" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Pages\**\*.cshtml" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
+
+    <Content Include="$(ProjectDir)appsettings.json"  CopyToOutputDirectory="PreserveNewest"
+             Condition="Exists('$(ProjectDir)appsettings.json')" />
+    <Content Include="$(ProjectDir)appsettings.$(ConfigurationKey).json" CopyToOutputDirectory="PreserveNewest"
+             Condition="'$(ConfigurationKey)' != '' AND Exists('$(ProjectDir)appsettings.$(ConfigurationKey).json')" />
+
+
+    <Content Include="$(ProjectDir)appsettings.$(ModuleKey).json" CopyToOutputDirectory="PreserveNewest"
+             Condition="'$(ModuleKey)' != '' AND Exists('$(ProjectDir)appsettings.$(ModuleKey).json')" />
+    <Content Include="$(ProjectDir)appsettings.$(ModuleKey).$(ConfigurationKey).json" CopyToOutputDirectory="PreserveNewest"
+             Condition="'$(ModuleKey)'  != '' AND '$(ConfigurationKey)' != '' AND Exists('$(ProjectDir)appsettings.$(ModuleKey).$(ConfigurationKey).json')" />
+
+  </ItemGroup>
+
+  <ItemDefinitionGroup Condition="$(MSBuildProjectDirectory.Contains('\Modules\')) or $(MSBuildProjectDirectory.Contains('/Modules/'))">
+    <ProjectReference>
+      <!--do not copy parent references-->
+      <Private>False</Private>
+      <CopyLocalSatelliteAssemblies>False</CopyLocalSatelliteAssemblies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  
+  <ItemGroup>
+    <None Remove="configFiles\**\*" />
+    <Content Remove="configFiles\**\*" />
+    
+    <None Include="$(MSBuildProjectDirectory)\configFiles\$(NodeFolderName)\**\*">
+      <Link>ActiveNodeConfig\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </None>
+  </ItemGroup>
+
+  <Target Name="ForceDeployNodeConfigFiles" AfterTargets="Build" Condition="Exists('$(MSBuildProjectDirectory)\configFiles\$(NodeFolderName)')">
+
+    <ItemGroup>
+      <_ActiveConfigFiles Include="$(MSBuildProjectDirectory)\configFiles\$(NodeFolderName)\**\*" />
+    </ItemGroup>
+
+    <Message Importance="high" Text="[P2P Deployment] Force-deploying localized configFiles out of ($(MSBuildProjectName)) straight to the main ProcessorApplication container..." />
+
+    <Copy SourceFiles="@(_ActiveConfigFiles)"
+          DestinationFiles="$(BaseOutputFolder)\ProcessorApplication\%(RecursiveDir)%(Filename)%(Extension)"
+          OverwriteReadOnlyFiles="true"
+          SkipUnchangedFiles="false" />
+  </Target>
+  
+</Project>

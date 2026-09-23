@@ -15,7 +15,7 @@ using ProcessingModule.Services;
 
 namespace ProcessingModule.Controllers;
 
-[ModuleRoute(ProcessorModule.MODULE_ID)]
+[ModuleRoute(ProcessorModuleEntryPoint.MODULE_ID)]
 [Route("[controller]/[action]/{id?}")]
 [Authorize(Policy = "AdminLocalPolicy")]
 public class AdminController : Controller

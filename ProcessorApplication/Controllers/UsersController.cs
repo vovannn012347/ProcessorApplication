@@ -12,7 +12,7 @@ using ProcessorApplication.Utils;
 
 namespace ProcessorApplication.Controllers;
 [ModuleRoute("Main")]
-[Route("[controller]/[action]/{id?}")]
+[Route("/[area]/[controller]/[action]/{id?}")]
 [SessionKeyRequired("UselessInfoHash")]
 [Authorize(Policy = "AdminLocalPolicy", Roles = "Admin")]
 public class UsersController : Controller

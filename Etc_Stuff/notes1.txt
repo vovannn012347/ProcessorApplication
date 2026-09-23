@@ -1,0 +1,594 @@
+﻿{
+  "iisSettings": {
+    "windowsAuthentication": false,
+    "anonymousAuthentication": true,
+    "iisExpress": {
+      "applicationUrl": "http://localhost:43255",
+      "sslPort": 44301
+    }
+  },
+  "profiles": {
+    "µProcessorApplication": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "applicationUrl": "https://localhost:7106;http://localhost:5043",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "µProcessorAppNode1": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "applicationUrl": "https://localhost:7106;http://localhost:5043",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "µProcessorAppNode2": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "applicationUrl": "https://localhost:7106;http://localhost:5043",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "IIS Express": {
+      "commandName": "IISExpress",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
+
+
+
+    //private async Task<string> TrackerMergeRequest_Handler(string senderNodeId, P2PPacketEnvelope envelope, CancellationToken cancelToken)
+    //{
+    //    //record who asked and test the signature
+    //    var request = JsonSerializer.Deserialize<ConsensusRequest>(envelope.SerializedPayload);
+    //    if (request == null)
+    //    {
+    //        //the fuck do you send me?
+    //        return "FUCK_DO_YOU_SEND";
+    //    }
+
+    //    var utcNow = DateTime.UtcNow;
+    //    bool isWithinOfficialMergeWindow = utcNow.Hour == 23;
+
+    //    // Resolve cached profile definitions from local persistence shards
+    //    var remoteNode = _peerTracker.GetPeer(senderNodeId);
+    //    bool isSenderTracker = remoteNode != null && (remoteNode.Identity.Roles.Contains("tracker") || remoteNode.Identity.Roles.Contains("promoted_tracker"));
+    //    double senderTrustScore = remoteNode?.TrustScore ?? 0;
+
+    //    var localRoles = _identity.GetLocalRoles();
+    //    bool isLocalNodeTracker = localRoles.Contains("tracker") || localRoles.Contains("promoted_tracker");
+
+    //    bool hasActiveTrackerConnection = _peerTracker.GetLastSeenNodes(PeerTracker.DefaultNodeComparer)
+    //            .Any(c => c.Identity.Roles.Contains("tracker") && c.LastSeen.AddMinutes(5) > DateTime.UtcNow);
+
+    //    // =================================────────────────========================
+    //    // BOUNDARY SECURITY GATE 1: Temporal & Role Anomaly Enforcement
+    //    // =================================────────────────========================
+    //    if (!isWithinOfficialMergeWindow)
+    //    {
+    //        // Out-of-time requests are completely illegal unless originating from an authoritative tracker
+    //        if (!isSenderTracker)
+    //        {
+    //            _logger.LogWarning("[Consensus Border] Rejected out-of-time request from Client Node: {NodeId}", senderNodeId);
+    //            return "REJECT_OUT_OF_TIME_NODE_UNAUTHORIZED";
+    //        }
+
+    //        // Client peers drop out-of-time peer sync requests if they already have an active tracker channel handling updates
+    //        if (!isLocalNodeTracker && hasActiveTrackerConnection)
+    //        {
+    //            _logger.LogWarning("[Consensus Border] Rejected peer interaction: Tracker is already active.");
+    //            return "REJECT_ROLE_BYPASS_ATTEMPT";
+    //        }
+    //    }
+
+    //    // =========================================================================
+    //    // BOUNDARY SECURITY GATE 2: Clemency & Post-Grace Routing Exceptions
+    //    // =========================================================================
+    //    // Peer Redirect Grace Pass (5-Minute Window starting at 23:05 UTC)
+    //    if (isWithinOfficialMergeWindow && utcNow.Minute < 5 && !isLocalNodeTracker && hasActiveTrackerConnection)
+    //    {
+    //        // First 5 minutes of official window: Client peers are protected from out-of-sync penalties.
+    //        // Rather than starting a redundant loop, we gracefully return our active working tracker details
+    //        var activeTrackerNode = _peerTracker.GetLastSeenNodes(PeerTracker.DefaultNodeComparer)
+    //            .FirstOrDefault(c => (c.Identity.Roles.Contains("tracker") || c.Identity.Roles.Contains("promoted_tracker"))
+    //                                 && c.LastSeen.AddMinutes(5) > DateTime.UtcNow);
+
+    //        string trackerAddress = activeTrackerNode != null ? activeTrackerNode.Identity.SignalingEndpoints.FirstOrDefault() : "no-active-tracker-cached";
+    //        _logger.LogInformation("[Consensus Border] Grace period redirect. Returning working tracker endpoint to node: {Id}", senderNodeId);
+    //        return $"REDIRECT_TO_TRACKER|{trackerAddress}";
+    //    }
+
+    //    if (_activeSession == null || //start a new session request
+    //          !(_consensusStartRequests.TryGetValue(senderNodeId, out var _startingRequest) &&
+    //              _startingRequest.Signature != request.Signature))
+    //    {
+    //        //check time
+    //        if (request.TimeStamp.Date == DateTime.UtcNow.Date &&
+    //            //minimal future request tolerance
+    //            //will not spoof startign at wrong time
+    //            request.TimeStamp < DateTime.UtcNow.AddMinutes(5))
+    //        {
+    //            //do i know this dude?
+    //            var node = GetWeightedIterationNode(request.NodeIdFrom);
+    //            //have i seen you recently?
+    //            if (node != null && node.NodeData.LastSeen.Date == request.TimeStamp.Date)
+    //            {
+    //                //do we have latest key for it?
+    //                if (P2PCrypto.TestSignature(request.GetHash(), request.Signature, node.NodeData.Identity.PublicVerifyKey!))
+    //                {
+    //                    //the one who we will blame?
+    //                    //[out_of_time_demotion]
+    //                    if (_consensusStartRequests.TryGetValue(senderNodeId, out var _checkingRequest))
+    //                    {
+    //                        if (request.NonTransitive && _checkingRequest.TimeStamp < request.TimeStamp)
+    //                        {
+    //                            _consensusStartRequests[senderNodeId] = request;
+    //                        }
+    //                    }
+    //                    else
+    //                    {
+    //                        _consensusStartRequests[senderNodeId] = request;
+    //                    }
+    //                }
+    //                else
+    //                {
+    //                    //what the shit are you sending me
+    //                    //re-sign another request
+    //                    return "FUCK_THIS_REQUEST";
+    //                }
+    //            }
+    //            else
+    //            {
+    //                //record the request for later when we do have the means to verify
+    //                //if the sender sent a fake request - he will be boinked
+    //                //sender should send data for the start request... soon
+    //                //[out_of_time_demotion]
+    //                if (_consensusStartRequests.TryGetValue(senderNodeId, out var _checkingRequest))
+    //                {
+    //                    if (request.NonTransitive && _checkingRequest.TimeStamp < request.TimeStamp)
+    //                    {
+    //                        _consensusStartRequests[senderNodeId] = request;
+    //                    }
+    //                }
+    //                else
+    //                {
+    //                    _consensusStartRequests[senderNodeId] = request;
+    //                }
+
+    //                return "FUCK_YOU_ARE";
+    //            }
+
+    //        }
+    //        else
+    //        {
+    //            //re-sign another request
+    //            return "FUCK_TIMESTAMP";
+    //        }
+    //    }
+    //    else
+    //    {
+    //        //todo: recheck the request, just in case?
+    //        //nah
+    //    }
+
+
+    //    bool startSession = false;
+    //    lock (_epochLock)
+    //    {
+    //        startSession = _activeSession == null;
+    //    }
+
+    //    if (startSession)
+    //    {
+    //        //immidiate lock
+    //        _activeSession = new ConsensusMergeSession()
+    //        {
+    //            CurrentTargetNodeId = senderNodeId
+    //        };
+
+    //        _activeSession.CurrentCSR = _consensusStartRequests[senderNodeId];
+    //        // =========================================================================
+    //        // REQUIRED SECURITY CHECK: Out-of-Time Rating & Threshold Verification Gate
+    //        // =========================================================================
+    //        bool requiredTimeDemoteCheck = _activeSession.CurrentCSR != null && _activeSession.CurrentCSR.TimeStamp.Hour != 23;
+    //        if (requiredTimeDemoteCheck && _activeSession.CurrentCSR != null)
+    //        {
+    //            var initiatorNode = GetWeightedIterationNode(_activeSession.CurrentCSR.NodeIdFrom);
+    //            double thresholdValue = _ratingSettings.CurrentValue.ConsensusOutOfTImeStartThreshold;
+
+    //            // 1. Verify and penalize the immediate direct neighbor (Y) for relaying out-of-time traffic
+    //            var directRelayerNode = _peerTracker.GetPeer(senderNodeId);
+    //            if (directRelayerNode != null)
+    //            {
+    //                _logger.LogWarning("[Security Gate] Charging Relayer Neighbor Y ({Id}) trust cost for processing out-of-time loop.", senderNodeId);
+    //                await _peerTracker.UpdateTrustAsync(senderNodeId, -5);
+    //            }
+
+    //            // 2. Evaluate the original Cryptographic Initiator Source (Z)
+    //            if (initiatorNode != null)
+    //            {
+    //                // Hard Boundary: Reject if the node is explicitly untrusted or below threshold
+    //                if (initiatorNode.Disbelief > 0.5 || initiatorNode.NodeData.TrustScore < thresholdValue)
+    //                {
+    //                    _logger.LogCritical("[Security Gate] Aborted session init. Out-of-time requester Z {Id} rating ({Score}) is below boundary limit ({Threshold}).",
+    //                        _activeSession.CurrentCSR.NodeIdFrom, initiatorNode.NodeData.TrustScore, thresholdValue);
+    //                    _consensusStartRequests.Clear();
+    //                    _activeSession = null;
+    //                    return "REJECT_REPUTATION_INSUFFICIENT";
+    //                }
+
+    //                // Epidemic Clemency Pass: If the node is highly unfamiliar or faded (high uncertainty), do not penalize it upfront
+    //                bool isUnfamiliarOrFaded = initiatorNode.Uncertainty > 0.7;
+    //                if (isUnfamiliarOrFaded)
+    //                {
+    //                    _logger.LogInformation("[Security Gate] Unfamiliar source Z {Id} detected via high uncertainty. Granting clean bypass pass for epidemic convergence.",
+    //                        _activeSession.CurrentCSR.NodeIdFrom);
+    //                    _activeSession.CurrentCSR.StartingRating = initiatorNode.NodeData.TrustScore;
+    //                }
+    //                else
+    //                {
+    //                    // Established node operating out of bounds: apply upfront nominal penalty cost
+    //                    double initialCostRate = 0.10;
+    //                    initiatorNode.Belief *= (1.0 - initialCostRate);
+    //                    initiatorNode.Disbelief = (initiatorNode.Disbelief * (1.0 - initialCostRate)) + initialCostRate;
+    //                    initiatorNode.Uncertainty = Math.Max(0.0, 1.0 - (initiatorNode.Belief + initiatorNode.Disbelief));
+
+    //                    double currentExpectation = initiatorNode.Belief + (0.5 * initiatorNode.Uncertainty);
+    //                    initiatorNode.NodeData.TrustScore = (int)Math.Clamp(Math.Floor(-50.0 + (150.0 * currentExpectation)), -50, 100);
+
+    //                    // Record adjusted rating value inside volatile transient session state
+    //                    _activeSession.CurrentCSR.StartingRating = initiatorNode.NodeData.TrustScore;
+    //                }
+    //            }
+    //            else
+    //            {
+    //                // Entirely new node ID introduced into the epidemic mesh: grant optimistic high Uncertainty pass
+    //                _logger.LogInformation("[Security Gate] Initializing completely new source identity Z: {Id} at safe neutral baseline (25).", _activeSession.CurrentCSR.NodeIdFrom);
+    //                _activeSession.CurrentCSR.StartingRating = 25; // Clears threshold comfortably
+    //                requiredTimeDemoteCheck = false; // Bypass upfront penalty since there's no history to burn yet
+    //            }
+    //        }
+
+    //        _consensusStartRequests.Clear();
+    //        _consensusStartRequests[senderNodeId] = _activeSession.CurrentCSR!;
+    //        ConsensusStarted?.Invoke();
+
+    //        //we have a new merge request
+    //        // Create a new token for this specific orchestration lifecycle
+    //        _activeSession.Control.OrchestrationCts?.Cancel();
+    //        _activeSession.Control.OrchestrationCts = new CancellationTokenSource();
+    //        var token = _activeSession.Control.OrchestrationCts.Token;
+
+    //        // Fire-and-forget: Orchestration is now decoupled from the handler's request/response lifecycle.
+    //        _ = Task.Run(async () =>
+    //        {
+    //            try
+    //            {
+    //                await RunTreeOrchestrationLoopAsync(utcNow, token);
+    //            }
+    //            catch (Exception ex)
+    //            {
+    //                _logger.LogError(ex, "[Consensus Coordinator] Orchestration loop crashed.");
+    //                await AbortConsensusMergeAsync();
+    //                Cleanup();
+    //            }
+    //        }, token);
+
+    //        return "STARTING_UP";
+    //    }
+
+    //    if(_activeSession == null)
+    //        return "WTF";
+
+    //    var session = _activeSession;
+
+    //    if (session.Control.ProcessingLock != 0 || !string.IsNullOrEmpty(session.CurrentTargetNodeId))
+    //    {
+    //        return $"BUSY|{session.CurrentTargetNodeId}|LOCK_ACTIVE";
+    //    }
+
+    //    // PRE-CONNECTION BOUNDARY: Merge uncommitted deltas before accepting new document trades
+    //    if (session.Deltas.DeltasToSync.Count > 0)
+    //    {
+    //        _logger.LogInformation("[Consensus Coordinator] Pending unmerged deltas on disk. Forcing delta consolidation first.");
+    //        return $"BUSY|{session.Deltas.DeltasToSync.Count}|DELTAS_PENDING";
+    //    }
+
+    //    if (session.PreviousSyncSet.Contains(senderNodeId))
+    //    {
+    //        return "ALREADY_SYNCED";
+    //        //if node missed out - we can still respond with our data
+    //        //for exampel if it fell out of ync iteration with another shady node
+    //    }
+
+    //    if(envelope.CommandType == "ConsensusMergeInitRequest")
+    //    {
+    //        //locking in
+    //        lock (_epochLock)
+    //        {
+    //            session.CurrentTargetNodeId = senderNodeId;
+    //        }
+    //    }
+
+    //    return "AVAILABLE";
+    //}
+
+
+    //private async Task<string> PeerConsensusStartMessage_Handler(string senderNodeId, P2PPacketEnvelope envelope, CancellationToken token)
+    //{
+    //    //record who asked and test the signature
+    //    var request = JsonSerializer.Deserialize<ConsensusRequest>(envelope.SerializedPayload);
+    //    if (request == null)
+    //    {
+    //        //the fuck do you send me?
+    //        return "FUCK_DO_YOU_SEND";
+    //    }
+
+    //    var utcNow = DateTime.UtcNow;
+    //    bool isWithinOfficialMergeWindow = utcNow.Hour == 23;
+
+    //    // Resolve cached profile definitions from local persistence shards
+    //    var remoteNode = _peerTracker.GetPeer(senderNodeId);
+    //    bool isSenderTracker = remoteNode != null && (remoteNode.Identity.Roles.Contains("tracker") || remoteNode.Identity.Roles.Contains("promoted_tracker"));
+    //    double senderTrustScore = remoteNode?.TrustScore ?? 0;
+
+    //    var localRoles = _identity.GetLocalRoles();
+    //    bool isLocalNodeTracker = localRoles.Contains("tracker") || localRoles.Contains("promoted_tracker");
+
+    //    bool hasActiveTrackerConnection = _peerTracker.GetLastSeenNodes(PeerTracker.DefaultNodeComparer)
+    //            .Any(c => c.Identity.Roles.Contains("tracker") && c.LastSeen.AddMinutes(5) > DateTime.UtcNow);
+
+    //    if (!isWithinOfficialMergeWindow)
+    //    {
+    //        // Out-of-time requests are completely illegal unless originating from an authoritative tracker
+    //        if (!isSenderTracker)
+    //        {
+    //            _logger.LogWarning("[Consensus Border] Rejected out-of-time request from Client Node: {NodeId}", senderNodeId);
+    //            return "REJECT_OUT_OF_TIME_NODE_UNAUTHORIZED";
+    //        }
+
+    //        // Client peers drop out-of-time peer sync requests if they already have an active tracker channel handling updates
+    //        if (!isLocalNodeTracker && hasActiveTrackerConnection)
+    //        {
+    //            _logger.LogWarning("[Consensus Border] Rejected peer interaction: Tracker is already active.");
+    //            return "REJECT_ROLE_BYPASS_ATTEMPT";
+    //        }
+    //    }
+
+    //    if (isWithinOfficialMergeWindow && utcNow.Minute < 5 && !isLocalNodeTracker && hasActiveTrackerConnection)
+    //    {
+    //        // First 5 minutes of official window: Client peers are protected from out-of-sync penalties.
+    //        // Rather than starting a redundant loop, we gracefully return our active working tracker details
+    //        var activeTrackerNode = _peerTracker.GetLastSeenNodes(PeerTracker.DefaultNodeComparer)
+    //            .FirstOrDefault(c => (c.Identity.Roles.Contains("tracker") || c.Identity.Roles.Contains("promoted_tracker"))
+    //                                 && c.LastSeen.AddMinutes(5) > DateTime.UtcNow);
+
+    //        string trackerAddress = activeTrackerNode != null ? activeTrackerNode.Identity.SignalingEndpoints.FirstOrDefault() : "no-active-tracker-cached";
+    //        _logger.LogInformation("[Consensus Border] Grace period redirect. Returning working tracker endpoint to node: {Id}", senderNodeId);
+    //        return $"REDIRECT_TO_TRACKER|{trackerAddress}";
+    //    }
+
+    //    if (_activeSession == null || //start a new session request
+    //          !(_consensusStartRequests.TryGetValue(senderNodeId, out var _startingRequest) &&
+    //              _startingRequest.Signature != request.Signature))
+    //    {
+    //        //check time
+    //        if (request.TimeStamp.Date == DateTime.UtcNow.Date &&
+    //            //minimal future request tolerance
+    //            //will not spoof startign at wrong time
+    //            request.TimeStamp < DateTime.UtcNow.AddMinutes(5))
+    //        {
+    //            //do i know this dude?
+    //            var node = GetWeightedIterationNode(request.NodeIdFrom);
+    //            //have i seen you recently?
+    //            if (node != null && node.NodeData.LastSeen.Date == request.TimeStamp.Date)
+    //            {
+    //                //do we have latest key for it?
+    //                if (P2PCrypto.TestSignature(request.GetHash(), request.Signature, node.NodeData.Identity.PublicVerifyKey!))
+    //                {
+    //                    //the one who we will blame?
+    //                    //[out_of_time_demotion]
+    //                    if (_consensusStartRequests.TryGetValue(senderNodeId, out var _checkingRequest))
+    //                    {
+    //                        if (request.NonTransitive && _checkingRequest.TimeStamp < request.TimeStamp)
+    //                        {
+    //                            _consensusStartRequests[senderNodeId] = request;
+    //                        }
+    //                    }
+    //                    else
+    //                    {
+    //                        _consensusStartRequests[senderNodeId] = request;
+    //                    }
+    //                }
+    //                else
+    //                {
+    //                    //what the shit are you sending me
+    //                    //re-sign another request
+    //                    return "FUCK_THIS_REQUEST";
+    //                }
+    //            }
+    //            else
+    //            {
+    //                //record the request for later when we do have the means to verify
+    //                //if the sender sent a fake request - he will be boinked
+    //                //sender should send data for the start request... soon
+    //                //[out_of_time_demotion]
+    //                if (_consensusStartRequests.TryGetValue(senderNodeId, out var _checkingRequest))
+    //                {
+    //                    if (request.NonTransitive && _checkingRequest.TimeStamp < request.TimeStamp)
+    //                    {
+    //                        _consensusStartRequests[senderNodeId] = request;
+    //                    }
+    //                }
+    //                else
+    //                {
+    //                    _consensusStartRequests[senderNodeId] = request;
+    //                }
+
+    //                return "FUCK_YOU_ARE";
+    //            }
+
+    //        }
+    //        else
+    //        {
+    //            //re-sign another request
+    //            return "FUCK_TIMESTAMP";
+    //        }
+    //    }
+    //    else
+    //    {
+    //        //todo: recheck the request, just in case?
+    //        //nah
+    //    }
+
+
+    //    bool startSession = false;
+    //    lock (_epochLock)
+    //    {
+    //        startSession = _activeSession == null;
+    //    }
+
+    //    if (startSession)
+    //    {
+    //        //immidiate lock
+    //        _activeSession = new ConsensusMergeSession()
+    //        {
+    //            CurrentTargetNodeId = senderNodeId
+    //        };
+
+    //        _activeSession.CurrentCSR = _consensusStartRequests[senderNodeId];
+    //        // =========================================================================
+    //        // REQUIRED SECURITY CHECK: Out-of-Time Rating & Threshold Verification Gate
+    //        // =========================================================================
+    //        bool requiredTimeDemoteCheck = _activeSession.CurrentCSR != null && _activeSession.CurrentCSR.TimeStamp.Hour != 23;
+    //        if (requiredTimeDemoteCheck && _activeSession.CurrentCSR != null)
+    //        {
+    //            var initiatorNode = GetWeightedIterationNode(_activeSession.CurrentCSR.NodeIdFrom);
+    //            double thresholdValue = _ratingSettings.CurrentValue.ConsensusOutOfTImeStartThreshold;
+
+    //            // 1. Verify and penalize the immediate direct neighbor (Y) for relaying out-of-time traffic
+    //            var directRelayerNode = _peerTracker.GetPeer(senderNodeId);
+    //            if (directRelayerNode != null)
+    //            {
+    //                _logger.LogWarning("[Security Gate] Charging Relayer Neighbor Y ({Id}) trust cost for processing out-of-time loop.", senderNodeId);
+    //                await _peerTracker.UpdateTrustAsync(senderNodeId, -5);
+    //            }
+
+    //            // 2. Evaluate the original Cryptographic Initiator Source (Z)
+    //            if (initiatorNode != null)
+    //            {
+    //                // Hard Boundary: Reject if the node is explicitly untrusted or below threshold
+    //                if (initiatorNode.Disbelief > 0.5 || initiatorNode.NodeData.TrustScore < thresholdValue)
+    //                {
+    //                    _logger.LogCritical("[Security Gate] Aborted session init. Out-of-time requester Z {Id} rating ({Score}) is below boundary limit ({Threshold}).",
+    //                        _activeSession.CurrentCSR.NodeIdFrom, initiatorNode.NodeData.TrustScore, thresholdValue);
+    //                    _consensusStartRequests.Clear();
+    //                    _activeSession = null;
+    //                    return "REJECT_REPUTATION_INSUFFICIENT";
+    //                }
+
+    //                // Epidemic Clemency Pass: If the node is highly unfamiliar or faded (high uncertainty), do not penalize it upfront
+    //                bool isUnfamiliarOrFaded = initiatorNode.Uncertainty > 0.7;
+    //                if (isUnfamiliarOrFaded)
+    //                {
+    //                    _logger.LogInformation("[Security Gate] Unfamiliar source Z {Id} detected via high uncertainty. Granting clean bypass pass for epidemic convergence.",
+    //                        _activeSession.CurrentCSR.NodeIdFrom);
+    //                    _activeSession.CurrentCSR.StartingRating = initiatorNode.NodeData.TrustScore;
+    //                }
+    //                else
+    //                {
+    //                    // Established node operating out of bounds: apply upfront nominal penalty cost
+    //                    double initialCostRate = 0.10;
+    //                    initiatorNode.Belief *= (1.0 - initialCostRate);
+    //                    initiatorNode.Disbelief = (initiatorNode.Disbelief * (1.0 - initialCostRate)) + initialCostRate;
+    //                    initiatorNode.Uncertainty = Math.Max(0.0, 1.0 - (initiatorNode.Belief + initiatorNode.Disbelief));
+
+    //                    double currentExpectation = initiatorNode.Belief + (0.5 * initiatorNode.Uncertainty);
+    //                    initiatorNode.NodeData.TrustScore = (int)Math.Clamp(Math.Floor(-50.0 + (150.0 * currentExpectation)), -50, 100);
+
+    //                    // Record adjusted rating value inside volatile transient session state
+    //                    _activeSession.CurrentCSR.StartingRating = initiatorNode.NodeData.TrustScore;
+    //                }
+    //            }
+    //            else
+    //            {
+    //                // Entirely new node ID introduced into the epidemic mesh: grant optimistic high Uncertainty pass
+    //                _logger.LogInformation("[Security Gate] Initializing completely new source identity Z: {Id} at safe neutral baseline (25).", _activeSession.CurrentCSR.NodeIdFrom);
+    //                _activeSession.CurrentCSR.StartingRating = 25; // Clears threshold comfortably
+    //                requiredTimeDemoteCheck = false; // Bypass upfront penalty since there's no history to burn yet
+    //            }
+    //        }
+
+    //        _consensusStartRequests.Clear();
+    //        _consensusStartRequests[senderNodeId] = _activeSession.CurrentCSR!;
+    //        ConsensusStarted?.Invoke();
+
+    //        //we have a new merge request
+    //        // Create a new token for this specific orchestration lifecycle
+    //        _activeSession.Control.OrchestrationCts?.Cancel();
+    //        _activeSession.Control.OrchestrationCts = new CancellationTokenSource();
+    //        var token = _activeSession.Control.OrchestrationCts.Token;
+
+    //        // Fire-and-forget: Orchestration is now decoupled from the handler's request/response lifecycle.
+    //        _ = Task.Run(async () =>
+    //        {
+    //            try
+    //            {
+    //                await RunTreeOrchestrationLoopAsync(utcNow, token);
+    //            }
+    //            catch (Exception ex)
+    //            {
+    //                _logger.LogError(ex, "[Consensus Coordinator] Orchestration loop crashed.");
+    //                await AbortConsensusMergeAsync();
+    //                Cleanup();
+    //            }
+    //        }, token);
+
+    //        return "STARTING_UP";
+    //    }
+
+    //    if (_activeSession == null)
+    //        return "WTF";
+
+    //    var session = _activeSession;
+
+    //    if (session.Control.ProcessingLock != 0 || !string.IsNullOrEmpty(session.CurrentTargetNodeId))
+    //    {
+    //        return $"BUSY|{session.CurrentTargetNodeId}|LOCK_ACTIVE";
+    //    }
+
+    //    // PRE-CONNECTION BOUNDARY: Merge uncommitted deltas before accepting new document trades
+    //    if (session.Deltas.DeltasToSync.Count > 0)
+    //    {
+    //        _logger.LogInformation("[Consensus Coordinator] Pending unmerged deltas on disk. Forcing delta consolidation first.");
+    //        return $"BUSY|{session.Deltas.DeltasToSync.Count}|DELTAS_PENDING";
+    //    }
+
+    //    if (session.PreviousSyncSet.Contains(senderNodeId))
+    //    {
+    //        return "ALREADY_SYNCED";
+    //        //if node missed out - we can still respond with our data
+    //        //for exampel if it fell out of ync iteration with another shady node
+    //    }
+
+    //    if (envelope.CommandType == "ConsensusMergeInitRequest")
+    //    {
+    //        //locking in
+    //        lock (_epochLock)
+    //        {
+    //            session.CurrentTargetNodeId = senderNodeId;
+    //        }
+    //    }
+
+    //    return "AVAILABLE";
+    //}

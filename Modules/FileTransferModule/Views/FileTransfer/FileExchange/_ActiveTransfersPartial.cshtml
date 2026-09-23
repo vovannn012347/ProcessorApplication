@@ -1,0 +1,87 @@
+﻿@model List<FileSharingModule.Models.SwarmTransferTaskState>
+
+<div class="space-y-4">
+    @if (Model == null || Model.Count == 0)
+    {
+        <div class="py-12 text-center text-slate-400 bg-white border border-gray-200 rounded-xl shadow-sm">
+            <i class="fa-solid fa-network-wired text-3xl mb-2 block"></i>
+            No active downloads or transfer tasks currently running.
+        </div>
+    }
+    else
+    {
+        @foreach (var task in Model)
+        {
+            <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-3">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+                    <div>
+                        <h4 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                            <i class="fa-solid fa-file-arrow-down text-indigo-600"></i>
+                            @task.FileName
+                        </h4>
+                        <div class="text-[11px] text-slate-400 font-mono mt-0.5">
+                            Hash: @task.ContentHash.Substring(0, Math.Min(16, task.ContentHash.Length))... | Path: @(string.IsNullOrEmpty(task.TargetSavePath) ? "Staging..." : task.TargetSavePath)
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        @switch (task.Status)
+                        {
+                            case FileSharingModule.Models.SwarmTaskStatus.Staging:
+                                <span class="px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-md text-xs font-semibold animate-pulse">Downloading</span>
+                                break;
+                            case FileSharingModule.Models.SwarmTaskStatus.Assembling:
+                                <span class="px-2.5 py-1 bg-amber-50 text-amber-700 rounded-md text-xs font-semibold">Assembling</span>
+                                break;
+                            case FileSharingModule.Models.SwarmTaskStatus.Complete:
+                                <span class="px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-md text-xs font-semibold">Complete</span>
+                                break;
+                            case FileSharingModule.Models.SwarmTaskStatus.Paused:
+                                <span class="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-md text-xs font-semibold">Paused</span>
+                                break;
+                            case FileSharingModule.Models.SwarmTaskStatus.Failed:
+                                <span class="px-2.5 py-1 bg-red-50 text-red-600 rounded-md text-xs font-semibold">Failed</span>
+                                break;
+                            default:
+                                <span class="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-md text-xs font-semibold">@task.Status</span>
+                                break;
+                        }
+                    </div>
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-[11px] text-slate-600 mb-1 font-medium">
+                        <span>@task.ProgressPercentage.ToString("F1")% (@task.Bitfield.GetCompletedBlocksCount() / @task.Bitfield.TotalBlocks blocks)</span>
+                        <span>Peers: @task.ActiveSeedersCount connected</span>
+                    </div>
+                    <div class="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                        <div class="bg-indigo-600 h-2.5 rounded-full transition-all duration-300" style="width: @task.ProgressPercentage%"></div>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-gray-100 flex justify-between items-center text-xs">
+                    <button type="button" data-action="view-bitfield" data-task="@task.ContentHash" class="text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1">
+                        <i class="fa-solid fa-cubes"></i> View Bitfield Map
+                    </button>
+
+                    <div class="flex gap-2">
+                        @if (task.Status == FileSharingModule.Models.SwarmTaskStatus.Staging)
+                        {
+                            <button type="button" data-action="pause-task" data-task="@task.ContentHash" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-medium">
+                                <i class="fa-solid fa-pause"></i> Pause
+                            </button>
+                        }
+                        else if (task.Status == FileSharingModule.Models.SwarmTaskStatus.Paused)
+                        {
+                            <button type="button" data-action="resume-task" data-task="@task.ContentHash" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-medium">
+                                <i class="fa-solid fa-play"></i> Resume
+                            </button>
+                        }
+                        <button type="button" data-action="cancel-task" data-task="@task.ContentHash" class="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded text-xs font-medium">
+                            <i class="fa-solid fa-xmark"></i> Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>

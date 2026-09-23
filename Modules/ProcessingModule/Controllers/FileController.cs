@@ -9,7 +9,7 @@ using ProcessingModule.Database;
 
 namespace ProcessingModule.Controllers;
 
-[ModuleRoute(ProcessorModule.MODULE_ID)]
+[ModuleRoute(ProcessorModuleEntryPoint.MODULE_ID)]
 public class FilesController : Controller
 {
     private readonly ProcessorDbContext _db;

@@ -13,7 +13,7 @@ namespace ProcessorApplication.Controllers;
 
 [Authorize]
 [ModuleRoute("Main")]
-[Route("[controller]")]
+[Route("/[area]/[controller]/[action]/{id?}")]
 public class HomeController : Controller
 {
     private readonly ILogger<HomeController> _logger;

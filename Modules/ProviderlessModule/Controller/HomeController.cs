@@ -1,34 +1,27 @@
-﻿using System.Security.Claims;
-
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
-using Microsoft.Win32;
-
-using Org.BouncyCastle.Utilities.Collections;
 
 using ProcessorApplication.Attributes;
-using ProcessorApplication.Services.User;
 
 using ProviderlessModule.Configuration;
 using ProviderlessModule.Infrastructure.Interfaces;
 using ProviderlessModule.Models;
 using ProviderlessModule.Services;
 
-using ZstdSharp.Unsafe;
-
 
 namespace ProviderlessModule.Controllers;
 
 [Authorize(Roles = "Admin")]
-[ModuleRoute("Providerless")]
 [Route("")]
 [Route("Providerless")]
-[Route("[controller]/[action]/{id?}")]
+[ModuleRoute("Providerless")]
+[Route("/[area]/[controller]/[action]/{id?}")]
 public class HomeController : Controller
 {
     //protected ClaimsPrincipal CurrentUser => User;
     private readonly ITunnelSelector _selector;
+    private readonly IOptionsMonitor<PortalAccessSettings> _general;
     private readonly IRegistrySelector _registrySelector;
     private readonly PortalState _state;
     private readonly IPortalControlSignal _controlSignal;
@@ -37,9 +30,11 @@ public class HomeController : Controller
         ITunnelSelector selector,
         IRegistrySelector registrySelector,
         PortalState state,
+        IOptionsMonitor<PortalAccessSettings> general,
         IPortalControlSignal controlSignal)
     {
         _selector = selector;
+        _general = general;
         _registrySelector = registrySelector;
         _state = state;
         _controlSignal = controlSignal;
@@ -56,6 +51,7 @@ public class HomeController : Controller
     {
         var provider = _selector.GetActiveProvider();
         var registry = _registrySelector.GetActiveRegistry();
+        var stuff = _general.CurrentValue;
 
         return Json(new QrStatusResult
         {
@@ -64,7 +60,7 @@ public class HomeController : Controller
             Url = registry.IsActive ? registry.GetQrDiscoveryUrl() : provider.CurrentUrl ?? string.Empty,
             StartTime = provider.LastStartTime?.ToString("HH:mm:ss") ?? "--:--",
             ProviderName = provider.Provider.ToString(),
-            LastError = _state.LastError
+            LastError = _state.LastError + stuff.ActiveRegistry
         });
     }
 

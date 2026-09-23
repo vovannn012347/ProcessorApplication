@@ -10,36 +10,113 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Modules", "Modules", "{02EA
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}"
 	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
 		Etc_Stuff\css_rebuild_command.txt = Etc_Stuff\css_rebuild_command.txt
+		Etc_Stuff\font-awesome-lookup.html = Etc_Stuff\font-awesome-lookup.html
+		Etc_Stuff\font-awesome-stylesheet.css = Etc_Stuff\font-awesome-stylesheet.css
 		Etc_Stuff\migrations.odt = Etc_Stuff\migrations.odt
+		Etc_Stuff\notes1.txt = Etc_Stuff\notes1.txt
+		Etc_Stuff\notex.txt = Etc_Stuff\notex.txt
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProviderlessModule", "Modules\ProviderlessModule\ProviderlessModule.csproj", "{9BB746CE-5E6D-4D14-96A1-C4B7B78E27B7}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProcessingModule", "Modules\ProcessingModule\ProcessingModule.csproj", "{0FC929CB-750D-8864-6887-63E20EAA3532}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "P2PModule", "Modules\P2PModule\P2PModule.csproj", "{BA21857E-3BFC-4B49-CBB5-1535E5922F88}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Configs", "Configs", "{ABB6BDB8-6CDB-44D5-9C3F-B1E4473D4FD1}"
+	ProjectSection(SolutionItems) = preProject
+		Directory.Build.props = Directory.Build.props
+		Modules\Directory.Build.targets = Modules\Directory.Build.targets
+		ProcessorApplication\Properties\launchSettings.json = ProcessorApplication\Properties\launchSettings.json
+		ProcessorApplication\Resources\SharedResource.en-US.resx = ProcessorApplication\Resources\SharedResource.en-US.resx
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileSharingModule", "Modules\FileTransferModule\FileSharingModule.csproj", "{4904248B-B2CA-BC16-DAA7-042DC111E5E1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
+		NodeClient1Debug|Any CPU = NodeClient1Debug|Any CPU
+		NodeClient2Debug|Any CPU = NodeClient2Debug|Any CPU
+		NodeTracker1Debug|Any CPU = NodeTracker1Debug|Any CPU
+		NodeTracker2Debug|Any CPU = NodeTracker2Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{2B20EE0B-3729-477C-B5B1-807F40A418FD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{2B20EE0B-3729-477C-B5B1-807F40A418FD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2B20EE0B-3729-477C-B5B1-807F40A418FD}.NodeClient1Debug|Any CPU.ActiveCfg = NodeClient1Debug|Any CPU
+		{2B20EE0B-3729-477C-B5B1-807F40A418FD}.NodeClient1Debug|Any CPU.Build.0 = NodeClient1Debug|Any CPU
+		{2B20EE0B-3729-477C-B5B1-807F40A418FD}.NodeClient2Debug|Any CPU.ActiveCfg = NodeClient2Debug|Any CPU
+		{2B20EE0B-3729-477C-B5B1-807F40A418FD}.NodeClient2Debug|Any CPU.Build.0 = NodeClient2Debug|Any CPU
+		{2B20EE0B-3729-477C-B5B1-807F40A418FD}.NodeTracker1Debug|Any CPU.ActiveCfg = NodeTracker1Debug|Any CPU
+		{2B20EE0B-3729-477C-B5B1-807F40A418FD}.NodeTracker1Debug|Any CPU.Build.0 = NodeTracker1Debug|Any CPU
+		{2B20EE0B-3729-477C-B5B1-807F40A418FD}.NodeTracker2Debug|Any CPU.ActiveCfg = NodeTracker2Debug|Any CPU
+		{2B20EE0B-3729-477C-B5B1-807F40A418FD}.NodeTracker2Debug|Any CPU.Build.0 = NodeTracker2Debug|Any CPU
 		{2B20EE0B-3729-477C-B5B1-807F40A418FD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2B20EE0B-3729-477C-B5B1-807F40A418FD}.Release|Any CPU.Build.0 = Release|Any CPU
 		{B91054E7-966D-42D6-A7BB-1944CAA16FB9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{B91054E7-966D-42D6-A7BB-1944CAA16FB9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B91054E7-966D-42D6-A7BB-1944CAA16FB9}.NodeClient1Debug|Any CPU.ActiveCfg = NodeClient1Debug|Any CPU
+		{B91054E7-966D-42D6-A7BB-1944CAA16FB9}.NodeClient1Debug|Any CPU.Build.0 = NodeClient1Debug|Any CPU
+		{B91054E7-966D-42D6-A7BB-1944CAA16FB9}.NodeClient2Debug|Any CPU.ActiveCfg = NodeClient2Debug|Any CPU
+		{B91054E7-966D-42D6-A7BB-1944CAA16FB9}.NodeClient2Debug|Any CPU.Build.0 = NodeClient2Debug|Any CPU
+		{B91054E7-966D-42D6-A7BB-1944CAA16FB9}.NodeTracker1Debug|Any CPU.ActiveCfg = NodeTracker1Debug|Any CPU
+		{B91054E7-966D-42D6-A7BB-1944CAA16FB9}.NodeTracker1Debug|Any CPU.Build.0 = NodeTracker1Debug|Any CPU
+		{B91054E7-966D-42D6-A7BB-1944CAA16FB9}.NodeTracker2Debug|Any CPU.ActiveCfg = NodeTracker2Debug|Any CPU
+		{B91054E7-966D-42D6-A7BB-1944CAA16FB9}.NodeTracker2Debug|Any CPU.Build.0 = NodeTracker2Debug|Any CPU
 		{B91054E7-966D-42D6-A7BB-1944CAA16FB9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B91054E7-966D-42D6-A7BB-1944CAA16FB9}.Release|Any CPU.Build.0 = Release|Any CPU
 		{9BB746CE-5E6D-4D14-96A1-C4B7B78E27B7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{9BB746CE-5E6D-4D14-96A1-C4B7B78E27B7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9BB746CE-5E6D-4D14-96A1-C4B7B78E27B7}.NodeClient1Debug|Any CPU.ActiveCfg = NodeClient1Debug|Any CPU
+		{9BB746CE-5E6D-4D14-96A1-C4B7B78E27B7}.NodeClient1Debug|Any CPU.Build.0 = NodeClient1Debug|Any CPU
+		{9BB746CE-5E6D-4D14-96A1-C4B7B78E27B7}.NodeClient2Debug|Any CPU.ActiveCfg = NodeClient2Debug|Any CPU
+		{9BB746CE-5E6D-4D14-96A1-C4B7B78E27B7}.NodeClient2Debug|Any CPU.Build.0 = NodeClient2Debug|Any CPU
+		{9BB746CE-5E6D-4D14-96A1-C4B7B78E27B7}.NodeTracker1Debug|Any CPU.ActiveCfg = NodeTracker1Debug|Any CPU
+		{9BB746CE-5E6D-4D14-96A1-C4B7B78E27B7}.NodeTracker1Debug|Any CPU.Build.0 = NodeTracker1Debug|Any CPU
+		{9BB746CE-5E6D-4D14-96A1-C4B7B78E27B7}.NodeTracker2Debug|Any CPU.ActiveCfg = NodeTracker2Debug|Any CPU
+		{9BB746CE-5E6D-4D14-96A1-C4B7B78E27B7}.NodeTracker2Debug|Any CPU.Build.0 = NodeTracker2Debug|Any CPU
 		{9BB746CE-5E6D-4D14-96A1-C4B7B78E27B7}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9BB746CE-5E6D-4D14-96A1-C4B7B78E27B7}.Release|Any CPU.Build.0 = Release|Any CPU
 		{0FC929CB-750D-8864-6887-63E20EAA3532}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{0FC929CB-750D-8864-6887-63E20EAA3532}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0FC929CB-750D-8864-6887-63E20EAA3532}.NodeClient1Debug|Any CPU.ActiveCfg = NodeClient1Debug|Any CPU
+		{0FC929CB-750D-8864-6887-63E20EAA3532}.NodeClient1Debug|Any CPU.Build.0 = NodeClient1Debug|Any CPU
+		{0FC929CB-750D-8864-6887-63E20EAA3532}.NodeClient2Debug|Any CPU.ActiveCfg = NodeClient2Debug|Any CPU
+		{0FC929CB-750D-8864-6887-63E20EAA3532}.NodeClient2Debug|Any CPU.Build.0 = NodeClient2Debug|Any CPU
+		{0FC929CB-750D-8864-6887-63E20EAA3532}.NodeTracker1Debug|Any CPU.ActiveCfg = NodeTracker1Debug|Any CPU
+		{0FC929CB-750D-8864-6887-63E20EAA3532}.NodeTracker1Debug|Any CPU.Build.0 = NodeTracker1Debug|Any CPU
+		{0FC929CB-750D-8864-6887-63E20EAA3532}.NodeTracker2Debug|Any CPU.ActiveCfg = NodeTracker2Debug|Any CPU
+		{0FC929CB-750D-8864-6887-63E20EAA3532}.NodeTracker2Debug|Any CPU.Build.0 = NodeTracker2Debug|Any CPU
 		{0FC929CB-750D-8864-6887-63E20EAA3532}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0FC929CB-750D-8864-6887-63E20EAA3532}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BA21857E-3BFC-4B49-CBB5-1535E5922F88}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BA21857E-3BFC-4B49-CBB5-1535E5922F88}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BA21857E-3BFC-4B49-CBB5-1535E5922F88}.NodeClient1Debug|Any CPU.ActiveCfg = NodeClient1Debug|Any CPU
+		{BA21857E-3BFC-4B49-CBB5-1535E5922F88}.NodeClient1Debug|Any CPU.Build.0 = NodeClient1Debug|Any CPU
+		{BA21857E-3BFC-4B49-CBB5-1535E5922F88}.NodeClient2Debug|Any CPU.ActiveCfg = NodeClient2Debug|Any CPU
+		{BA21857E-3BFC-4B49-CBB5-1535E5922F88}.NodeClient2Debug|Any CPU.Build.0 = NodeClient2Debug|Any CPU
+		{BA21857E-3BFC-4B49-CBB5-1535E5922F88}.NodeTracker1Debug|Any CPU.ActiveCfg = NodeTracker1Debug|Any CPU
+		{BA21857E-3BFC-4B49-CBB5-1535E5922F88}.NodeTracker1Debug|Any CPU.Build.0 = NodeTracker1Debug|Any CPU
+		{BA21857E-3BFC-4B49-CBB5-1535E5922F88}.NodeTracker2Debug|Any CPU.ActiveCfg = NodeTracker2Debug|Any CPU
+		{BA21857E-3BFC-4B49-CBB5-1535E5922F88}.NodeTracker2Debug|Any CPU.Build.0 = NodeTracker2Debug|Any CPU
+		{BA21857E-3BFC-4B49-CBB5-1535E5922F88}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BA21857E-3BFC-4B49-CBB5-1535E5922F88}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4904248B-B2CA-BC16-DAA7-042DC111E5E1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4904248B-B2CA-BC16-DAA7-042DC111E5E1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4904248B-B2CA-BC16-DAA7-042DC111E5E1}.NodeClient1Debug|Any CPU.ActiveCfg = NodeClient1Debug|Any CPU
+		{4904248B-B2CA-BC16-DAA7-042DC111E5E1}.NodeClient1Debug|Any CPU.Build.0 = NodeClient1Debug|Any CPU
+		{4904248B-B2CA-BC16-DAA7-042DC111E5E1}.NodeClient2Debug|Any CPU.ActiveCfg = NodeClient2Debug|Any CPU
+		{4904248B-B2CA-BC16-DAA7-042DC111E5E1}.NodeClient2Debug|Any CPU.Build.0 = NodeClient2Debug|Any CPU
+		{4904248B-B2CA-BC16-DAA7-042DC111E5E1}.NodeTracker1Debug|Any CPU.ActiveCfg = NodeTracker1Debug|Any CPU
+		{4904248B-B2CA-BC16-DAA7-042DC111E5E1}.NodeTracker1Debug|Any CPU.Build.0 = NodeTracker1Debug|Any CPU
+		{4904248B-B2CA-BC16-DAA7-042DC111E5E1}.NodeTracker2Debug|Any CPU.ActiveCfg = NodeTracker2Debug|Any CPU
+		{4904248B-B2CA-BC16-DAA7-042DC111E5E1}.NodeTracker2Debug|Any CPU.Build.0 = NodeTracker2Debug|Any CPU
+		{4904248B-B2CA-BC16-DAA7-042DC111E5E1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4904248B-B2CA-BC16-DAA7-042DC111E5E1}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -47,6 +124,9 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{9BB746CE-5E6D-4D14-96A1-C4B7B78E27B7} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{0FC929CB-750D-8864-6887-63E20EAA3532} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{BA21857E-3BFC-4B49-CBB5-1535E5922F88} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{ABB6BDB8-6CDB-44D5-9C3F-B1E4473D4FD1} = {8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}
+		{4904248B-B2CA-BC16-DAA7-042DC111E5E1} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {51407EE2-11A0-4C2A-8277-1FD995A12419}

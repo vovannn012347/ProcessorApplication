@@ -1,0 +1,67 @@
+﻿@model List<FileSharingModule.Models.FileCatalogEntry>
+
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    @if (Model == null || Model.Count == 0)
+    {
+        <div class="col-span-full py-12 text-center text-slate-400 bg-white border border-gray-200 rounded-xl">
+            <i class="fa-solid fa-folder-open text-3xl mb-2 block"></i>
+            No files available in the catalog. Try refreshing or querying another peer directly.
+        </div>
+    }
+    else
+    {
+        @foreach (var entry in Model)
+        {
+            <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-between items-start mb-2">
+                        <h4 class="text-sm font-bold text-slate-900 truncate" title="@entry.Manifest.FileName">
+                            <i class="fa-regular fa-file-lines text-indigo-600 mr-1"></i> @entry.Manifest.FileName
+                        </h4>
+                        @if (entry.IsLocalSeeding)
+                        {
+                            <span class="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded text-[10px] font-semibold">Local Seed</span>
+                        }
+                        else
+                        {
+                            <span class="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded text-[10px] font-semibold">Remote</span>
+                        }
+                    </div>
+
+                    <div class="text-[11px] text-slate-500 space-y-1 mb-4 font-mono">
+                        <div class="truncate" title="@entry.Manifest.ContentHash">
+                            <span class="text-slate-400 font-sans">Hash:</span> @entry.Manifest.ContentHash
+                        </div>
+                        <div>
+                            <span class="text-slate-400 font-sans">Size:</span> @((entry.Manifest.TotalSizeBytes / 1024.0 / 1024.0).ToString("F2")) MB
+                            <span class="text-slate-400 ml-2 font-sans">Blocks:</span> @entry.Manifest.TotalBlocksCount
+                        </div>
+                        <div class="truncate" title="@entry.HostNodeId">
+                            <span class="text-slate-400 font-sans">Host:</span> @entry.HostNodeId
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-3 border-t border-gray-100 flex justify-end">
+                    @if (!entry.IsLocalSeeding)
+                    {
+                        <button type="button"
+                                data-action="prompt-download"
+                                data-host="@entry.HostNodeId"
+                                data-hash="@entry.Manifest.ContentHash"
+                                data-filename="@entry.Manifest.FileName"
+                                class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition">
+                            <i class="fa-solid fa-download"></i> Download
+                        </button>
+                    }
+                    else
+                    {
+                        <button type="button" disabled class="px-3 py-1.5 bg-gray-100 text-gray-400 rounded-lg text-xs font-semibold cursor-not-allowed">
+                            Already In Storage
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+    }
+</div>

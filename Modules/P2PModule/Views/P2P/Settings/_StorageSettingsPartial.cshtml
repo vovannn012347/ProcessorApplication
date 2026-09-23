@@ -1,0 +1,34 @@
+﻿@model P2PModule.Controllers.ViewModels.P2PSettingsViewModel
+
+<div class="p2p-space-y-6">
+    <div class="p2p-border-b p2p-border-gray-100 p2p-pb-2">
+        <h3 class="p2p-text-sm p2p-font-bold p2p-text-slate-800">Storage & History Retention Policy</h3>
+        <p class="p2p-text-xs p2p-text-slate-500 p2p-mt-0.5">Control persistent disk-write cycles, ledger pruning boundaries, and legacy peer records tracking thresholds.</p>
+    </div>
+
+    <div class="p2p-grid p2p-grid-cols-1 md:p2p-grid-cols-2 p2p-gap-4">
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Flush Disk Time Interval (Seconds)</label>
+            <input type="number" name="Storage.PersistTimePeriodSeconds" value="@Model.Storage.PersistTimePeriodSeconds" min="1" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500 focus:p2p-outline-none" />
+            <p class="p2p-text-[11px] p2p-text-slate-400 p2p-mt-1">Frequency period at which internal consensus shards flush memory structures directly into physical daily files.</p>
+        </div>
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Max New Nodes Ingress Drip</label>
+            <input type="number" name="Storage.MaxNewNodesDrip" value="@Model.Storage.MaxNewNodesDrip" min="1" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500 focus:p2p-outline-none" />
+            <p class="p2p-text-[11px] p2p-text-slate-400 p2p-mt-1">Hard limit cap of unverified incoming peer definitions processed per unit slice to mitigate database overflow attacks.</p>
+        </div>
+    </div>
+
+    <div class="p2p-grid p2p-grid-cols-1 md:p2p-grid-cols-2 p2p-gap-4 p2p-mt-4">
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Retained History Epochs Limit</label>
+            <input type="number" name="Storage.RetainedHistoryEpochsCount" value="@Model.Storage.RetainedHistoryEpochsCount" min="1" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500 focus:p2p-outline-none" />
+            <p class="p2p-text-[11px] p2p-text-slate-400 p2p-mt-1">Absolute maximum historical chronological shard blocks retained locally prior to system executing programmatic user-requested purges.</p>
+        </div>
+        <div>
+            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Minimum Retained Node History Epochs</label>
+            <input type="number" name="Storage.RetainedNodeHistoryEpochs" value="@Model.Storage.RetainedNodeHistoryEpochs" min="1" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500 focus:p2p-outline-none" />
+            <p class="p2p-text-[11px] p2p-text-slate-400 p2p-mt-1">Guaranteed recovery floor logs maintained for stale or inactive nodes to prevent premature reputation eviction cycles.</p>
+        </div>
+    </div>
+</div>

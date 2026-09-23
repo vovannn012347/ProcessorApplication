@@ -1,22 +1,6 @@
-﻿using System.Reflection;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
-
-using Common.Attributes;
-using Common.Code;
-using Common.Interfaces;
-using Common.Models.Database;
-
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
-
-using MongoDB.Bson;
-using MongoDB.Driver.Linq;
+﻿using Microsoft.Extensions.Options;
 
 using ProcessorApplication.Configuration.Settings;
-using ProcessorApplication.Database;
-using ProcessorApplication.Database.Models;
 using ProcessorApplication.Infrastructure;
 
 namespace ProcessorApplication.Services.HashStamps;
@@ -42,6 +26,7 @@ public class HashGenerationJob : BackgroundService
 
         //generate nitial timestamp
 
+        //todo: tie to midnight
         DateTime lastStampTime = DateTime.UtcNow;
         using (var scope = _scopeFactory.CreateScope())
         {
@@ -90,7 +75,7 @@ public class HashGenerationJob : BackgroundService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error occurred executing Hash Stamp Generation Job.");
-                await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
+                await Task.Delay(TimeSpan.FromHours(0.5), stoppingToken);
             }
         }
 

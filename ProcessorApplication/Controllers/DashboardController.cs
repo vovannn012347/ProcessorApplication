@@ -11,13 +11,11 @@ using Microsoft.AspNetCore.Mvc;
 using ProcessorApplication.Attributes;
 using ProcessorApplication.Dashboard;
 using ProcessorApplication.Database.Models;
-using ProcessorApplication.Infrastructure;
 
 namespace ProcessorApplication.Controllers;
 
-
 [ModuleRoute("Main")]
-[Route("Dashboard/[action]/{id?}")]
+[Route("/[area]/[controller]/[action]/{id?}")]
 public class DashboardController : Controller
 {
     private readonly IEnumerable<IWidgetProvider> _widgetProviders;
@@ -108,12 +106,12 @@ public class DashboardController : Controller
         var provider = _widgetProviders.FirstOrDefault(p => p.HasWidget(widgetId));
         if (provider == null) return NotFound();
 
-        var widget = provider.GetWidget(UserId, widgetId).Manifest;
+        var widget = provider.GetWidget(UserId, widgetId);
         if (widget == null) return NotFound();
 
-        if (!CheckPermissions(widget, User)) return Forbid();
+        if (!CheckPermissions(widget.Manifest, User)) return Forbid();
 
-        return PartialView(widget.ViewPath);
+        return PartialView(widget.Manifest.ViewPath);
     }
 
     /**

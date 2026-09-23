@@ -9,7 +9,7 @@ public class EmailSettings
 
     [Display(Name = "Health Check Interval (Minutes)")]
     [Range(1, 1440, ErrorMessage = "Interval must be between 1 minute and 24 hours.")]
-    public int HealthCheckPeriodMinutes { get; set; } = 5;
+    public double HealthCheckPeriodMinutes { get; set; } = 5;
     
     public EmailIdentitySettings Identity { get; set; } = new();
     public EmailServerSettings Server { get; set; } = new();
@@ -32,7 +32,7 @@ public class EmailServerSettings
     [Display(Name = "SMTP Port")]
     public int SmtpPort { get; set; } = 587;
     [Display(Name = "Use SSL/TLS")]
-    public bool UseSsl { get; set; } = true;
+    public string Security { get; set; } = "Auto";
 }
 
 // Container for all auth strategies

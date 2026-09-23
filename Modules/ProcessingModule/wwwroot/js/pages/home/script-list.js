@@ -5,6 +5,8 @@
 (function () {
     const SCRIPT_ID = "processor-scriptlist";
 
+    root = {}
+
     window.ModuleRegistry = window.ModuleRegistry || {};
 
     window.ModuleRegistry[SCRIPT_ID] = {
@@ -16,7 +18,7 @@
          * @param {HTMLElement} el - The wrapper element hooked via data-script-id
          */
         init: function (el) {
-            const root = el || document.getElementById('script-page-wrapper');
+            root = el || document.getElementById('script-page-wrapper');
             if (!root) return;
 
             console.log(`[${SCRIPT_ID}] Initializing script library...`);
@@ -28,7 +30,7 @@
             this.updateSelectionUI(root);
         },
 
-        toggleScriptId: function (id, root) {
+        toggleScriptId: function (id) {
             const index = this.selectedScriptIds.indexOf(id);
             if (index === -1) {
                 this.selectedScriptIds.push(id);
@@ -38,7 +40,7 @@
             this.updateSelectionUI(root);
         },
 
-        toggleSelectionRow: function (id, root) {
+        toggleSelectionRow: function (id) {
             const chk = root.querySelector('#chk-' + id);
             if (chk && !chk.disabled) {
                 chk.checked = !chk.checked;
@@ -46,7 +48,7 @@
             }
         },
 
-        updateSelectionUI: function (root) {
+        updateSelectionUI: function () {
             const btn = root.querySelector('#launchBtn');
             if (!btn) return;
 
@@ -58,7 +60,7 @@
             }
         },
 
-        submitSelection: function (root) {
+        submitSelection: function () {
             if (this.selectedScriptIds.length === 0) {
                 alert("Please select at least one script from the library to proceed.");
                 return;
@@ -73,7 +75,7 @@
             }
         },
 
-        toggleDetails: async function (id, scriptIdentifier, root) {
+        toggleDetails: async function (id, scriptIdentifier) {
             const row = root.querySelector('#details-' + id);
             const content = root.querySelector('#content-' + id);
             const icon = root.querySelector('#icon-' + id);

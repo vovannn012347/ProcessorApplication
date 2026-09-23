@@ -12,6 +12,8 @@
         }
     };
 
+    root = {};
+
     window.ModuleRegistry = window.ModuleRegistry || {};
 
     window.ModuleRegistry[SCRIPT_ID] = {
@@ -24,7 +26,7 @@
          * @param {HTMLElement} el - The script-page-wrapper hooked via data-script-id
          */
         init: function (el) {
-            const root = el || document.getElementById('script-page-wrapper');
+            root = el || document.getElementById('script-page-wrapper');
             if (!root) return;
 
             console.log(`[${SCRIPT_ID}] Initializing gateway orchestrator...`);

@@ -33,6 +33,6 @@ public class ModuleService : IModuleService
     {
         var module = _modules.FirstOrDefault(m => string.Equals(m.ModuleId, moduleId, StringComparison.OrdinalIgnoreCase));
         // Pass the container down to the module
-        return module?.GetMenuItems(services) ?? new List<MenuItemViewModel>();
+        return module?.GetMenuItems(services)?.ToList() ?? new ();
     }
 }

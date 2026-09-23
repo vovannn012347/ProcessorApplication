@@ -1,8 +1,10 @@
 ﻿using Common.Interfaces;
 
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 using ProcessorApplication.Attributes;
@@ -10,42 +12,61 @@ using ProcessorApplication.Configuration.Settings;
 using ProcessorApplication.Models.Settings;
 using ProcessorApplication.Utils;
 using ProcessorApplication.ViewModels;
+using ProcessorApplication.ViewModels.User;
 
 namespace ProcessorApplication.Controllers;
 
 [Authorize(Policy = "AdminLocalPolicy")]
 [ModuleRoute("Main")]
-[Route("[controller]/[action]/{id?}")]
+[Route("/[area]/[controller]/[action]/{id?}")]
 public class SettingsController : Controller
 {
     private readonly ILogger<SettingsController> _logger;
     private readonly ISettingService _settings; //here save happens
     private readonly IOptionsMonitor<SecuritySettings> _securitySettings;
     private readonly IOptionsMonitor<EmailSettings> _emailSettings;
+    private readonly IOptionsMonitor<RegisteringSettings> _registeringSettings;
     private readonly IOptionsSnapshot<List<EmailProviderGuesserRule>> _providerRules;
+    private readonly RoleManager<IdentityRole> _roleManager;
 
     public SettingsController(
         ILogger<SettingsController> logger,
         ISettingService settingsService,
         IOptionsMonitor<SecuritySettings> securitySettings,
         IOptionsMonitor<EmailSettings> emailSettings,
-        IOptionsSnapshot<List<EmailProviderGuesserRule>> providerRules)
+        IOptionsMonitor<RegisteringSettings> registeringSettings,
+        IOptionsSnapshot<List<EmailProviderGuesserRule>> providerRules,
+        RoleManager<IdentityRole> roleManager)
     {
         _logger = logger;
         _settings = settingsService;
         _securitySettings = securitySettings; 
         _emailSettings = emailSettings;
+        _registeringSettings = registeringSettings;
         _providerRules = providerRules;
+        _roleManager = roleManager;
     }
 
     [HttpGet]
-    public IActionResult Index()
+    public async Task<IActionResult> Index()
     {
         var model = new SettingsViewModel
         {
-            Security = _securitySettings.Get(MainModule.MainId),
-            Email = _emailSettings.Get(MainModule.MainId)
+            Security = _securitySettings.Get(MainModule.MODULE_ID),
+            Email = _emailSettings.Get(MainModule.MODULE_ID),
         };
+
+        var registering = _registeringSettings.Get(MainModule.MODULE_ID);
+        model.Registering.DefaultRoles = registering.DefaultRoles;
+
+        var allRoles = await _roleManager.Roles.AsNoTracking().ToListAsync();
+
+        model.Registering.DefaultRolesSelection = allRoles.Select(role => new RoleSelectionViewModel
+        {
+            RoleName = role.Name,
+            IsSelected = registering.DefaultRoles.Contains(role.Name)
+        }).ToList();
+
 
         if (Request.IsAjaxRequest())
         {
@@ -66,6 +87,7 @@ public class SettingsController : Controller
 
         TryValidateSecurity(model, ModelState);
         TryValidateEmail(model, ModelState);
+        TryValidateRegistering(model, ModelState);
 
         if (!ModelState.IsValid)
         {
@@ -78,6 +100,7 @@ public class SettingsController : Controller
 
             await SaveSecurity(model);
             await SaveEmail(model);
+            await SaveRegistering(model);
 
             _settings.SetAutoUpdate(true);
             _settings.ForceUpdateOptionsMonitor();
@@ -120,13 +143,12 @@ public class SettingsController : Controller
     {
         var security = model.Security;
 
-        await _settings.SetAsync(MainModule.MainId, $"{nameof(SecuritySettings)}:{nameof(SecuritySettings.HashStampGenerationPeriod)}", security.HashStampGenerationPeriod);
-        await _settings.SetAsync(MainModule.MainId, $"{nameof(SecuritySettings)}:{nameof(SecuritySettings.HashStampBackupEnabled)}", security.HashStampBackupEnabled);
-        await _settings.SetAsync(MainModule.MainId, $"{nameof(SecuritySettings)}:{nameof(SecuritySettings.HashStampBackupFilePath)}", security.HashStampBackupFilePath);
-        await _settings.SetAsync(MainModule.MainId, $"{nameof(SecuritySettings)}:{nameof(SecuritySettings.RecordDecipherLogging)}", security.RecordDecipherLogging);
-        await _settings.SetAsync(MainModule.MainId, $"{nameof(SecuritySettings)}:{nameof(SecuritySettings.RecordDecipherLogPath)}", security.RecordDecipherLogPath);
+        await _settings.SetAsync(MainModule.MODULE_ID, $"{nameof(SecuritySettings)}:{nameof(SecuritySettings.HashStampGenerationPeriod)}", security.HashStampGenerationPeriod);
+        await _settings.SetAsync(MainModule.MODULE_ID, $"{nameof(SecuritySettings)}:{nameof(SecuritySettings.HashStampBackupEnabled)}", security.HashStampBackupEnabled);
+        await _settings.SetAsync(MainModule.MODULE_ID, $"{nameof(SecuritySettings)}:{nameof(SecuritySettings.HashStampBackupFilePath)}", security.HashStampBackupFilePath);
+        await _settings.SetAsync(MainModule.MODULE_ID, $"{nameof(SecuritySettings)}:{nameof(SecuritySettings.RecordDecipherLogging)}", security.RecordDecipherLogging);
+        await _settings.SetAsync(MainModule.MODULE_ID, $"{nameof(SecuritySettings)}:{nameof(SecuritySettings.RecordDecipherLogPath)}", security.RecordDecipherLogPath);
     }
-
 
     private void TryValidateEmail(SettingsViewModel model, ModelStateDictionary modelState)
     {
@@ -134,14 +156,15 @@ public class SettingsController : Controller
 
         // 1. SMART AUTO-FILL
         // If the user entered an email but NO host, try to guess the host before we validate.
-        if (!string.IsNullOrWhiteSpace(emailParams.Identity.Email) && string.IsNullOrWhiteSpace(emailParams.Server.SmtpHost))
+        if (!string.IsNullOrWhiteSpace(emailParams.Identity.Email) 
+            && string.IsNullOrWhiteSpace(emailParams.Server.SmtpHost))
         {
             var (host, port, ssl) = InferServerSettings(emailParams.Identity.Email);
             if (!string.IsNullOrEmpty(host))
             {
                 emailParams.Server.SmtpHost = host;
                 emailParams.Server.SmtpPort = port;
-                emailParams.Server.UseSsl = ssl;
+                emailParams.Server.Security = ssl;
                 // We also clear any "Required" errors that might have been generated by TryValidateModel for these fields
                 // (Though SmtpHost isn't marked [Required] in your model, this is good practice)
                 modelState.Remove("Email.Server.SmtpHost");
@@ -194,13 +217,12 @@ public class SettingsController : Controller
                 break;
         }
     }
-
     private async Task SaveEmail(SettingsViewModel model)
     {
         var s = model.Email;
-        var area = MainModule.MainId;
+        var area = MainModule.MODULE_ID;
         // Assuming your appsettings JSON structure starts with "EmailSettings"
-        var root = "EmailSettings";
+        var root = nameof(EmailSettings);
 
         // General
         await _settings.SetAsync(area, $"{root}:{nameof(s.Mode)}", s.Mode); // Enum saves as int or string depending on T implementation
@@ -214,7 +236,7 @@ public class SettingsController : Controller
         // Server
         await _settings.SetAsync(area, $"{root}:Server:{nameof(s.Server.SmtpHost)}", s.Server.SmtpHost);
         await _settings.SetAsync(area, $"{root}:Server:{nameof(s.Server.SmtpPort)}", s.Server.SmtpPort);
-        await _settings.SetAsync(area, $"{root}:Server:{nameof(s.Server.UseSsl)}", s.Server.UseSsl);
+        await _settings.SetAsync(area, $"{root}:Server:{nameof(s.Server.Security)}", s.Server.Security);
 
         // Auth - Password
         await _settings.SetAsync(area, $"{root}:Auth:PasswordAuth:{nameof(s.Auth.PasswordAuth.Password)}", s.Auth.PasswordAuth.Password);
@@ -244,12 +266,44 @@ public class SettingsController : Controller
         await _settings.SetAsync(area, $"{root}:Auth:KeyPairAuth:{nameof(s.Auth.KeyPairAuth.PrivateKeyPassword)}", s.Auth.KeyPairAuth.PrivateKeyPassword);
     }
 
-    private (string Host, int Port, bool UseSsl) InferServerSettings(string email)
+
+    private void TryValidateRegistering(SettingsViewModel model, ModelStateDictionary modelState)
     {
-        if (string.IsNullOrWhiteSpace(email)) return ("", 587, false);
+        var registeringParams = model.Registering;
+
+        var allRoles = _roleManager.Roles.AsNoTracking().ToList();
+
+        foreach(var role in registeringParams.DefaultRolesSelection)
+        {
+            if(!allRoles.Any(r => r.Name == role.RoleName))
+                modelState.AddModelError("Registering.DefaultRoles", "Role does not exist.");
+        }
+
+        //todo: add registering codes for auto-roles
+
+    }
+
+    private async Task SaveRegistering(SettingsViewModel model)
+    {
+        var registering = model.Registering;
+
+        registering.DefaultRoles = registering.DefaultRolesSelection
+                .Where(x => x.IsSelected)
+                .Select(x => x.RoleName)
+                .ToList();
+
+        await _settings.SetAsync(MainModule.MODULE_ID, $"{nameof(RegisteringSettings)}:{nameof(RegisteringSettings.DefaultRoles)}", registering.DefaultRoles);
+
+        //todo: add registering codes for auto-roles
+    }
+
+
+    private (string Host, int Port, string Security) InferServerSettings(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email)) return ("", 587, "Auto");
 
         var domain = email.Split('@').LastOrDefault()?.ToLower();
-        if (string.IsNullOrEmpty(domain)) return ("", 587, false);
+        if (string.IsNullOrEmpty(domain)) return ("", 587, "Auto");
 
         // search the injected rules
         var rule = _providerRules.Value
@@ -257,9 +311,9 @@ public class SettingsController : Controller
 
         if (rule != null)
         {
-            return (rule.SmtpHost, rule.SmtpPort, rule.UseSsl);
+            return (rule.SmtpHost, rule.SmtpPort, rule.Security);
         }
 
-        return ("", 587, false);
+        return ("", 587, "Auto");
     }
 }

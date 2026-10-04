@@ -25,6 +25,13 @@ public class PeerImmutableData
     public List<string> Roles { get; set; } = new(); //self-reported roles
     //self-advertised signaling endpoints for faster connection
     public List<string> SignalingEndpoints { get; set; } = new();
+    /// <summary>
+    /// Ids of consensus channels (see Common.Interfaces.Consensus.IConsensusChannel) this node currently
+    /// supports and is willing to run epidemic consensus on. Deliberately separate from Roles, which
+    /// governs network-level access/promotion decisions (tracker, promoted_tracker, ...) and must not
+    /// be repurposed for this.
+    /// </summary>
+    public List<string> ConsensusChannels { get; set; } = new();
     public DateTime SignatureTime { get; set; } = DateTime.MinValue;//actually date matters here
     public byte[] Signature { get; set; } = new byte[0];
 
@@ -32,7 +39,7 @@ public class PeerImmutableData
     {
         return SHA256.HashData(
             Convert.FromBase64String(P2PCrypto.CrCompliantStr(
-                $"{NodeId}|{Convert.ToBase64String(PublicEncryptionKey)}|{string.Join(",", Roles)}|{string.Join(",", SignalingEndpoints)}|{Convert.ToBase64String(PublicVerifyKey)}|{SignatureTime}")));
+                $"{NodeId}|{Convert.ToBase64String(PublicEncryptionKey)}|{string.Join(",", Roles)}|{string.Join(",", SignalingEndpoints)}|{string.Join(",", ConsensusChannels)}|{Convert.ToBase64String(PublicVerifyKey)}|{SignatureTime}")));
     }
 }
 

@@ -1,6 +1,6 @@
 ﻿using System.Buffers.Binary;
 
-namespace FileSharingModule.Models;
+namespace FileTransferModule.Models;
 
 public enum TorrentOpCode : byte
 {

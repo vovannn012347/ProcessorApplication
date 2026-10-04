@@ -19,6 +19,7 @@
   
   <ItemGroup>
     <Content Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="module.manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <Folder Include="configFiles\Debug\" />
     <Folder Include="configFiles\Debug\Module_Data\FileTr\identity\" />
     <Folder Include="Models\Exchange\" />
@@ -26,7 +27,18 @@
   </ItemGroup>
   
   <ItemGroup>
-    <ProjectReference Include="..\P2PModule\P2PModule.csproj" />
+    <ProjectReference Include="..\P2PModule\P2PModule.csproj">
+      <Private>False</Private>
+      <IncludeAssets>all</IncludeAssets>
+    </ProjectReference>
   </ItemGroup>
+
+  <ItemGroup>
+    <ModuleManifestDependency Include="P2P">
+      <MinVersion>1.0.0.0</MinVersion>
+    </ModuleManifestDependency>
+  </ItemGroup>
+
+  <Import Project="$(MSBuildThisFileDirectory)..\..\Build\ModuleManifest.targets" />
 
 </Project>

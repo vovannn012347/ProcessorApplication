@@ -9,11 +9,13 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <Configurations>Debug;Release;TrackerDebug;ClientDebug;NodeTracker1Debug;NodeTracker2Debug;NodeClient1Debug;NodeClient2Debug</Configurations>
     <ModuleKey>Processing</ModuleKey>
+    <Version>1.0.0.0</Version>
   </PropertyGroup>
 
 
   <ItemGroup>
     <Content Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="module.manifest.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   
   <ItemGroup>
@@ -44,5 +46,13 @@
     <Folder Include="configFiles\Debug\" />
     <Folder Include="Models\Scripts\" />
   </ItemGroup>  
+
+  <ItemGroup>
+    <ModuleManifestDependency Include="Main">
+      <MinVersion>1.0.0.0</MinVersion>
+    </ModuleManifestDependency>
+  </ItemGroup>
+
+  <Import Project="$(MSBuildThisFileDirectory)..\..\Build\ModuleManifest.targets" />
 
 </Project>

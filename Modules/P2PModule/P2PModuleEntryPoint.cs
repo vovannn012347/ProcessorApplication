@@ -21,6 +21,8 @@ using P2PModule.Services.Maintenance;
 using P2PModule.Services.Persistence;
 using P2PModule.Services.Rating;
 
+using Common.Interfaces.Consensus;
+
 using ProcessorApplication.Infrastructure;
 using ProcessorApplication.Infrastructure.Web;
 using ProcessorApplication.Utils;
@@ -135,6 +137,13 @@ public class P2PModuleEntryPoint : IModule
         services.AddHostedService<GossipNodeUpdatesHandler>();
 
         // 7. Decoupled Modular Consensus Stack
+        // Level 0: Multi-channel consensus registry. Any module (including this one, and future
+        // FileTransferModule/ScriptProvisioning channels) registers its own IConsensusChannel via
+        // services.AddSingleton<IConsensusChannel, TChannel>() in its own ConfigureServices - they
+        // all land in this same shared IServiceCollection and get picked up here automatically.
+        services.AddSingleton<IConsensusChannel, PeerTrustConsensusChannel>();
+        services.AddSingleton<IConsensusChannelRegistry, ConsensusChannelRegistry>();
+
         // Level 1: Pure Mathematical & File Staging Engine (Transient)
         services.AddTransient<IConsensusMergeEngine, ConsensusMergeEngine>();
 
@@ -148,6 +157,14 @@ public class P2PModuleEntryPoint : IModule
 
         // Level 3b: Nightly Jitter Trigger & Scheduled Consensus Initiator (HostedService Watchdog)
         services.AddHostedService<ConsensusInitiatorHostedService>();
+
+        // Level 3c: Generic per-channel sync for any IConsensusChannel other than peer-trust
+        // (see GenericChannelSyncService remarks). Manual-trigger only, no automatic scheduling -
+        // call IGenericChannelSyncService.TriggerSyncAsync explicitly (admin UI, a hosted scheduler
+        // you wire up separately, or a test harness) when you want a channel to actually sync.
+        services.AddSingleton<GenericChannelSyncService>();
+        services.AddSingleton<IGenericChannelSyncService>(sp => sp.GetRequiredService<GenericChannelSyncService>());
+        services.AddHostedService(sp => sp.GetRequiredService<GenericChannelSyncService>());
     }
 
     public void Configure(IApplicationBuilder app, IWebHostEnvironment env)

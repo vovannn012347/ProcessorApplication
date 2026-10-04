@@ -9,73 +9,173 @@
 }
 
 @section Styles {
-    <link rel="stylesheet" href="/filetransfer/css/filetransfer.min.css" asp-append-version="true" />
+    <link rel="stylesheet" href="/filetr/css/ftt.min.css" asp-append-version="true" />
 }
 
-<link rel="stylesheet" href="/filetransfer/css/filetransfer.min.css" asp-append-version="true" />
+<link rel="stylesheet" href="/filetr/css/ftt.min.css" asp-append-version="true" />
 
-<div id="file-archive-wrapper" data-script-id="file-archive">
-    <div class="container mx-auto py-6 px-4">
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 pb-4 border-b border-gray-200">
+<div id="file-archive-wrapper" data-script-id="ftt-archive">
+    <div class="ftt-container ftt-mx-auto ftt-py-6 ftt-px-4">
+        <div class="ftt-flex ftt-flex-col md:ftt-flex-row ftt-justify-between ftt-items-start md:ftt-items-center ftt-mb-6 ftt-pb-4 ftt-border-b ftt-border-gray-200">
             <div>
-                <h1 class="text-2xl font-extrabold text-slate-900 tracking-tight">Hosted File Archive</h1>
-                <p class="text-xs text-slate-500 mt-1">Manage locally ingested packages, .ptorrent manifests, and seed states.</p>
+                <h1 class="ftt-text-2xl ftt-font-extrabold ftt-text-slate-900 ftt-tracking-tight">Hosted File Archive</h1>
+                <p class="ftt-text-xs ftt-text-slate-500 ftt-mt-1">Manage locally ingested files, .ptorrent manifests, and seed states.</p>
             </div>
-            <div class="mt-4 md:mt-0 flex gap-2">
-                <button type="button" id="btn-open-ingest-modal" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm flex items-center gap-1.5 transition">
-                    <i class="fa-solid fa-cloud-arrow-up"></i> Ingest New File
+            <div class="ftt-mt-4 md:ftt-mt-0 ftt-flex ftt-flex-wrap ftt-gap-2">
+                <button type="button" id="btn-open-ingest-modal" class="ftt-px-4 ftt-py-2 ftt-bg-indigo-600 hover:ftt-bg-indigo-700 ftt-text-white ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-shadow-sm ftt-flex ftt-items-center ftt-gap-1.5 transition">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> Upload File
                 </button>
-                <button type="button" id="btn-refresh-archive" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition">
+                <button type="button" id="btn-open-track-modal" class="ftt-px-4 ftt-py-2 ftt-bg-slate-700 hover:ftt-bg-slate-800 ftt-text-white ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-shadow-sm ftt-flex ftt-items-center ftt-gap-1.5 transition">
+                    <i class="fa-solid fa-folder-plus"></i> Track Existing Path
+                </button>
+                <button type="button" id="btn-open-import-modal" class="ftt-px-4 ftt-py-2 ftt-bg-slate-700 hover:ftt-bg-slate-800 ftt-text-white ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-shadow-sm ftt-flex ftt-items-center ftt-gap-1.5 transition">
+                    <i class="fa-solid fa-file-import"></i> Import .ptorrent
+                </button>
+                <button type="button" id="btn-refresh-archive" class="ftt-px-3 ftt-py-2 ftt-bg-slate-100 hover:ftt-bg-slate-200 ftt-text-slate-700 ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-flex ftt-items-center ftt-gap-1.5 transition">
                     <i class="fa-solid fa-rotate"></i> Refresh
                 </button>
             </div>
         </div>
 
-        <div id="archive-status-message" class="hidden mb-4 p-3 rounded-lg text-xs font-medium"></div>
+        <div id="archive-status-message" class="ftt-hidden ftt-mb-4 ftt-p-3 ftt-rounded-lg ftt-text-xs ftt-font-medium"></div>
 
-        <div id="archive-table-container" class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        <div id="archive-table-container" class="ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-shadow-sm ftt-overflow-hidden">
             @await Html.PartialAsync("_TrackedFileListPartial", Model)
         </div>
     </div>
 </div>
 
-<div id="ingest-file-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden">
-    <div class="bg-white rounded-xl shadow-2xl border border-gray-100 max-w-lg w-full mx-4 overflow-hidden">
-        <div class="px-6 py-4 bg-slate-50 border-b border-gray-100 flex justify-between items-center">
-            <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <i class="fa-solid fa-file-circle-plus text-indigo-600"></i> Ingest File to Mesh
+@* -------------------- UPLOAD MODAL -------------------- *@
+<div id="ingest-file-modal" class="ftt-fixed ftt-inset-0 ftt-bg-slate-900/60 ftt-backdrop-blur-sm ftt-z-50 ftt-flex ftt-items-center ftt-justify-center ftt-hidden">
+    <div class="ftt-bg-white ftt-rounded-xl ftt-shadow-2xl ftt-border ftt-border-gray-100 ftt-max-w-lg ftt-w-full ftt-mx-4 ftt-overflow-hidden">
+        <div class="ftt-px-6 ftt-py-4 ftt-bg-slate-50 ftt-border-b ftt-border-gray-100 ftt-flex ftt-justify-between ftt-items-center">
+            <h3 class="ftt-text-sm ftt-font-bold ftt-text-slate-800 ftt-flex ftt-items-center ftt-gap-2">
+                <i class="fa-solid fa-file-circle-plus ftt-text-indigo-600"></i> Upload &amp; Seed File
             </h3>
-            <button type="button" id="btn-close-ingest-modal" class="text-gray-400 hover:text-gray-600">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
+            <button type="button" id="btn-close-ingest-modal" class="ftt-text-gray-400 hover:ftt-text-gray-600"><i class="fa-solid fa-xmark"></i></button>
         </div>
-
-        <form id="form-ingest-file" method="post" enctype="multipart/form-data" class="p-6 space-y-4">
+        <form id="form-ingest-file" method="post" enctype="multipart/form-data" class="ftt-p-6 ftt-space-y-4">
             @Html.AntiForgeryToken()
-
             <div>
-                <label class="block text-xs font-semibold text-slate-700 mb-1">Select File (.zip, raw, etc.)</label>
-                <input type="file" name="uploadFile" id="input-upload-file" required class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer border border-gray-200 rounded-lg" />
+                <label class="ftt-block ftt-text-xs ftt-font-semibold ftt-text-slate-700 ftt-mb-1">Select File</label>
+                <input type="file" name="uploadFile" id="input-upload-file" required class="ftt-block ftt-w-full ftt-text-xs ftt-text-slate-500 file:ftt-mr-4 file:ftt-py-2 file:ftt-px-4 file:ftt-rounded-lg file:ftt-border-0 file:ftt-text-xs file:ftt-font-semibold file:ftt-bg-indigo-50 file:ftt-text-indigo-700 hover:file:ftt-bg-indigo-100 ftt-cursor-pointer ftt-border ftt-border-gray-200 ftt-rounded-lg" />
             </div>
-
-            <div class="flex items-center gap-2 pt-2">
-                <input type="checkbox" name="isHidden" id="checkbox-is-hidden" value="true" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4" />
-                <label for="checkbox-is-hidden" class="text-xs text-slate-700 font-medium">
-                    Unlisted / Hidden <span class="text-slate-400 font-normal">(Exclude from public search catalogs)</span>
-                </label>
+            <div class="ftt-flex ftt-items-center ftt-gap-2 ftt-pt-2">
+                <input type="checkbox" name="isHidden" id="checkbox-is-hidden" value="true" class="ftt-rounded ftt-border-gray-300 ftt-text-indigo-600 focus:ftt-ring-indigo-500 ftt-h-4 ftt-w-4" />
+                <label for="checkbox-is-hidden" class="ftt-text-xs ftt-text-slate-700 ftt-font-medium">Unlisted / Hidden <span class="ftt-text-slate-400 ftt-font-normal">(excluded from catalogue/announce)</span></label>
             </div>
-
-            <div class="pt-4 border-t border-gray-100 flex justify-end gap-2">
-                <button type="button" id="btn-cancel-ingest" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-slate-600 rounded-lg text-xs font-semibold">Cancel</button>
-                <button type="submit" id="btn-submit-ingest" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5">
-                    <span id="ingest-spinner" class="hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
-                    <span>Generate & Seed</span>
+            <div class="ftt-pt-4 ftt-border-t ftt-border-gray-100 ftt-flex ftt-justify-end ftt-gap-2">
+                <button type="button" id="btn-cancel-ingest" class="ftt-px-4 ftt-py-2 ftt-bg-gray-100 hover:ftt-bg-gray-200 ftt-text-slate-600 ftt-rounded-lg ftt-text-xs ftt-font-semibold">Cancel</button>
+                <button type="submit" id="btn-submit-ingest" class="ftt-px-4 ftt-py-2 ftt-bg-indigo-600 hover:ftt-bg-indigo-700 ftt-text-white ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-flex ftt-items-center ftt-gap-1.5">
+                    <span id="ingest-spinner" class="ftt-hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+                    <span>Generate &amp; Seed</span>
                 </button>
             </div>
         </form>
     </div>
 </div>
 
+@* -------------------- TRACK EXISTING PATH MODAL -------------------- *@
+<div id="track-path-modal" class="ftt-fixed ftt-inset-0 ftt-bg-slate-900/60 ftt-backdrop-blur-sm ftt-z-50 ftt-flex ftt-items-center ftt-justify-center ftt-hidden">
+    <div class="ftt-bg-white ftt-rounded-xl ftt-shadow-2xl ftt-border ftt-border-gray-100 ftt-max-w-lg ftt-w-full ftt-mx-4 ftt-overflow-hidden">
+        <div class="ftt-px-6 ftt-py-4 ftt-bg-slate-50 ftt-border-b ftt-border-gray-100 ftt-flex ftt-justify-between ftt-items-center">
+            <h3 class="ftt-text-sm ftt-font-bold ftt-text-slate-800 ftt-flex ftt-items-center ftt-gap-2">
+                <i class="fa-solid fa-folder-plus ftt-text-indigo-600"></i> Track A File Already On This Server
+            </h3>
+            <button type="button" id="btn-close-track-modal" class="ftt-text-gray-400 hover:ftt-text-gray-600"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form id="form-track-path" class="ftt-p-6 ftt-space-y-4">
+            @Html.AntiForgeryToken()
+            <div>
+                <label class="ftt-block ftt-text-xs ftt-font-semibold ftt-text-slate-700 ftt-mb-1">Server-Side File Path</label>
+                <input type="text" name="sourcePath" id="input-source-path" required placeholder="/var/data/myfile.zip" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" />
+                <p class="ftt-text-[10px] ftt-text-slate-400 ftt-mt-1">This admin panel is localhost-only, so a path already on the machine is fine here.</p>
+            </div>
+            <div class="ftt-flex ftt-items-center ftt-gap-2">
+                <input type="checkbox" name="copyToRepository" id="checkbox-copy-to-repo" value="true" class="ftt-rounded ftt-border-gray-300 ftt-text-indigo-600 focus:ftt-ring-indigo-500 ftt-h-4 ftt-w-4" />
+                <label for="checkbox-copy-to-repo" class="ftt-text-xs ftt-text-slate-700 ftt-font-medium">Copy into storage repository <span class="ftt-text-slate-400 ftt-font-normal">(unchecked = track in place, original never touched)</span></label>
+            </div>
+            <div class="ftt-flex ftt-items-center ftt-gap-2">
+                <input type="checkbox" name="isHidden" id="checkbox-track-hidden" value="true" class="ftt-rounded ftt-border-gray-300 ftt-text-indigo-600 focus:ftt-ring-indigo-500 ftt-h-4 ftt-w-4" />
+                <label for="checkbox-track-hidden" class="ftt-text-xs ftt-text-slate-700 ftt-font-medium">Unlisted / Hidden</label>
+            </div>
+            <div class="ftt-pt-4 ftt-border-t ftt-border-gray-100 ftt-flex ftt-justify-end ftt-gap-2">
+                <button type="button" id="btn-cancel-track" class="ftt-px-4 ftt-py-2 ftt-bg-gray-100 hover:ftt-bg-gray-200 ftt-text-slate-600 ftt-rounded-lg ftt-text-xs ftt-font-semibold">Cancel</button>
+                <button type="submit" id="btn-submit-track" class="ftt-px-4 ftt-py-2 ftt-bg-indigo-600 hover:ftt-bg-indigo-700 ftt-text-white ftt-rounded-lg ftt-text-xs ftt-font-semibold">Track File</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@* -------------------- IMPORT .ptorrent MODAL -------------------- *@
+<div id="import-ptorrent-modal" class="ftt-fixed ftt-inset-0 ftt-bg-slate-900/60 ftt-backdrop-blur-sm ftt-z-50 ftt-flex ftt-items-center ftt-justify-center ftt-hidden">
+    <div class="ftt-bg-white ftt-rounded-xl ftt-shadow-2xl ftt-border ftt-border-gray-100 ftt-max-w-lg ftt-w-full ftt-mx-4 ftt-overflow-hidden">
+        <div class="ftt-px-6 ftt-py-4 ftt-bg-slate-50 ftt-border-b ftt-border-gray-100 ftt-flex ftt-justify-between ftt-items-center">
+            <h3 class="ftt-text-sm ftt-font-bold ftt-text-slate-800 ftt-flex ftt-items-center ftt-gap-2">
+                <i class="fa-solid fa-file-import ftt-text-indigo-600"></i> Import A .ptorrent &amp; Start Downloading
+            </h3>
+            <button type="button" id="btn-close-import-modal" class="ftt-text-gray-400 hover:ftt-text-gray-600"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form id="form-import-ptorrent" method="post" enctype="multipart/form-data" class="ftt-p-6 ftt-space-y-4">
+            @Html.AntiForgeryToken()
+            <div>
+                <label class="ftt-block ftt-text-xs ftt-font-semibold ftt-text-slate-700 ftt-mb-1">.ptorrent File</label>
+                <input type="file" name="ptorrentFile" id="input-ptorrent-file" required accept=".ptorrent,.json" class="ftt-block ftt-w-full ftt-text-xs ftt-text-slate-500 file:ftt-mr-4 file:ftt-py-2 file:ftt-px-4 file:ftt-rounded-lg file:ftt-border-0 file:ftt-text-xs file:ftt-font-semibold file:ftt-bg-indigo-50 file:ftt-text-indigo-700 hover:file:ftt-bg-indigo-100 ftt-cursor-pointer ftt-border ftt-border-gray-200 ftt-rounded-lg" />
+                <p class="ftt-text-[10px] ftt-text-slate-400 ftt-mt-1">Someone gave you this manifest out-of-band. Its block hashes are what make the download possible.</p>
+            </div>
+            <div>
+                <label class="ftt-block ftt-text-xs ftt-font-semibold ftt-text-slate-700 ftt-mb-1">Custom File Name (optional)</label>
+                <input type="text" name="customFileName" id="input-import-filename" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" />
+            </div>
+            <div class="ftt-pt-4 ftt-border-t ftt-border-gray-100 ftt-flex ftt-justify-end ftt-gap-2">
+                <button type="button" id="btn-cancel-import" class="ftt-px-4 ftt-py-2 ftt-bg-gray-100 hover:ftt-bg-gray-200 ftt-text-slate-600 ftt-rounded-lg ftt-text-xs ftt-font-semibold">Cancel</button>
+                <button type="submit" id="btn-submit-import" class="ftt-px-4 ftt-py-2 ftt-bg-indigo-600 hover:ftt-bg-indigo-700 ftt-text-white ftt-rounded-lg ftt-text-xs ftt-font-semibold">Import &amp; Download</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@* -------------------- EDIT INFO MODAL (isHidden / allowDownload / description / custom fields) -------------------- *@
+<div id="edit-info-modal" class="ftt-fixed ftt-inset-0 ftt-bg-slate-900/60 ftt-backdrop-blur-sm ftt-z-50 ftt-flex ftt-items-center ftt-justify-center ftt-hidden">
+    <div class="ftt-bg-white ftt-rounded-xl ftt-shadow-2xl ftt-border ftt-border-gray-100 ftt-max-w-lg ftt-w-full ftt-mx-4 ftt-overflow-hidden">
+        <div class="ftt-px-6 ftt-py-4 ftt-bg-slate-50 ftt-border-b ftt-border-gray-100 ftt-flex ftt-justify-between ftt-items-center">
+            <h3 class="ftt-text-sm ftt-font-bold ftt-text-slate-800 ftt-flex ftt-items-center ftt-gap-2">
+                <i class="fa-solid fa-pen-to-square ftt-text-indigo-600"></i> Edit File Settings
+            </h3>
+            <button type="button" id="btn-close-edit-modal" class="ftt-text-gray-400 hover:ftt-text-gray-600"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form id="form-edit-info" class="ftt-p-6 ftt-space-y-4">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="contentHash" id="edit-content-hash" />
+            <div id="edit-file-name" class="ftt-text-sm ftt-font-bold ftt-text-slate-800"></div>
+
+            <div class="ftt-flex ftt-gap-4">
+                <label class="ftt-flex ftt-items-center ftt-gap-2 ftt-text-xs ftt-text-slate-700 ftt-font-medium">
+                    <input type="checkbox" name="isHidden" id="edit-is-hidden" class="ftt-rounded ftt-border-gray-300 ftt-text-indigo-600 ftt-h-4 ftt-w-4" /> Hidden
+                </label>
+                <label class="ftt-flex ftt-items-center ftt-gap-2 ftt-text-xs ftt-text-slate-700 ftt-font-medium">
+                    <input type="checkbox" name="allowDownload" id="edit-allow-download" class="ftt-rounded ftt-border-gray-300 ftt-text-indigo-600 ftt-h-4 ftt-w-4" /> Allow Download
+                </label>
+            </div>
+
+            <div>
+                <label class="ftt-block ftt-text-xs ftt-font-semibold ftt-text-slate-700 ftt-mb-1">Description</label>
+                <textarea name="description" id="edit-description" rows="3" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" placeholder="Shown to peers who explicitly ask for this file's info..."></textarea>
+            </div>
+
+            <div>
+                <label class="ftt-block ftt-text-xs ftt-font-semibold ftt-text-slate-700 ftt-mb-1">Custom Fields</label>
+                <textarea id="edit-custom-fields" rows="3" class="ftt-w-full ftt-text-xs ftt-font-mono ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" placeholder="one per line, key: value"></textarea>
+                <p class="ftt-text-[10px] ftt-text-slate-400 ftt-mt-1">One per line: <code>key: value</code>. Both are yours to set freely - no restrictions apply to your own files.</p>
+            </div>
+
+            <div class="ftt-pt-4 ftt-border-t ftt-border-gray-100 ftt-flex ftt-justify-end ftt-gap-2">
+                <button type="button" id="btn-cancel-edit" class="ftt-px-4 ftt-py-2 ftt-bg-gray-100 hover:ftt-bg-gray-200 ftt-text-slate-600 ftt-rounded-lg ftt-text-xs ftt-font-semibold">Cancel</button>
+                <button type="submit" id="btn-submit-edit" class="ftt-px-4 ftt-py-2 ftt-bg-indigo-600 hover:ftt-bg-indigo-700 ftt-text-white ftt-rounded-lg ftt-text-xs ftt-font-semibold">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
 
 @section Scripts {
     <script src="~/filetr/js/pages/file-archive/index.js" asp-append-version="true"></script>

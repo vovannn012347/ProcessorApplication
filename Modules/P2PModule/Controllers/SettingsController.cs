@@ -260,6 +260,9 @@ public class SettingsController : Controller
         await _settingsService.SetAsync(ModuleId, $"{nameof(P2PSettings)}:{nameof(model.Endpoints)}", model.Endpoints);
         
         await _settingsService.SetAsync(ModuleId, $"{nameof(P2PSettings)}:{nameof(model.NodeRoles)}", model.NodeRoles);
+        // Persist temporary tracker flag state
+        await _settingsService.SetAsync(ModuleId, $"{nameof(P2PSettings)}:{nameof(model.IsTemporarilyPromotedTracker)}", model.IsTemporarilyPromotedTracker);
+
         await _settingsService.SetAsync(ModuleId, $"{nameof(P2PSettings)}:{nameof(model.DataStoragePath)}", model.DataStoragePath);
         await _settingsService.SetAsync(ModuleId, $"{nameof(P2PSettings)}:{nameof(model.StartupDelaySeconds)}", model.StartupDelaySeconds);
         await _settingsService.SetAsync(ModuleId, $"{nameof(P2PSettings)}:{nameof(model.TargetOutboundConnections)}", model.TargetOutboundConnections);

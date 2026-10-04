@@ -1,6 +1,6 @@
 ﻿using System.Collections;
 
-namespace FileSharingModule.Models;
+namespace FileTransferModule.Models;
 
 public class SwarmBitfield
 {

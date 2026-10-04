@@ -13,6 +13,23 @@
         </div>
     </div>
 
+    <!-- Temporary Tracker Promotion Toggle -->
+    <div class="p2p-mt-3 p2p-p-3 p2p-bg-gray-50 p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-flex p2p-items-center p2p-justify-between">
+        <div>
+            <label class="p2p-text-sm p2p-font-bold p2p-text-slate-700 p2p-block">Temporary Tracker Promotion</label>
+            <span class="p2p-text-xs p2p-text-gray-500 p2p-block">Maintains promoted tracker state. Disable to permit post-consensus demotion back to regular peer.</span>
+        </div>
+        <label class="p2p-relative p2p-inline-flex p2p-items-center p2p-cursor-pointer">
+            <input type="checkbox"
+                   name="General.IsTemporarilyPromotedTracker"
+                   value="true"
+                   @(Model.General.IsTemporarilyPromotedTracker ? "checked" : "")
+                   class="p2p-sr-only p2p-peer" />
+            <input type="hidden" name="General.IsTemporarilyPromotedTracker" value="false" />
+            <div class="p2p-w-11 p2p-h-6 p2p-bg-gray-300 peer-focus:p2p-outline-none p2p-rounded-full peer peer-checked:after:p2p-translate-x-full peer-checked:after:p2p-border-white after:p2p-content-[''] after:p2p-absolute after:p2p-top-[2px] after:p2p-left-[2px] after:p2p-bg-white after:p2p-border-gray-300 after:p2p-border after:p2p-rounded-full after:p2p-h-5 after:p2p-w-5 after:p2p-transition-all peer-checked:p2p-bg-blue-600"></div>
+        </label>
+    </div>
+
     <div class="p2p-mt-4">
         <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest p2p-block p2p-mb-2">Node Role Capabilities</label>
         <div class="p2p-grid p2p-grid-cols-2 sm:p2p-grid-cols-4 p2p-gap-4 p2p-p-3 p2p-bg-gray-50 p2p-border p2p-border-gray-200 p2p-rounded-lg">

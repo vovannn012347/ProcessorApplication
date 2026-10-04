@@ -1,4 +1,4 @@
-﻿@model List<FileSharingModule.Models.FileCatalogEntry>
+﻿@model FileSharingModule.Models.CatalogPageResponse
 @{
     ViewData["Title"] = "Network File Catalog";
     var isAjax = Context.Request.Headers["X-Requested-With"] == "XMLHttpRequest";
@@ -9,36 +9,56 @@
 }
 
 @section Styles {
-    <link rel="stylesheet" href="/filetransfer/css/filetransfer.min.css" asp-append-version="true" />
+    <link rel="stylesheet" href="/filetr/css/ftt.min.css" asp-append-version="true" />
 }
 
-<link rel="stylesheet" href="/filetransfer/css/filetransfer.min.css" asp-append-version="true" />
+<link rel="stylesheet" href="/filetr/css/ftt.min.css" asp-append-version="true" />
 
-<div id="file-catalog-wrapper" data-script-id="file-catalog">
-    <div class="container mx-auto py-6 px-4">
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 pb-4 border-b border-gray-200">
+<div id="file-catalog-wrapper" data-script-id="ftt-catalog">
+    <div class="ftt-container ftt-mx-auto ftt-py-6 ftt-px-4">
+        <div class="ftt-flex ftt-flex-col md:ftt-flex-row ftt-justify-between ftt-items-start md:ftt-items-center ftt-mb-6 ftt-pb-4 ftt-border-b ftt-border-gray-200">
             <div>
-                <h1 class="text-2xl font-extrabold text-slate-900 tracking-tight">Swarm File Catalog</h1>
-                <p class="text-xs text-slate-500 mt-1">Browse files discovered across mesh nodes and trackers without automatic ingestion.</p>
+                <h1 class="ftt-text-2xl ftt-font-extrabold ftt-text-slate-900 ftt-tracking-tight">Swarm File Catalog</h1>
+                <p class="ftt-text-xs ftt-text-slate-500 ftt-mt-1">Local knowledge only - own hosted files plus everything learned via consensus relay or a direct probe. Nothing is fetched live just by viewing this page.</p>
             </div>
-            <div class="mt-4 md:mt-0 flex gap-2">
-                <button type="button" id="btn-refresh-catalog" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition">
-                    <i class="fa-solid fa-rotate"></i> Refresh Network
+            <div class="ftt-mt-4 md:ftt-mt-0 ftt-flex ftt-gap-2">
+                <button type="button" id="btn-sync-now" class="ftt-px-3 ftt-py-2 ftt-bg-slate-800 hover:ftt-bg-slate-900 ftt-text-white ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-flex ftt-items-center ftt-gap-1.5 transition">
+                    <i class="fa-solid fa-diagram-project"></i> Sync Now
+                </button>
+                <button type="button" id="btn-refresh-catalog" class="ftt-px-3 ftt-py-2 ftt-bg-slate-100 hover:ftt-bg-slate-200 ftt-text-slate-700 ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-flex ftt-items-center ftt-gap-1.5 transition">
+                    <i class="fa-solid fa-rotate"></i> Refresh
                 </button>
             </div>
         </div>
 
-        <div class="bg-slate-50 border border-gray-200 rounded-xl p-4 mb-6 shadow-sm">
-            <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Query Specific Node Directly</h3>
-            <form id="form-query-node" class="flex gap-2">
-                <input type="text" id="input-target-node-id" placeholder="Enter target Node ID (or candidate peer)..." class="flex-1 text-xs border border-gray-300 rounded-lg px-3 py-2 focus:ring-1 focus:ring-indigo-500" required />
-                <button type="submit" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5">
+        <div class="ftt-bg-slate-50 ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-p-4 ftt-mb-4 ftt-shadow-sm">
+            <h3 class="ftt-text-xs ftt-font-bold ftt-text-slate-800 ftt-uppercase ftt-tracking-wider ftt-mb-2">Query A Specific Node Directly</h3>
+            <p class="ftt-text-[10px] ftt-text-slate-400 ftt-mb-2">Bypasses epidemic convergence - probes that one node right now and saves what it reports back into local storage (subject to the per-host cap).</p>
+            <form id="form-query-node" class="ftt-flex ftt-gap-2">
+                <input type="text" id="input-target-node-id" placeholder="Enter target Node ID..." class="ftt-flex-1 ftt-text-xs ftt-border ftt-border-gray-300 ftt-rounded-lg ftt-px-3 ftt-py-2 focus:ftt-ring-1 focus:ftt-ring-indigo-500" required />
+                <button type="submit" class="ftt-px-4 ftt-py-2 ftt-bg-slate-800 hover:ftt-bg-slate-900 ftt-text-white ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-flex ftt-items-center ftt-gap-1.5">
                     <i class="fa-solid fa-magnifying-glass"></i> Probe Node
                 </button>
             </form>
         </div>
 
-        <div id="catalog-status-message" class="hidden mb-4 p-3 rounded-lg text-xs font-medium"></div>
+        <div class="ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-p-4 ftt-mb-6 ftt-shadow-sm">
+            <div class="ftt-flex ftt-flex-col sm:ftt-flex-row ftt-gap-2">
+                <input type="text" id="filter-search" placeholder="Filter by file name..." class="ftt-flex-1 ftt-text-xs ftt-border ftt-border-gray-300 ftt-rounded-lg ftt-px-3 ftt-py-2" />
+                <input type="text" id="filter-host" placeholder="Filter by host node id..." class="ftt-flex-1 ftt-text-xs ftt-border ftt-border-gray-300 ftt-rounded-lg ftt-px-3 ftt-py-2" />
+                <button type="button" id="btn-apply-filters" class="ftt-px-4 ftt-py-2 ftt-bg-slate-100 hover:ftt-bg-slate-200 ftt-text-slate-700 ftt-rounded-lg ftt-text-xs ftt-font-semibold">Apply</button>
+                <button type="button" id="btn-clear-filters" class="ftt-px-4 ftt-py-2 ftt-text-slate-400 hover:ftt-text-slate-600 ftt-text-xs ftt-font-semibold">Clear</button>
+            </div>
+        </div>
+
+        <div id="catalog-status-message" class="ftt-hidden ftt-mb-4 ftt-p-3 ftt-rounded-lg ftt-text-xs ftt-font-medium"></div>
+
+        <div id="batch-download-bar" class="ftt-hidden ftt-mb-4 ftt-p-3 ftt-bg-indigo-50 ftt-border ftt-border-indigo-200 ftt-rounded-lg ftt-flex ftt-justify-between ftt-items-center">
+            <span class="ftt-text-xs ftt-text-indigo-700 ftt-font-semibold"><span id="batch-selected-count">0</span> file(s) selected</span>
+            <button type="button" id="btn-batch-download" class="ftt-px-4 ftt-py-2 ftt-bg-indigo-600 hover:ftt-bg-indigo-700 ftt-text-white ftt-rounded-lg ftt-text-xs ftt-font-semibold">
+                <i class="fa-solid fa-download"></i> Download Selected
+            </button>
+        </div>
 
         <div id="catalog-grid-container">
             @await Html.PartialAsync("_CatalogGridPartial", Model)
@@ -46,47 +66,47 @@
     </div>
 </div>
 
-<div id="download-prompt-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden">
-    <div class="bg-white rounded-xl shadow-2xl border border-gray-100 max-w-md w-full mx-4 overflow-hidden">
-        <div class="px-6 py-4 bg-slate-50 border-b border-gray-100 flex justify-between items-center">
-            <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <i class="fa-solid fa-download text-indigo-600"></i> Download File From Swarm
+<div id="download-prompt-modal" class="ftt-fixed ftt-inset-0 ftt-bg-slate-900/60 ftt-backdrop-blur-sm ftt-z-50 ftt-flex ftt-items-center ftt-justify-center ftt-hidden">
+    <div class="ftt-bg-white ftt-rounded-xl ftt-shadow-2xl ftt-border ftt-border-gray-100 ftt-max-w-md ftt-w-full ftt-mx-4 ftt-overflow-hidden">
+        <div class="ftt-px-6 ftt-py-4 ftt-bg-slate-50 ftt-border-b ftt-border-gray-100 ftt-flex ftt-justify-between ftt-items-center">
+            <h3 class="ftt-text-sm ftt-font-bold ftt-text-slate-800 ftt-flex ftt-items-center ftt-gap-2">
+                <i class="fa-solid fa-download ftt-text-indigo-600"></i> Download File From Swarm
             </h3>
-            <button type="button" id="btn-close-download-modal" class="text-gray-400 hover:text-gray-600">
+            <button type="button" id="btn-close-download-modal" class="ftt-text-gray-400 hover:ftt-text-gray-600">
                 <i class="fa-solid fa-xmark"></i>
             </button>
         </div>
 
-        <form id="form-start-download" class="p-6 space-y-4">
+        <form id="form-start-download" class="ftt-p-6 ftt-space-y-4">
             @Html.AntiForgeryToken()
             <input type="hidden" id="modal-host-node-id" name="hostNodeId" />
             <input type="hidden" id="modal-content-hash" name="contentHash" />
 
             <div>
-                <label class="block text-xs font-semibold text-slate-500">File Selected</label>
-                <div id="modal-display-filename" class="text-sm font-bold text-slate-800 mt-0.5"></div>
+                <label class="ftt-block ftt-text-xs ftt-font-semibold ftt-text-slate-500">File Selected</label>
+                <div id="modal-display-filename" class="ftt-text-sm ftt-font-bold ftt-text-slate-800 ftt-mt-0.5"></div>
             </div>
 
             <div>
-                <label class="block text-xs font-semibold text-slate-700 mb-1">Custom File Name (Optional)</label>
-                <input type="text" name="customFileName" id="modal-input-filename" placeholder="Keep default if empty..." class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2" />
+                <label class="ftt-block ftt-text-xs ftt-font-semibold ftt-text-slate-700 ftt-mb-1">Custom File Name (Optional)</label>
+                <input type="text" name="customFileName" id="modal-input-filename" placeholder="Keep default if empty..." class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" />
             </div>
 
             @if (User.IsInRole("Admin"))
             {
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 mb-1">
-                        Directed Directory <span class="text-indigo-600 font-bold">(Admin Mode)</span>
+                    <label class="ftt-block ftt-text-xs ftt-font-semibold ftt-text-slate-700 ftt-mb-1">
+                        Directed Directory <span class="ftt-text-indigo-600 ftt-font-bold">(Admin Mode)</span>
                     </label>
-                    <input type="text" name="customDirectory" id="modal-input-directory" placeholder="Leave empty for sandboxed StorageRootPath..." class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2" />
-                    <p class="text-[10px] text-slate-400 mt-1">If blank, defaults to sandboxed <code>./Module_Data/FileSharing/Storage/{taskId}/files/</code></p>
+                    <input type="text" name="customDirectory" id="modal-input-directory" placeholder="Leave empty for sandboxed StorageRootPath..." class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" />
+                    <p class="ftt-text-[10px] ftt-text-slate-400 ftt-mt-1">If blank, defaults to sandboxed <code>./Module_Data/FileSharing/Storage/{taskId}/files/</code></p>
                 </div>
             }
 
-            <div class="pt-4 border-t border-gray-100 flex justify-end gap-2">
-                <button type="button" id="btn-cancel-download" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-slate-600 rounded-lg text-xs font-semibold">Cancel</button>
-                <button type="submit" id="btn-confirm-download" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5">
-                    <span id="download-spinner" class="hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+            <div class="ftt-pt-4 ftt-border-t ftt-border-gray-100 ftt-flex ftt-justify-end ftt-gap-2">
+                <button type="button" id="btn-cancel-download" class="ftt-px-4 ftt-py-2 ftt-bg-gray-100 hover:ftt-bg-gray-200 ftt-text-slate-600 ftt-rounded-lg ftt-text-xs ftt-font-semibold">Cancel</button>
+                <button type="submit" id="btn-confirm-download" class="ftt-px-4 ftt-py-2 ftt-bg-indigo-600 hover:ftt-bg-indigo-700 ftt-text-white ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-flex ftt-items-center ftt-gap-1.5">
+                    <span id="download-spinner" class="ftt-hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
                     <span>Start Swarm Download</span>
                 </button>
             </div>

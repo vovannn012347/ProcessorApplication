@@ -6,9 +6,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-using FileSharingModule.Models;
+using FileTransferModule.Models;
 
-namespace FileSharingModule.Services;
+namespace FileTransferModule.Services;
 
 public class ParsedWireFrame
 {

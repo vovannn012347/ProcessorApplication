@@ -1,21 +1,21 @@
 ﻿@model FileSharingModule.Models.SwarmTransferTaskState
 
-<div class="space-y-4">
+<div class="ftt-space-y-4">
     <div>
-        <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Block Availability Map (2-5 MB per box)</h4>
-        <div class="grid grid-cols-8 sm:grid-cols-12 md:grid-cols-16 gap-1.5 max-h-56 overflow-y-auto p-2 bg-slate-50 border border-gray-200 rounded-lg">
+        <h4 class="ftt-text-xs ftt-font-bold ftt-text-slate-800 ftt-uppercase ftt-tracking-wider ftt-mb-2">Block Availability Map</h4>
+        <div class="ftt-grid ftt-grid-cols-8 sm:ftt-grid-cols-12 md:ftt-grid-cols-16 ftt-gap-1.5 ftt-max-h-56 ftt-overflow-y-auto ftt-p-2 ftt-bg-slate-50 ftt-border ftt-border-gray-200 ftt-rounded-lg">
             @for (int i = 0; i < Model.Bitfield.TotalBlocks; i++)
             {
                 bool hasBlock = Model.Bitfield.HasBlock(i);
-                <div class="w-full aspect-square rounded text-[9px] flex items-center justify-center font-mono font-bold @(hasBlock ? "bg-indigo-600 text-white" : "bg-gray-200 text-gray-500")" title="Block #@i: @(hasBlock ? "Verified" : "Pending")">
+                <div class="ftt-w-full ftt-aspect-square ftt-rounded ftt-text-[9px] ftt-flex ftt-items-center ftt-justify-center ftt-font-mono ftt-font-bold @(hasBlock ? "ftt-bg-indigo-600 ftt-text-white" : "ftt-bg-gray-200 ftt-text-gray-500")" title="Block #@i: @(hasBlock ? "Verified" : "Pending")">
                     @i
                 </div>
             }
         </div>
     </div>
 
-    <div class="border-t border-gray-100 pt-3">
-        <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Active WebRTC Data Lanes</h4>
+    <div class="ftt-border-t ftt-border-gray-100 ftt-pt-3">
+        <h4 class="ftt-text-xs ftt-font-bold ftt-text-slate-800 ftt-uppercase ftt-tracking-wider ftt-mb-2">Active WebRTC Data Lanes</h4>
         @await Html.PartialAsync("_PeerLanesPartial", Model)
     </div>
 </div>

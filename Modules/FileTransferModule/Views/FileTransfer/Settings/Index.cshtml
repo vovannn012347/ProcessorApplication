@@ -9,41 +9,172 @@
 }
 
 @section Styles {
-    <link rel="stylesheet" href="/filetransfer/css/filetransfer.min.css" asp-append-version="true" />
+    <link rel="stylesheet" href="/filetr/css/ftt.min.css" asp-append-version="true" />
 }
 
-<link rel="stylesheet" href="/filetransfer/css/filetransfer.min.css" asp-append-version="true" />
+<link rel="stylesheet" href="/filetr/css/ftt.min.css" asp-append-version="true" />
 
-<div id="file-sharing-settings-wrapper" data-script-id="file-settings">
-    <div class="container mx-auto py-6 px-4">
-        <div class="mb-6 pb-4 border-b border-gray-200">
-            <h1 class="text-2xl font-extrabold text-slate-900 tracking-tight">File Sharing Settings</h1>
-            <p class="text-xs text-slate-500 mt-1">Configure storage directories, block slicing thresholds, and swarm limits.</p>
+<div id="file-sharing-settings-wrapper" data-script-id="ftt-settings">
+    <div class="ftt-container ftt-mx-auto ftt-py-6 ftt-px-4">
+        <div class="ftt-mb-6 ftt-pb-4 ftt-border-b ftt-border-gray-200">
+            <h1 class="ftt-text-2xl ftt-font-extrabold ftt-text-slate-900 ftt-tracking-tight">File Sharing Settings</h1>
+            <p class="ftt-text-xs ftt-text-slate-500 ftt-mt-1">Storage directories, protocol bounds, catalogue limits, and the access list for fields other hosts send you.</p>
         </div>
 
-        @if (TempData["SuccessMessage"] != null)
-        {
-            <div class="mb-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-xs font-semibold">
-                @TempData["SuccessMessage"]
+        @* 1. GENERAL SETTINGS - a real MVC form, AJAX-swapped on save via #general-settings-section *@
+        <div class="ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-shadow-sm ftt-p-6 ftt-max-w-4xl ftt-mb-6">
+            <h2 class="ftt-text-sm ftt-font-bold ftt-text-slate-800 ftt-mb-4">General</h2>
+            <div id="general-settings-section">
+                @await Html.PartialAsync("_GeneralSettingsFormPartial", Model)
             </div>
-        }
-        @if (TempData["ErrorMessage"] != null)
-        {
-            <div class="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs font-semibold">
-                @TempData["ErrorMessage"]
-            </div>
-        }
+        </div>
 
-        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 max-w-4xl">
-            <form asp-action="SaveSettings" method="post">
+        @* 2. CATALOGUE LIMITS - populated/saved via fetch+JSON, values filled in by JS on load *@
+        <div class="ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-shadow-sm ftt-p-6 ftt-max-w-4xl ftt-mb-6">
+            <h2 class="ftt-text-sm ftt-font-bold ftt-text-slate-800 ftt-mb-1">Catalogue Limits</h2>
+            <p class="ftt-text-[11px] ftt-text-slate-400 ftt-mb-4">How many records per host we keep, how much a direct probe asks for by default, and how long an unconfirmed record survives before eviction.</p>
+
+            <div id="catalog-settings-message" class="ftt-hidden ftt-mb-4 ftt-p-3 ftt-rounded-lg ftt-text-xs ftt-font-semibold"></div>
+
+            <form id="catalogSettingsForm" autocomplete="off">
                 @Html.AntiForgeryToken()
-                @await Html.PartialAsync("_GeneralSettingsPartial", Model)
-                <div class="pt-6 border-t border-gray-100 flex justify-end">
-                    <button type="submit" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition">
-                        Save Configuration
+                <div class="ftt-grid ftt-grid-cols-1 sm:ftt-grid-cols-3 ftt-gap-4">
+                    <div>
+                        <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">Max Records Per Host</label>
+                        <input type="number" min="1" name="maxCatalogRecordsPerHost" id="maxCatalogRecordsPerHost" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" required />
+                    </div>
+                    <div>
+                        <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">Direct Query Page Size</label>
+                        <input type="number" min="1" name="directQueryDefaultPageSize" id="directQueryDefaultPageSize" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" required />
+                    </div>
+                    <div>
+                        <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">Record Stale-After (Hours)</label>
+                        <input type="number" min="1" name="catalogRecordStaleAfterHours" id="catalogRecordStaleAfterHours" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" required />
+                    </div>
+                </div>
+                <div class="ftt-pt-5 ftt-mt-5 ftt-border-t ftt-border-gray-100 ftt-flex ftt-justify-end">
+                    <button type="submit" id="saveCatalogSettingsButton" class="ftt-px-5 ftt-py-2.5 ftt-bg-indigo-600 hover:ftt-bg-indigo-700 ftt-text-white ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-shadow-sm transition">
+                        Save Limits
                     </button>
                 </div>
             </form>
+        </div>
+
+        @* 3. CUSTOM FIELD ACCESS RULES - dynamic rule-row editor for description/custom fields received from other hosts *@
+        <div class="ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-shadow-sm ftt-p-6 ftt-mb-6">
+            <h2 class="ftt-text-sm ftt-font-bold ftt-text-slate-800 ftt-mb-1">Custom Field Access List</h2>
+            <p class="ftt-text-[11px] ftt-text-slate-400 ftt-mb-4">
+                Only applies to description/custom fields received from <strong>other</strong> hosts (CatalogGetFileInfo) - never to your own files, which you edit freely on the File Archive page.
+                Rules are checked top to bottom; the first one whose field-name pattern matches (and value pattern, if set) decides Allow/Deny for that field.
+                Use <code class="ftt-bg-gray-100 ftt-px-1 ftt-rounded">description</code> as the field name to target the free-text description specifically.
+            </p>
+
+            <div id="acl-rules-message" class="ftt-hidden ftt-mb-4 ftt-p-3 ftt-rounded-lg ftt-text-xs ftt-font-semibold"></div>
+
+            @Html.AntiForgeryToken()
+
+            <!-- Hidden class palette so the Tailwind JIT scanner keeps classes only ever applied via JS -->
+            <div class="ftt-hidden" aria-hidden="true">
+                <span class="ftt-bg-emerald-50 ftt-border-emerald-200 ftt-text-emerald-700 ftt-bg-red-50 ftt-border-red-200 ftt-text-red-700"></span>
+            </div>
+
+            <template id="tmpl-acl-rule-row">
+                <tr class="acl-rule-row ftt-border-b ftt-border-gray-100 last:ftt-border-0">
+                    <td class="ftt-p-2">
+                        <input type="text" class="acl-field-pattern ftt-w-full ftt-text-xs ftt-font-mono ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-2 ftt-py-1.5" placeholder="^description$" />
+                    </td>
+                    <td class="ftt-p-2">
+                        <input type="text" class="acl-value-pattern ftt-w-full ftt-text-xs ftt-font-mono ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-2 ftt-py-1.5" placeholder="^.{0,200}$ (optional)" />
+                    </td>
+                    <td class="ftt-p-2 ftt-w-28">
+                        <select class="acl-action ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-2 ftt-py-1.5">
+                            <option value="Allow">Allow</option>
+                            <option value="Deny">Deny</option>
+                        </select>
+                    </td>
+                    <td class="ftt-p-2 ftt-w-10 ftt-text-right">
+                        <button type="button" class="acl-remove-row ftt-text-slate-400 hover:ftt-text-red-600 ftt-text-xs" title="Remove rule">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </td>
+                </tr>
+            </template>
+
+            <div class="ftt-overflow-hidden ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-mb-3">
+                <table class="ftt-w-full ftt-text-left ftt-border-collapse">
+                    <thead>
+                        <tr class="ftt-bg-slate-50 ftt-border-b ftt-border-gray-200">
+                            <th class="ftt-p-3 ftt-text-[10px] ftt-font-black ftt-text-gray-400 ftt-uppercase ftt-tracking-widest">Field Name Pattern (regex)</th>
+                            <th class="ftt-p-3 ftt-text-[10px] ftt-font-black ftt-text-gray-400 ftt-uppercase ftt-tracking-widest">Value Pattern (regex, optional)</th>
+                            <th class="ftt-p-3 ftt-text-[10px] ftt-font-black ftt-text-gray-400 ftt-uppercase ftt-tracking-widest">Action</th>
+                            <th class="ftt-p-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="acl-rules-body"></tbody>
+                </table>
+            </div>
+
+            <button type="button" id="btn-add-acl-rule" class="ftt-text-xs ftt-font-bold ftt-text-indigo-600 hover:ftt-text-indigo-700 ftt-mb-5">
+                <i class="fa-solid fa-plus"></i> Add rule
+            </button>
+
+            <div class="ftt-flex ftt-items-end ftt-justify-between ftt-pt-5 ftt-border-t ftt-border-gray-100">
+                <div>
+                    <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">Default action for a field matching no rule</label>
+                    <select id="acl-default-action" class="ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2">
+                        <option value="Deny">Deny (recommended)</option>
+                        <option value="Allow">Allow</option>
+                    </select>
+                </div>
+                <button type="button" id="btn-save-acl-rules" class="ftt-px-5 ftt-py-2.5 ftt-bg-indigo-600 hover:ftt-bg-indigo-700 ftt-text-white ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-shadow-sm transition">
+                    Save Access List
+                </button>
+            </div>
+        </div>
+
+        @* 4. MODULE STATUS & ANNOUNCE - read-only role/capability readout plus manual triggers *@
+        <div class="ftt-bg-slate-900 ftt-text-white ftt-rounded-xl ftt-shadow-md ftt-p-6 ftt-max-w-4xl">
+            <div class="ftt-flex ftt-justify-between ftt-items-center ftt-mb-4">
+                <h2 class="ftt-text-sm ftt-font-bold ftt-text-slate-200">Module Status</h2>
+                <button type="button" id="btn-refresh-status" class="ftt-text-[11px] ftt-text-slate-400 hover:ftt-text-white transition">
+                    <i class="fa-solid fa-arrows-rotate"></i> Refresh
+                </button>
+            </div>
+
+            <div class="ftt-grid ftt-grid-cols-1 sm:ftt-grid-cols-2 ftt-gap-4 ftt-text-xs ftt-mb-5">
+                <div>
+                    <span class="ftt-text-slate-400 ftt-block">Node Identifier</span>
+                    <strong id="status-node-id" class="ftt-font-mono ftt-text-white ftt-break-all">-</strong>
+                </div>
+                <div>
+                    <span class="ftt-text-slate-400 ftt-block">Roles Advertised</span>
+                    <strong id="status-roles" class="ftt-text-white">-</strong>
+                </div>
+                <div>
+                    <span class="ftt-text-slate-400 ftt-block">Catalogue Epidemic Walk</span>
+                    <strong id="status-walk" class="ftt-text-white">-</strong>
+                </div>
+                <div>
+                    <span class="ftt-text-slate-400 ftt-block">Known file_tracker Peers</span>
+                    <strong id="status-trackers" class="ftt-text-white">-</strong>
+                </div>
+            </div>
+
+            <p class="ftt-text-[11px] ftt-text-slate-500 ftt-mb-4">
+                Neither "file_tracker" nor "file_node" is a toggle here - both are gossiped roles set via
+                <code class="ftt-bg-slate-800 ftt-px-1 ftt-rounded">P2PSettings.NodeRoles</code> in the P2P module's own settings. This panel only shows their current effect.
+            </p>
+
+            <div class="ftt-flex ftt-flex-wrap ftt-gap-3">
+                <button type="button" id="btn-trigger-announce" class="ftt-px-4 ftt-py-2 ftt-bg-amber-600 hover:ftt-bg-amber-700 ftt-text-white ftt-text-xs ftt-font-bold ftt-rounded-lg transition">
+                    <i class="fa-solid fa-bullhorn"></i> Announce Now
+                </button>
+                <button type="button" id="btn-ensure-walk" class="ftt-px-4 ftt-py-2 ftt-bg-slate-700 hover:ftt-bg-slate-600 ftt-text-white ftt-text-xs ftt-font-bold ftt-rounded-lg transition">
+                    <i class="fa-solid fa-diagram-project"></i> Start Catalogue Sync
+                </button>
+            </div>
+
+            <div id="status-action-message" class="ftt-hidden ftt-mt-4 ftt-text-xs"></div>
         </div>
     </div>
 </div>

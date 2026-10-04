@@ -435,3 +435,5 @@ Modules/ProviderlessModule/domains.txt
 /Modules/P2PModule/appsettings.P2P.NodeClient2Debug.json
 /Modules/P2PModule/appsettings.P2P.NodeTracker1Debug.json
 /Modules/P2PModule/appsettings.P2P.NodeTracker2Debug.json
+
+*.db

@@ -1,7 +1,7 @@
 ﻿using System.Security.Cryptography;
 using System.Text.Json;
 
-namespace FileSharingModule.Models.Torrent;
+namespace FileTransferModule.Models.Torrent;
 /// <summary>
 /// The .ptorrent (ProcessorTorrentManifest) container defining hierarchical block/slice structures,
 /// root SHA-256 InfoHash, and seeder descriptors.
@@ -95,6 +95,33 @@ public class PTorrentManifest
         manifest.ContentHash = Convert.ToHexString(rootHashBytes).ToLowerInvariant();
 
         return manifest;
+    }
+
+    /// <summary>
+    /// Verifies ContentHash really is the root hash of BlockHashes (SHA-256 over the concatenated raw
+    /// block hashes, as CreateFromFileAsync computes it). Use before trusting a manifest that came
+    /// from another node or an uploaded file - a mismatch means it's corrupt or tampered with.
+    /// </summary>
+    public bool VerifyContentHash()
+    {
+        if (BlockHashes.Count == 0 || string.IsNullOrEmpty(ContentHash)) return false;
+
+        try
+        {
+            using var combined = new MemoryStream();
+            foreach (var hex in BlockHashes)
+            {
+                byte[] blockHash = Convert.FromHexString(hex);
+                combined.Write(blockHash, 0, blockHash.Length);
+            }
+
+            string root = Convert.ToHexString(SHA256.HashData(combined.ToArray())).ToLowerInvariant();
+            return string.Equals(root, ContentHash, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (FormatException)
+        {
+            return false; // a block hash wasn't valid hex
+        }
     }
 
     public string SerializeToJson()

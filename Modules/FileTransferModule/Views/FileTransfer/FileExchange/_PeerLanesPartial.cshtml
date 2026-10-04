@@ -1,17 +1,17 @@
 ﻿@model FileSharingModule.Models.SwarmTransferTaskState
 
-<ul class="divide-y divide-gray-100 text-xs text-slate-600 bg-slate-50 border border-gray-200 rounded-lg max-h-36 overflow-y-auto">
+<ul class="ftt-divide-y ftt-divide-gray-100 ftt-text-xs ftt-text-slate-600 ftt-bg-slate-50 ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-max-h-36 ftt-overflow-y-auto">
     @if (Model.ConnectedPeerIds == null || Model.ConnectedPeerIds.Count == 0)
     {
-        <li class="p-3 text-center text-slate-400">No remote peers actively connected to this swarm lane.</li>
+        <li class="ftt-p-3 ftt-text-center ftt-text-slate-400">No remote peers actively connected to this swarm lane.</li>
     }
     else
     {
         @foreach (var peerId in Model.ConnectedPeerIds)
         {
-            <li class="p-2.5 flex justify-between items-center font-mono">
-                <span class="truncate">@peerId</span>
-                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800">
+            <li class="ftt-p-2.5 ftt-flex ftt-justify-between ftt-items-center ftt-font-mono">
+                <span class="ftt-truncate">@peerId</span>
+                <span class="ftt-inline-flex ftt-items-center ftt-px-1.5 ftt-py-0.5 ftt-rounded ftt-text-[10px] ftt-font-semibold ftt-bg-emerald-100 ftt-text-emerald-800">
                     Connected
                 </span>
             </li>

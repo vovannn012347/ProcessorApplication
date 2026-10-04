@@ -1,62 +1,96 @@
-﻿@model List<FileSharingModule.Models.FileCatalogEntry>
+﻿@model FileSharingModule.Models.CatalogPageResponse
 
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-    @if (Model == null || Model.Count == 0)
+<div id="catalog-page-state" data-page="@Model.Page" data-page-size="@Model.PageSize" data-total="@Model.TotalCount"></div>
+
+<div class="ftt-grid ftt-grid-cols-1 md:ftt-grid-cols-2 lg:ftt-grid-cols-3 ftt-gap-4">
+    @if (Model.Entries == null || Model.Entries.Count == 0)
     {
-        <div class="col-span-full py-12 text-center text-slate-400 bg-white border border-gray-200 rounded-xl">
-            <i class="fa-solid fa-folder-open text-3xl mb-2 block"></i>
-            No files available in the catalog. Try refreshing or querying another peer directly.
+        <div class="ftt-col-span-full ftt-py-12 ftt-text-center ftt-text-slate-400 ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded-xl">
+            <i class="fa-solid fa-folder-open ftt-text-3xl ftt-mb-2 ftt-block"></i>
+            No files match. Try a different search, page, or probe a node directly.
         </div>
     }
     else
     {
-        @foreach (var entry in Model)
+        @foreach (var entry in Model.Entries)
         {
-            <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition flex flex-col justify-between">
+            bool hasInfo = entry.FullInfoFetchedUtc.HasValue;
+            <div class="catalog-entry-card ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-p-4 ftt-shadow-sm hover:ftt-shadow-md transition ftt-flex ftt-flex-col ftt-justify-between"
+                 data-host="@entry.HostNodeId" data-hash="@entry.Manifest.ContentHash" data-filename="@entry.Manifest.FileName">
                 <div>
-                    <div class="flex justify-between items-start mb-2">
-                        <h4 class="text-sm font-bold text-slate-900 truncate" title="@entry.Manifest.FileName">
-                            <i class="fa-regular fa-file-lines text-indigo-600 mr-1"></i> @entry.Manifest.FileName
+                    <div class="ftt-flex ftt-justify-between ftt-items-start ftt-mb-2 ftt-gap-2">
+                        <h4 class="ftt-text-sm ftt-font-bold ftt-text-slate-900 ftt-truncate ftt-flex-1" title="@entry.Manifest.FileName">
+                            <i class="fa-regular fa-file-lines ftt-text-indigo-600 ftt-mr-1"></i> @entry.Manifest.FileName
                         </h4>
                         @if (entry.IsLocalSeeding)
                         {
-                            <span class="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded text-[10px] font-semibold">Local Seed</span>
+                            <span class="ftt-px-2 ftt-py-0.5 ftt-bg-emerald-50 ftt-text-emerald-700 ftt-border ftt-border-emerald-200 ftt-rounded ftt-text-[10px] ftt-font-semibold ftt-whitespace-nowrap">Local Seed</span>
                         }
                         else
                         {
-                            <span class="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded text-[10px] font-semibold">Remote</span>
+                            <input type="checkbox" class="catalog-batch-select ftt-mt-0.5" title="Select for batch download" />
                         }
                     </div>
 
-                    <div class="text-[11px] text-slate-500 space-y-1 mb-4 font-mono">
-                        <div class="truncate" title="@entry.Manifest.ContentHash">
-                            <span class="text-slate-400 font-sans">Hash:</span> @entry.Manifest.ContentHash
+                    <div class="ftt-text-[11px] ftt-text-slate-500 ftt-space-y-1 ftt-mb-3 ftt-font-mono">
+                        <div class="ftt-truncate" title="@entry.Manifest.ContentHash">
+                            <span class="ftt-text-slate-400 ftt-font-sans">Hash:</span> @entry.Manifest.ContentHash
                         </div>
-                        <div>
-                            <span class="text-slate-400 font-sans">Size:</span> @((entry.Manifest.TotalSizeBytes / 1024.0 / 1024.0).ToString("F2")) MB
-                            <span class="text-slate-400 ml-2 font-sans">Blocks:</span> @entry.Manifest.TotalBlocksCount
+                        <div class="ftt-truncate" title="@entry.HostNodeId">
+                            <span class="ftt-text-slate-400 ftt-font-sans">Host:</span> @entry.HostNodeId
                         </div>
-                        <div class="truncate" title="@entry.HostNodeId">
-                            <span class="text-slate-400 font-sans">Host:</span> @entry.HostNodeId
-                        </div>
+                        @if (entry.IsLocalSeeding || hasInfo)
+                        {
+                            <div>
+                                <span class="ftt-text-slate-400 ftt-font-sans">Size:</span> @((entry.Manifest.TotalSizeBytes / 1024.0 / 1024.0).ToString("F2")) MB
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="ftt-text-slate-400 ftt-font-sans ftt-italic">Size unknown - catalogue entries are lightweight by design; block data only travels when a download actually starts.</div>
+                        }
                     </div>
+
+                    @if (hasInfo)
+                    {
+                        <div class="ftt-text-[11px] ftt-bg-slate-50 ftt-border ftt-border-gray-100 ftt-rounded-lg ftt-p-2 ftt-mb-3">
+                            @if (!string.IsNullOrEmpty(entry.Description))
+                            {
+                                <p class="ftt-text-slate-600 ftt-mb-1 ftt-line-clamp-3">@entry.Description</p>
+                            }
+                            @if (entry.CustomFields != null && entry.CustomFields.Count > 0)
+                            {
+                                <div class="ftt-flex ftt-flex-wrap ftt-gap-1 ftt-mt-1">
+                                    @foreach (var kv in entry.CustomFields)
+                                    {
+                                        <span class="ftt-px-1.5 ftt-py-0.5 ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded ftt-text-[9px] ftt-font-mono" title="@kv.Value">@kv.Key</span>
+                                    }
+                                </div>
+                            }
+                            @if (string.IsNullOrEmpty(entry.Description) && (entry.CustomFields == null || entry.CustomFields.Count == 0))
+                            {
+                                <p class="ftt-text-slate-400 ftt-italic">Host provided no description or fields.</p>
+                            }
+                        </div>
+                    }
                 </div>
 
-                <div class="pt-3 border-t border-gray-100 flex justify-end">
+                <div class="ftt-pt-3 ftt-border-t ftt-border-gray-100 ftt-flex ftt-justify-end ftt-gap-2">
                     @if (!entry.IsLocalSeeding)
                     {
-                        <button type="button"
-                                data-action="prompt-download"
-                                data-host="@entry.HostNodeId"
-                                data-hash="@entry.Manifest.ContentHash"
-                                data-filename="@entry.Manifest.FileName"
-                                class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition">
+                        @if (!hasInfo)
+                        {
+                            <button type="button" data-action="download-info" class="ftt-px-3 ftt-py-1.5 ftt-bg-slate-100 hover:ftt-bg-slate-200 ftt-text-slate-700 ftt-rounded-lg ftt-text-xs ftt-font-semibold transition">
+                                <i class="fa-solid fa-circle-info"></i> Get Info
+                            </button>
+                        }
+                        <button type="button" data-action="prompt-download" class="ftt-px-3 ftt-py-1.5 ftt-bg-indigo-600 hover:ftt-bg-indigo-700 ftt-text-white ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-flex ftt-items-center ftt-gap-1.5 transition">
                             <i class="fa-solid fa-download"></i> Download
                         </button>
                     }
                     else
                     {
-                        <button type="button" disabled class="px-3 py-1.5 bg-gray-100 text-gray-400 rounded-lg text-xs font-semibold cursor-not-allowed">
+                        <button type="button" disabled class="ftt-px-3 ftt-py-1.5 ftt-bg-gray-100 ftt-text-gray-400 ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-cursor-not-allowed">
                             Already In Storage
                         </button>
                     }
@@ -65,3 +99,24 @@
         }
     }
 </div>
+
+@{
+    int totalPages = Model.PageSize > 0 ? (int)Math.Ceiling(Model.TotalCount / (double)Model.PageSize) : 1;
+}
+@if (totalPages > 1)
+{
+    <div class="ftt-flex ftt-justify-between ftt-items-center ftt-mt-5 ftt-text-xs ftt-text-slate-500">
+        <button type="button" id="btn-catalog-prev-page" data-target-page="@(Model.Page - 1)" class="ftt-px-3 ftt-py-1.5 ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-font-semibold hover:ftt-bg-slate-50 disabled:ftt-opacity-40" @(Model.Page <= 0 ? "disabled" : "")>
+            <i class="fa-solid fa-chevron-left"></i> Prev
+        </button>
+        <span>Page @(Model.Page + 1) of @totalPages &middot; @Model.TotalCount total</span>
+        <button type="button" id="btn-catalog-next-page" data-target-page="@(Model.Page + 1)" class="ftt-px-3 ftt-py-1.5 ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-font-semibold hover:ftt-bg-slate-50 disabled:ftt-opacity-40" @(!Model.HasMore ? "disabled" : "")>
+            Next <i class="fa-solid fa-chevron-right"></i>
+        </button>
+    </div>
+}
+
+@if (Model.SavedCount > 0)
+{
+    <div class="ftt-mt-3 ftt-text-[11px] ftt-text-slate-400 ftt-text-center">Saved @Model.SavedCount new record(s) from this probe to local storage.</div>
+}

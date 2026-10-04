@@ -6,13 +6,13 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
-using FileSharingModule.Configuration;
-using FileSharingModule.Models.Torrent;
+using FileTransferModule.Configuration;
+using FileTransferModule.Models.Torrent;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace FileSharingModule.Services;
+namespace FileTransferModule.Services;
 
 
 /// <summary>

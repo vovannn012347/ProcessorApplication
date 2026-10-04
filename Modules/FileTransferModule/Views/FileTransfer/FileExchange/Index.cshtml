@@ -9,20 +9,21 @@
 }
 
 @section Styles {
-    <link rel="stylesheet" href="/filetransfer/css/filetransfer.min.css" asp-append-version="true" />
+    <link rel="stylesheet" href="/filetr/css/ftt.min.css" asp-append-version="true" />
 }
 
-<link rel="stylesheet" href="/filetransfer/css/filetransfer.min.css" asp-append-version="true" />
+<link rel="stylesheet" href="/filetr/css/ftt.min.css" asp-append-version="true" />
 
-<div id="file-exchange-wrapper" data-script-id="file-exchange">
-    <div class="container mx-auto py-6 px-4">
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 pb-4 border-b border-gray-200">
+<div id="file-exchange-wrapper" data-script-id="ftt-exchange">
+    <div class="ftt-container ftt-mx-auto ftt-py-6 ftt-px-4">
+        @Html.AntiForgeryToken()
+        <div class="ftt-flex ftt-flex-col md:ftt-flex-row ftt-justify-between ftt-items-start md:ftt-items-center ftt-mb-6 ftt-pb-4 ftt-border-b ftt-border-gray-200">
             <div>
-                <h1 class="text-2xl font-extrabold text-slate-900 tracking-tight">Active File Transfers & Swarm</h1>
-                <p class="text-xs text-slate-500 mt-1">Real-time WebRTC slice exchange monitoring, bitfield piece state, and transfer throttles.</p>
+                <h1 class="ftt-text-2xl ftt-font-extrabold ftt-text-slate-900 ftt-tracking-tight">Active File Transfers &amp; Swarm</h1>
+                <p class="ftt-text-xs ftt-text-slate-500 ftt-mt-1">Real-time WebRTC slice exchange monitoring, bitfield piece state, and transfer controls.</p>
             </div>
-            <div class="mt-4 md:mt-0 flex gap-2">
-                <button type="button" id="btn-refresh-exchange" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition">
+            <div class="ftt-mt-4 md:ftt-mt-0 ftt-flex ftt-gap-2">
+                <button type="button" id="btn-refresh-exchange" class="ftt-px-3 ftt-py-2 ftt-bg-slate-100 hover:ftt-bg-slate-200 ftt-text-slate-700 ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-flex ftt-items-center ftt-gap-1.5 transition">
                     <i class="fa-solid fa-rotate"></i> Refresh State
                 </button>
             </div>
@@ -34,21 +35,19 @@
     </div>
 </div>
 
-<div id="bitfield-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden">
-    <div class="bg-white rounded-xl shadow-2xl border border-gray-100 max-w-2xl w-full mx-4 overflow-hidden">
-        <div class="px-6 py-4 bg-slate-50 border-b border-gray-100 flex justify-between items-center">
-            <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <i class="fa-solid fa-cubes-stacked text-indigo-600"></i> Block Bitfield Visualizer
+<div id="bitfield-modal" class="ftt-fixed ftt-inset-0 ftt-bg-slate-900/60 ftt-backdrop-blur-sm ftt-z-50 ftt-flex ftt-items-center ftt-justify-center ftt-hidden">
+    <div class="ftt-bg-white ftt-rounded-xl ftt-shadow-2xl ftt-border ftt-border-gray-100 ftt-max-w-2xl ftt-w-full ftt-mx-4 ftt-overflow-hidden">
+        <div class="ftt-px-6 ftt-py-4 ftt-bg-slate-50 ftt-border-b ftt-border-gray-100 ftt-flex ftt-justify-between ftt-items-center">
+            <h3 class="ftt-text-sm ftt-font-bold ftt-text-slate-800 ftt-flex ftt-items-center ftt-gap-2">
+                <i class="fa-solid fa-cubes-stacked ftt-text-indigo-600"></i> Block Bitfield Visualizer
             </h3>
-            <button type="button" id="btn-close-bitfield-modal" class="text-gray-400 hover:text-gray-600">
+            <button type="button" id="btn-close-bitfield-modal" class="ftt-text-gray-400 hover:ftt-text-gray-600">
                 <i class="fa-solid fa-xmark"></i>
             </button>
         </div>
-        <div id="bitfield-modal-content" class="p-6">
-        </div>
+        <div id="bitfield-modal-content" class="ftt-p-6"></div>
     </div>
 </div>
-
 
 @section Scripts {
     <script src="~/filetr/js/pages/file-exchange/index.js" asp-append-version="true"></script>

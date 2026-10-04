@@ -1,0 +1,46 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <Private>False</Private>
+    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <Configurations>Debug;Release;TrackerDebug;ClientDebug;NodeTracker1Debug;NodeTracker2Debug;NodeClient1Debug;NodeClient2Debug</Configurations>
+
+    <!--for appsettings hook in build.props-->
+    <ModuleKey>FileTransfer</ModuleKey>
+    <Version>1.0.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <Content Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Folder Include="configFiles\Debug\" />
+    <Folder Include="configFiles\Debug\Module_Data\FileTr\identity\" />
+    <Folder Include="Models\Exchange\" />
+    <Folder Include="wwwroot\css\" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <ProjectReference Include="..\P2PModule\P2PModule.csproj">
+      <CopyLocalSatelliteAssemblies>True</CopyLocalSatelliteAssemblies>
+      <Private>False</Private>
+      <IncludeAssets>all</IncludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ModuleManifestDependency Include="P2P">
+      <MinVersion>1.0.0.0</MinVersion>
+    </ModuleManifestDependency>
+  </ItemGroup>
+
+  <Import Project="$(MSBuildThisFileDirectory)..\..\Build\ModuleManifest.targets" />
+
+</Project>

@@ -6,9 +6,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-using FileSharingModule.Configuration;
-using FileSharingModule.Models;
-using FileSharingModule.Models.Torrent;
+using FileTransferModule.Configuration;
+using FileTransferModule.Models;
+using FileTransferModule.Models.Torrent;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -17,7 +17,7 @@ using P2PModule.Services.Connection;
 
 using SIPSorcery.Net;
 
-namespace FileSharingModule.Services;
+namespace FileTransferModule.Services;
 public interface ISwarmOrchestratorService
 {
     /// <summary>

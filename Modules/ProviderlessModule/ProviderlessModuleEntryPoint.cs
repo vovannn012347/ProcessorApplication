@@ -39,9 +39,9 @@ public class ProviderlessModuleEntryPoint : IModule
     public string Name => "Qr Access";
     public string ModuleId => MODULE_ID;
 
-    public Version Version => new Version("1.0.0.0");
-
     public IEnumerable<string> ListAdvertisedCapabilities() => Array.Empty<string>();
+
+    public Version Version => new Version("1.0.0.0");
     public ModuleDependency[] Dependencies => new[]
     {
         new ModuleDependency { 

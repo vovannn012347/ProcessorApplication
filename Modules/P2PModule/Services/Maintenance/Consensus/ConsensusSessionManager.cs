@@ -66,12 +66,20 @@ public class ChainSignature
 /// <summary>
 /// Active state container for a daily epidemic consensus merge session.
 /// Snapshots local active daily keys at session start to ensure immutable signing across key rotations.
+/// One of these exists per (currently) active consensus channel - see ChannelId.
 /// </summary>
 public class ConsensusMergeSession
 {
     public Guid SessionId { get; set; } = Guid.NewGuid();
     public string TargetSyncDate { get; set; } = DateTime.UtcNow.ToString("yyyy-MM-dd");
     public string InitiatorNodeId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Id of the IConsensusChannel (see Common.Interfaces.Consensus.IConsensusChannel) this session
+    /// belongs to. Defaults to the built-in peer-trust channel so existing single-channel behavior
+    /// is unchanged unless a caller explicitly passes a different channelId.
+    /// </summary>
+    public string ChannelId { get; set; } = PeerTrustConsensusChannel.CHANNEL_ID;
 
     public string TargetNodeId { get; set; } = string.Empty;
     public string GeneratedDeltasDir { get; set; } = string.Empty;
@@ -99,29 +107,39 @@ public class ConsensusMergeSession
 
 public interface IConsensusSessionManager
 {
-    bool TryAcquireSession(string initiatorNodeId, out ConsensusMergeSession? session);
-    ConsensusMergeSession? GetActiveSession();
-    bool IsBusy();
-    void SetActiveTargetNode(string? targetNodeId);
-    void QueueNodesToVisit(IEnumerable<string> nodeIds);
-    bool TryPopNextNodeToVisit(out string? nodeId);
-    void MarkNodeAsVisited(string nodeId);
-    void RegisterNodesInCurrentSyncSet(IEnumerable<string> nodeIds);
-    void AddSyncSetSignature(string signerNodeId, string targetNodeId, byte[] signature, int order = 0);
-    List<ChainSignature> GetSyncSetSignatures();
-    List<string> GetPastSyncSetNodes();
-    Task<ConsensusSessionDeltaItem?> CreateLocalDeltaAsync(List<ChainSignature>? signatureChain = null);
-    bool PrepareDownloadedDeltaFolder(out string deltaId, out string destFolderPath);
-    bool RegisterDownloadedDelta(string sourceNodeId, string downloadedFolderPath, List<ChainSignature>? signatureChain = null);
-    List<ConsensusSessionDeltaItem> GetPendingDeltasToMerge();
-    bool HasPendingDeltas();
-    bool RemovePendingDelta(string deltaId, bool deleteFolder = false);
-    ConsensusSessionDeltaItem? GetLocalDelta(string deltaId);
-    List<string> GetDeltaFolderPathsBatch(List<string> deltaIds);
-    Task<PeerNodeHistoric?> GetNodeFromDeltaOrStagingHierarchyAsync(string deltaId, string nodeId);
-    Task FinalizeIterationStepAsync();
-    Task FinalizeSessionAsync();
-    Task AbortSessionAsync();
+    /// <summary>
+    /// channelId identifies which consensus channel (see Common.Interfaces.Consensus.IConsensusChannel)
+    /// this call applies to. Every method defaults to the built-in peer-trust channel, so existing
+    /// callers that don't pass channelId keep running exactly one session at a time, same as before -
+    /// this is what makes several-channel consensus possible: a different channelId gets its own
+    /// completely independent session, acquired/visited/finalized on its own schedule.
+    /// </summary>
+    bool TryAcquireSession(string initiatorNodeId, out ConsensusMergeSession? session, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    ConsensusMergeSession? GetActiveSession(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    bool IsBusy(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    void SetActiveTargetNode(string? targetNodeId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    void QueueNodesToVisit(IEnumerable<string> nodeIds, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    bool TryPopNextNodeToVisit(out string? nodeId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    void MarkNodeAsVisited(string nodeId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    void RegisterNodesInCurrentSyncSet(IEnumerable<string> nodeIds, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    void AddSyncSetSignature(string signerNodeId, string targetNodeId, byte[] signature, int order = 0, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    List<ChainSignature> GetSyncSetSignatures(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    List<string> GetPastSyncSetNodes(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    Task<ConsensusSessionDeltaItem?> CreateLocalDeltaAsync(List<ChainSignature>? signatureChain = null, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    bool PrepareDownloadedDeltaFolder(out string deltaId, out string destFolderPath, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    bool RegisterDownloadedDelta(string sourceNodeId, string downloadedFolderPath, List<ChainSignature>? signatureChain = null, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    List<ConsensusSessionDeltaItem> GetPendingDeltasToMerge(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    bool HasPendingDeltas(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    bool RemovePendingDelta(string deltaId, bool deleteFolder = false, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    ConsensusSessionDeltaItem? GetLocalDelta(string deltaId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    List<string> GetDeltaFolderPathsBatch(List<string> deltaIds, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    Task<PeerNodeHistoric?> GetNodeFromDeltaOrStagingHierarchyAsync(string deltaId, string nodeId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    Task FinalizeIterationStepAsync(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    Task FinalizeSessionAsync(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    Task AbortSessionAsync(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+
+    /// <summary>Ids of channels that currently have an active session - for admin/diagnostic visibility.</summary>
+    IReadOnlyCollection<string> GetActiveChannelIds();
 }
 
 
@@ -133,7 +151,10 @@ public class ConsensusSessionManager : IConsensusSessionManager
     private readonly ILogger<ConsensusSessionManager> _logger;
 
     private readonly object _sessionLock = new();
-    private ConsensusMergeSession? _activeSession;
+    // Keyed by ChannelId. A single lock guards the whole dictionary (same as the single-session lock
+    // this replaces) - session churn is low-frequency enough that a shared lock across channels is not
+    // a contention concern, and it avoids introducing any new per-channel locking subtleties.
+    private readonly Dictionary<string, ConsensusMergeSession> _activeSessionsByChannel = new(StringComparer.OrdinalIgnoreCase);
 
     public ConsensusSessionManager(
         IConsensusMergeEngine mergeEngine,
@@ -147,14 +168,14 @@ public class ConsensusSessionManager : IConsensusSessionManager
         _logger = logger;
     }
 
-    public bool TryAcquireSession(string initiatorNodeId, out ConsensusMergeSession? session)
+    public bool TryAcquireSession(string initiatorNodeId, out ConsensusMergeSession? session, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         lock (_sessionLock)
         {
-            if (_activeSession != null)
+            if (_activeSessionsByChannel.TryGetValue(channelId, out var existing) && existing != null)
             {
-                _logger.LogWarning("[Session Manager] Rejecting session request from {Initiator} - Active session {SessionId} is already running (BUSY).",
-                    initiatorNodeId, _activeSession.SessionId);
+                _logger.LogWarning("[Session Manager] Rejecting session request from {Initiator} for channel '{ChannelId}' - Active session {SessionId} is already running (BUSY).",
+                    initiatorNodeId, channelId, existing.SessionId);
                 session = null;
                 return false;
             }
@@ -162,10 +183,11 @@ public class ConsensusSessionManager : IConsensusSessionManager
             string todayKey = DateTime.UtcNow.ToString("yyyy-MM-dd");
             var stagingOp = _mergeEngine.CreateStagingOperationAsync(todayKey).GetAwaiter().GetResult();
 
-            _activeSession = new ConsensusMergeSession
+            var newSession = new ConsensusMergeSession
             {
                 TargetSyncDate = todayKey,
                 InitiatorNodeId = initiatorNodeId,
+                ChannelId = channelId,
                 LastActivityUtc = DateTime.UtcNow,
 
                 StagingOperation = stagingOp,
@@ -178,91 +200,101 @@ public class ConsensusSessionManager : IConsensusSessionManager
                 DayKeyVerifyKey = _identity.PublicVerifyKey ?? Array.Empty<byte>()
             };
 
-            Directory.CreateDirectory(_activeSession.GeneratedDeltasDir);
-            Directory.CreateDirectory(_activeSession.DownloadedDeltasDir);
+            Directory.CreateDirectory(newSession.GeneratedDeltasDir);
+            Directory.CreateDirectory(newSession.DownloadedDeltasDir);
 
-            _activeSession.PastSyncSet.Add(_identity.NodeId);
-            _activeSession.VisitedNodes.Add(_identity.NodeId);
+            newSession.PastSyncSet.Add(_identity.NodeId);
+            newSession.VisitedNodes.Add(_identity.NodeId);
 
-            _logger.LogInformation("[Session Manager] Consensus session {SessionId} acquired for date {Date} by {Initiator}. BasePath: {BasePath}.",
-                _activeSession.SessionId, todayKey, initiatorNodeId, stagingOp.BasePath);
+            _activeSessionsByChannel[channelId] = newSession;
 
-            session = _activeSession;
+            _logger.LogInformation("[Session Manager] Consensus session {SessionId} acquired for channel '{ChannelId}' date {Date} by {Initiator}. BasePath: {BasePath}.",
+                newSession.SessionId, channelId, todayKey, initiatorNodeId, stagingOp.BasePath);
+
+            session = newSession;
             return true;
         }
     }
 
-    public ConsensusMergeSession? GetActiveSession()
+    public ConsensusMergeSession? GetActiveSession(string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         lock (_sessionLock)
         {
-            return _activeSession;
+            return _activeSessionsByChannel.TryGetValue(channelId, out var session) ? session : null;
         }
     }
 
-    public bool IsBusy()
+    public IReadOnlyCollection<string> GetActiveChannelIds()
     {
         lock (_sessionLock)
         {
-            return _activeSession != null;
+            return _activeSessionsByChannel.Keys.ToList();
         }
     }
 
-    public void SetActiveTargetNode(string? targetNodeId)
+    public bool IsBusy(string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         lock (_sessionLock)
         {
-            if (_activeSession != null)
+            return _activeSessionsByChannel.ContainsKey(channelId);
+        }
+    }
+
+    public void SetActiveTargetNode(string? targetNodeId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
+    {
+        lock (_sessionLock)
+        {
+            if (_activeSessionsByChannel.TryGetValue(channelId, out var session))
             {
-                _activeSession.TargetNodeId = targetNodeId ?? string.Empty;
-                _activeSession.LastActivityUtc = DateTime.UtcNow;
+                session.TargetNodeId = targetNodeId ?? string.Empty;
+                session.LastActivityUtc = DateTime.UtcNow;
             }
         }
     }
 
-    public void QueueNodesToVisit(IEnumerable<string> nodeIds)
+    public void QueueNodesToVisit(IEnumerable<string> nodeIds, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         lock (_sessionLock)
         {
-            if (_activeSession == null || nodeIds == null) return;
+            if (!_activeSessionsByChannel.TryGetValue(channelId, out var session) || nodeIds == null) return;
 
             foreach (var id in nodeIds)
             {
                 if (string.IsNullOrWhiteSpace(id)) continue;
 
-                if (!_activeSession.VisitedNodes.Contains(id) &&
-                    !_activeSession.PastSyncSet.Contains(id) &&
-                    !_activeSession.CurrentSyncSet.Contains(id) &&
-                    !_activeSession.NodesToVisit.Contains(id, StringComparer.OrdinalIgnoreCase))
+                if (!session.VisitedNodes.Contains(id) &&
+                    !session.PastSyncSet.Contains(id) &&
+                    !session.CurrentSyncSet.Contains(id) &&
+                    !session.NodesToVisit.Contains(id, StringComparer.OrdinalIgnoreCase))
                 {
-                    _activeSession.NodesToVisit.Enqueue(id);
+                    session.NodesToVisit.Enqueue(id);
                 }
             }
 
-            _activeSession.LastActivityUtc = DateTime.UtcNow;
+            session.LastActivityUtc = DateTime.UtcNow;
         }
     }
 
-    public bool TryPopNextNodeToVisit(out string? nodeId)
+    public bool TryPopNextNodeToVisit(out string? nodeId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         lock (_sessionLock)
         {
-            if (_activeSession == null)
+            if (!_activeSessionsByChannel.TryGetValue(channelId, out var session))
             {
                 nodeId = null;
                 return false;
             }
 
-            while (_activeSession.NodesToVisit.TryDequeue(out var candidate))
+            while (session.NodesToVisit.TryDequeue(out var candidate))
             {
                 if (string.IsNullOrWhiteSpace(candidate)) continue;
 
-                if (!_activeSession.VisitedNodes.Contains(candidate) &&
-                    !_activeSession.PastSyncSet.Contains(candidate) &&
-                    !_activeSession.CurrentSyncSet.Contains(candidate))
+                if (!session.VisitedNodes.Contains(candidate) &&
+                    !session.PastSyncSet.Contains(candidate) &&
+                    !session.CurrentSyncSet.Contains(candidate))
                 {
-                    _activeSession.VisitedNodes.Add(candidate);
-                    _activeSession.LastActivityUtc = DateTime.UtcNow;
+                    session.VisitedNodes.Add(candidate);
+                    session.LastActivityUtc = DateTime.UtcNow;
                     nodeId = candidate;
                     return true;
                 }
@@ -273,80 +305,80 @@ public class ConsensusSessionManager : IConsensusSessionManager
         }
     }
 
-    public void MarkNodeAsVisited(string nodeId)
+    public void MarkNodeAsVisited(string nodeId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         lock (_sessionLock)
         {
-            if (_activeSession == null || string.IsNullOrWhiteSpace(nodeId)) return;
+            if (!_activeSessionsByChannel.TryGetValue(channelId, out var session) || string.IsNullOrWhiteSpace(nodeId)) return;
 
-            _activeSession.VisitedNodes.Add(nodeId);
-            _activeSession.LastActivityUtc = DateTime.UtcNow;
+            session.VisitedNodes.Add(nodeId);
+            session.LastActivityUtc = DateTime.UtcNow;
         }
     }
 
-    public void RegisterNodesInCurrentSyncSet(IEnumerable<string> nodeIds)
+    public void RegisterNodesInCurrentSyncSet(IEnumerable<string> nodeIds, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         lock (_sessionLock)
         {
-            if (_activeSession == null || nodeIds == null) return;
+            if (!_activeSessionsByChannel.TryGetValue(channelId, out var session) || nodeIds == null) return;
 
             foreach (var id in nodeIds)
             {
                 if (!string.IsNullOrWhiteSpace(id))
                 {
-                    _activeSession.CurrentSyncSet.Add(id);
+                    session.CurrentSyncSet.Add(id);
                 }
             }
 
-            _activeSession.LastActivityUtc = DateTime.UtcNow;
+            session.LastActivityUtc = DateTime.UtcNow;
         }
     }
 
-    public void AddSyncSetSignature(string signerNodeId, string targetNodeId, byte[] signature, int order = 0)
+    public void AddSyncSetSignature(string signerNodeId, string targetNodeId, byte[] signature, int order = 0, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         lock (_sessionLock)
         {
-            if (_activeSession == null || string.IsNullOrWhiteSpace(signerNodeId)) return;
+            if (!_activeSessionsByChannel.TryGetValue(channelId, out var session) || string.IsNullOrWhiteSpace(signerNodeId)) return;
 
             var item = new ChainSignature
             {
-                Order = order != 0 ? order : _activeSession.SyncSetSignatures.Count,
+                Order = order != 0 ? order : session.SyncSetSignatures.Count,
                 SignerNodeId = signerNodeId,
                 TargetNodeId = targetNodeId,
                 Signature = signature ?? Array.Empty<byte>(),
                 TimestampUtc = DateTime.UtcNow
             };
 
-            _activeSession.SyncSetSignatures[signerNodeId] = item;
-            _activeSession.LastActivityUtc = DateTime.UtcNow;
+            session.SyncSetSignatures[signerNodeId] = item;
+            session.LastActivityUtc = DateTime.UtcNow;
         }
     }
 
-    public List<ChainSignature> GetSyncSetSignatures()
+    public List<ChainSignature> GetSyncSetSignatures(string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         lock (_sessionLock)
         {
-            if (_activeSession == null) return new List<ChainSignature>();
-            return _activeSession.SyncSetSignatures.Values.OrderBy(x => x.Order).ToList();
+            if (!_activeSessionsByChannel.TryGetValue(channelId, out var session)) return new List<ChainSignature>();
+            return session.SyncSetSignatures.Values.OrderBy(x => x.Order).ToList();
         }
     }
 
-    public List<string> GetPastSyncSetNodes()
+    public List<string> GetPastSyncSetNodes(string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         lock (_sessionLock)
         {
-            if (_activeSession == null) return new List<string>();
-            return _activeSession.PastSyncSet.ToList();
+            if (!_activeSessionsByChannel.TryGetValue(channelId, out var session)) return new List<string>();
+            return session.PastSyncSet.ToList();
         }
     }
 
 
-    public async Task<ConsensusSessionDeltaItem?> CreateLocalDeltaAsync(List<ChainSignature>? signatureChain = null)
+    public async Task<ConsensusSessionDeltaItem?> CreateLocalDeltaAsync(List<ChainSignature>? signatureChain = null, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         ConsensusMergeSession? session;
         lock (_sessionLock)
         {
-            session = _activeSession;
+            _activeSessionsByChannel.TryGetValue(channelId, out session);
         }
 
         if (session == null || session.StagingOperation == null) return null;
@@ -466,12 +498,12 @@ public class ConsensusSessionManager : IConsensusSessionManager
         return deltaItem;
     }
 
-    public bool PrepareDownloadedDeltaFolder(out string deltaId, out string destFolderPath)
+    public bool PrepareDownloadedDeltaFolder(out string deltaId, out string destFolderPath, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         ConsensusMergeSession? session;
         lock (_sessionLock)
         {
-            session = _activeSession;
+            _activeSessionsByChannel.TryGetValue(channelId, out session);
         }
 
         if (session == null)
@@ -498,12 +530,12 @@ public class ConsensusSessionManager : IConsensusSessionManager
         }
     }
 
-    public bool RegisterDownloadedDelta(string sourceNodeId, string downloadedFolderPath, List<ChainSignature>? signatureChain = null)
+    public bool RegisterDownloadedDelta(string sourceNodeId, string downloadedFolderPath, List<ChainSignature>? signatureChain = null, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         ConsensusMergeSession? session;
         lock (_sessionLock)
         {
-            session = _activeSession;
+            _activeSessionsByChannel.TryGetValue(channelId, out session);
         }
 
         if (session == null || !Directory.Exists(downloadedFolderPath)) return false;
@@ -559,31 +591,31 @@ public class ConsensusSessionManager : IConsensusSessionManager
         return true;
     }
 
-    public List<ConsensusSessionDeltaItem> GetPendingDeltasToMerge()
+    public List<ConsensusSessionDeltaItem> GetPendingDeltasToMerge(string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         lock (_sessionLock)
         {
-            if (_activeSession == null) return new List<ConsensusSessionDeltaItem>();
-            return _activeSession.PendingDeltasToMerge.Values.ToList();
+            if (!_activeSessionsByChannel.TryGetValue(channelId, out var session)) return new List<ConsensusSessionDeltaItem>();
+            return session.PendingDeltasToMerge.Values.ToList();
         }
     }
 
-    public bool HasPendingDeltas()
+    public bool HasPendingDeltas(string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         lock (_sessionLock)
         {
-            if (_activeSession == null) return false;
-            return !_activeSession.PendingDeltasToMerge.IsEmpty;
+            if (!_activeSessionsByChannel.TryGetValue(channelId, out var session)) return false;
+            return !session.PendingDeltasToMerge.IsEmpty;
         }
     }
 
-    public bool RemovePendingDelta(string deltaId, bool deleteFolder = false)
+    public bool RemovePendingDelta(string deltaId, bool deleteFolder = false, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         lock (_sessionLock)
         {
-            if (_activeSession == null || string.IsNullOrEmpty(deltaId)) return false;
+            if (!_activeSessionsByChannel.TryGetValue(channelId, out var session) || string.IsNullOrEmpty(deltaId)) return false;
 
-            bool removed = _activeSession.PendingDeltasToMerge.TryRemove(deltaId, out var deltaItem);
+            bool removed = session.PendingDeltasToMerge.TryRemove(deltaId, out var deltaItem);
             if (removed && deleteFolder && deltaItem != null && !string.IsNullOrEmpty(deltaItem.DeltaFolderPath) && Directory.Exists(deltaItem.DeltaFolderPath))
             {
                 try
@@ -601,26 +633,26 @@ public class ConsensusSessionManager : IConsensusSessionManager
         }
     }
 
-    public ConsensusSessionDeltaItem? GetLocalDelta(string deltaId)
+    public ConsensusSessionDeltaItem? GetLocalDelta(string deltaId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         lock (_sessionLock)
         {
-            if (_activeSession == null || string.IsNullOrEmpty(deltaId)) return null;
-            _activeSession.LocalDeltas.TryGetValue(deltaId, out var deltaItem);
+            if (!_activeSessionsByChannel.TryGetValue(channelId, out var session) || string.IsNullOrEmpty(deltaId)) return null;
+            session.LocalDeltas.TryGetValue(deltaId, out var deltaItem);
             return deltaItem;
         }
     }
 
-    public List<string> GetDeltaFolderPathsBatch(List<string> deltaIds)
+    public List<string> GetDeltaFolderPathsBatch(List<string> deltaIds, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         var folderPaths = new List<string>();
         lock (_sessionLock)
         {
-            if (_activeSession == null || deltaIds == null || deltaIds.Count == 0) return folderPaths;
+            if (!_activeSessionsByChannel.TryGetValue(channelId, out var session) || deltaIds == null || deltaIds.Count == 0) return folderPaths;
 
             foreach (var id in deltaIds)
             {
-                if (_activeSession.LocalDeltas.TryGetValue(id, out var delta) && Directory.Exists(delta.DeltaFolderPath))
+                if (session.LocalDeltas.TryGetValue(id, out var delta) && Directory.Exists(delta.DeltaFolderPath))
                 {
                     folderPaths.Add(delta.DeltaFolderPath);
                 }
@@ -631,19 +663,19 @@ public class ConsensusSessionManager : IConsensusSessionManager
     }
 
 
-    public async Task<PeerNodeHistoric?> GetNodeFromDeltaOrStagingHierarchyAsync(string deltaId, string nodeId)
+    public async Task<PeerNodeHistoric?> GetNodeFromDeltaOrStagingHierarchyAsync(string deltaId, string nodeId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         ConsensusMergeSession? session;
         lock (_sessionLock)
         {
-            session = _activeSession;
+            _activeSessionsByChannel.TryGetValue(channelId, out session);
         }
 
         if (session == null || string.IsNullOrEmpty(nodeId)) return null;
 
         if (!string.IsNullOrEmpty(deltaId))
         {
-            ConsensusSessionDeltaItem? deltaItem = GetLocalDelta(deltaId);
+            ConsensusSessionDeltaItem? deltaItem = GetLocalDelta(deltaId, channelId);
             if (deltaItem == null && session.PendingDeltasToMerge.TryGetValue(deltaId, out var pending))
             {
                 deltaItem = pending;
@@ -686,12 +718,12 @@ public class ConsensusSessionManager : IConsensusSessionManager
         return null;
     }
 
-    public async Task FinalizeIterationStepAsync()
+    public async Task FinalizeIterationStepAsync(string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         ConsensusMergeSession? session;
         lock (_sessionLock)
         {
-            session = _activeSession;
+            _activeSessionsByChannel.TryGetValue(channelId, out session);
         }
 
         if (session == null || session.StagingOperation == null) return;
@@ -710,14 +742,14 @@ public class ConsensusSessionManager : IConsensusSessionManager
         }
     }
 
-    public async Task FinalizeSessionAsync()
+    public async Task FinalizeSessionAsync(string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         ConsensusMergeSession? sessionToFinalize;
 
         lock (_sessionLock)
         {
-            sessionToFinalize = _activeSession;
-            _activeSession = null;
+            _activeSessionsByChannel.TryGetValue(channelId, out sessionToFinalize);
+            _activeSessionsByChannel.Remove(channelId);
         }
 
         if (sessionToFinalize?.StagingOperation != null)
@@ -734,14 +766,14 @@ public class ConsensusSessionManager : IConsensusSessionManager
         }
     }
 
-    public async Task AbortSessionAsync()
+    public async Task AbortSessionAsync(string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         ConsensusMergeSession? sessionToAbort;
 
         lock (_sessionLock)
         {
-            sessionToAbort = _activeSession;
-            _activeSession = null;
+            _activeSessionsByChannel.TryGetValue(channelId, out sessionToAbort);
+            _activeSessionsByChannel.Remove(channelId);
         }
 
         if (sessionToAbort?.StagingOperation != null)

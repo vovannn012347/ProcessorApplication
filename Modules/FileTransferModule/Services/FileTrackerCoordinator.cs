@@ -6,8 +6,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-using FileSharingModule.Configuration;
-using FileSharingModule.Models.Torrent;
+using FileTransferModule.Configuration;
+using FileTransferModule.Models.Torrent;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -19,12 +19,12 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using FileSharingModule.Configuration;
-using FileSharingModule.Models;
+using FileTransferModule.Configuration;
+using FileTransferModule.Models;
 using P2PModule.Interfaces;
 using P2PModule.Models.Network;
 
-namespace FileSharingModule.Services;
+namespace FileTransferModule.Services;
 
 
 /// <summary>

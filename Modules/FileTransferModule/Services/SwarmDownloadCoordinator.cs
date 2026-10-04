@@ -6,20 +6,21 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-using FileSharingModule.Configuration;
-using FileSharingModule.Models;
-using FileSharingModule.Models.Torrent;
+using FileTransferModule.Configuration;
+using FileTransferModule.Models;
+using FileTransferModule.Models.Torrent;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using P2PModule.Interfaces;
 using P2PModule.Services.Connection;
 using P2PModule.Services.Persistence;
 using P2PModule.Services.Rating;
 
 using SIPSorcery.Net;
 
-namespace FileSharingModule.Services;
+namespace FileTransferModule.Services;
 
 /// <summary>
 /// Client-side multi-source download coordinator.
@@ -69,8 +70,10 @@ public class SwarmDownloadCoordinator : ISwarmDownloadCoordinator, IDisposable
     private readonly IFileChunkStorageEngine _storageEngine;
     private readonly ITorrentWireHandler _wireHandler;
     private readonly IFileTrackerCoordinator _trackerCoordinator;
+    private readonly IFileCatalogConsensusChannel _catalogChannel;
     private readonly IPeerTracker _peerTracker;
     private readonly IRatingService _ratingService;
+    private readonly INodeIdentityService _identity;
     private readonly IOptionsMonitor<FileSharingSettings> _settings;
     private readonly ILogger<SwarmDownloadCoordinator> _logger;
 
@@ -96,8 +99,10 @@ public class SwarmDownloadCoordinator : ISwarmDownloadCoordinator, IDisposable
         IFileChunkStorageEngine storageEngine,
         ITorrentWireHandler wireHandler,
         IFileTrackerCoordinator trackerCoordinator,
+        IFileCatalogConsensusChannel catalogChannel,
         IPeerTracker peerTracker,
         IRatingService ratingService,
+        INodeIdentityService identity,
         IOptionsMonitor<FileSharingSettings> settings,
         ILogger<SwarmDownloadCoordinator> logger)
     {
@@ -105,8 +110,10 @@ public class SwarmDownloadCoordinator : ISwarmDownloadCoordinator, IDisposable
         _storageEngine = storageEngine;
         _wireHandler = wireHandler;
         _trackerCoordinator = trackerCoordinator;
+        _catalogChannel = catalogChannel;
         _peerTracker = peerTracker;
         _ratingService = ratingService;
+        _identity = identity;
         _settings = settings;
         _logger = logger;
     }
@@ -128,6 +135,7 @@ public class SwarmDownloadCoordinator : ISwarmDownloadCoordinator, IDisposable
             IsLocalAdmin = isLocalAdmin,
             State = new SwarmTransferTaskState
             {
+                TaskId = taskId,
                 ContentHash = manifest.ContentHash,
                 FileName = manifest.FileName,
                 TotalSizeBytes = manifest.TotalSizeBytes,
@@ -151,66 +159,84 @@ public class SwarmDownloadCoordinator : ISwarmDownloadCoordinator, IDisposable
         var token = session.Cts.Token;
         try
         {
-            // 1. Discover seeders (manifest initial peers + tracker lookup)
-            var seeders = new HashSet<TorrentPeerDescriptor>(session.Manifest.InitialPeers);
-            var trackerSeeders = await _trackerCoordinator.GetPeersForFileAsync(session.Manifest.ContentHash);
-            foreach (var s in trackerSeeders) seeders.Add(s);
+            // 1. Discover seeders and connect (manifest initial peers + tracker registry + catalog consensus)
+            var seeders = await DiscoverSeedersAsync(session.Manifest);
+            await ConnectToSeedersAsync(session, seeders, token);
 
-            // 2. Connect to peers and establish unmanaged lanes
-            foreach (var seeder in seeders)
-            {
-                if (token.IsCancellationRequested) break;
+            // 2. Piece/Block scheduling loop, with bounded retry + rediscovery on stall.
+            // Previously a failed/timed-out block (DownloadBlockAsync returning false) was silently
+            // skipped with no retry, so the bitfield could never complete and the task would just
+            // hang with no error. Now each block gets up to MaxAttemptsPerBlock tries; if there is
+            // no usable open channel, it rediscovers seeders (see RediscoverAndConnectSeedersAsync)
+            // before retrying rather than giving up on the very first stall.
+            const int maxAttemptsPerBlock = 10;
 
-                var activeConn = _connectionManager.GetConnection(seeder.NodeId);
-                if (activeConn == null || activeConn.PeerConnection?.connectionState != RTCPeerConnectionState.connected)
-                {
-                    await _connectionManager.ConnectPeerAsync(seeder.NodeId, seeder.SignalingEndpoints.ToArray(), "outbound");
-                }
-
-                string channelLabel = $"unmanaged:file:{session.Manifest.ContentHash}";
-                var channelResult = await _connectionManager.CreateUnmanagedDataChannelAsync(seeder.NodeId, channelLabel);
-                if (!channelResult.IsError && channelResult.Channel != null)
-                {
-                    AttachChannelEvents(session, channelResult.Channel);
-                    session.ActiveChannels[seeder.NodeId] = channelResult.Channel;
-                    session.State.ConnectedPeerIds.Add(seeder.NodeId);
-                }
-            }
-
-            session.State.ActiveSeedersCount = session.ActiveChannels.Count;
-
-            // 3. Piece/Block scheduling loop
             for (int blockIndex = 0; blockIndex < session.Manifest.TotalBlocksCount; blockIndex++)
             {
                 if (token.IsCancellationRequested) break;
-
                 if (session.State.Bitfield.HasBlock(blockIndex)) continue;
 
-                bool blockCompleted = await DownloadBlockAsync(session, blockIndex, token);
-                if (blockCompleted)
-                {
-                    bool verified = await _storageEngine.VerifyAndCommitBlockAsync(session.TaskId, session.Manifest, blockIndex);
-                    if (verified)
-                    {
-                        session.State.Bitfield.SetBlock(blockIndex, true);
+                bool blockCompleted = false;
+                int attempt = 0;
 
-                        // Broadcast HAVE_BLOCK (0x04)
-                        byte[] haveFrame = _wireHandler.BuildHaveBlockFrame(blockIndex);
-                        foreach (var ch in session.ActiveChannels.Values)
+                while (!blockCompleted && attempt < maxAttemptsPerBlock && !token.IsCancellationRequested)
+                {
+                    attempt++;
+
+                    bool hasOpenChannel = session.ActiveChannels.Values.Any(c => c.readyState == RTCDataChannelState.open);
+                    if (!hasOpenChannel)
+                    {
+                        int found = await RediscoverAndConnectSeedersAsync(session, token);
+                        if (found == 0)
                         {
-                            if (ch.readyState == RTCDataChannelState.open) ch.send(haveFrame);
+                            // Genuinely nothing available right now - back off before trying again
+                            // rather than hammering discovery every loop iteration.
+                            await Task.Delay(TimeSpan.FromSeconds(10), token);
+                            continue;
+                        }
+                    }
+
+                    blockCompleted = await DownloadBlockAsync(session, blockIndex, token);
+
+                    if (blockCompleted)
+                    {
+                        bool verified = await _storageEngine.VerifyAndCommitBlockAsync(session.TaskId, session.Manifest, blockIndex);
+                        if (verified)
+                        {
+                            session.State.Bitfield.SetBlock(blockIndex, true);
+
+                            // Broadcast HAVE_BLOCK (0x04)
+                            byte[] haveFrame = _wireHandler.BuildHaveBlockFrame(blockIndex);
+                            foreach (var ch in session.ActiveChannels.Values)
+                            {
+                                if (ch.readyState == RTCDataChannelState.open) ch.send(haveFrame);
+                            }
+                        }
+                        else
+                        {
+                            // Penalize connected peers if block SHA-256 validation fails
+                            _logger.LogWarning("[DownloadCoordinator] Block {BlockIndex} failed SHA-256 verification. Penalizing peers.", blockIndex);
+                            foreach (var peerId in session.ActiveChannels.Keys)
+                            {
+                                await _ratingService.ApplyLocalReputationUpdateAsync(peerId, -5.0, isTrapdoor: false);
+                            }
+                            blockCompleted = false; // retry this block (still within the attempt loop/cap)
                         }
                     }
                     else
                     {
-                        // Penalize connected peers if block SHA-256 validation fails
-                        _logger.LogWarning("[DownloadCoordinator] Block {BlockIndex} failed SHA-256 verification. Penalizing peers.", blockIndex);
-                        foreach (var peerId in session.ActiveChannels.Keys)
-                        {
-                            await _ratingService.ApplyLocalReputationUpdateAsync(peerId, -5.0, isTrapdoor: false);
-                        }
-                        blockIndex--; // Retry block
+                        _logger.LogWarning("[DownloadCoordinator] Task {TaskId}: block {BlockIndex} attempt {Attempt}/{Max} failed or timed out.",
+                            session.TaskId, blockIndex, attempt, maxAttemptsPerBlock);
                     }
+                }
+
+                if (!blockCompleted && !token.IsCancellationRequested)
+                {
+                    _logger.LogError("[DownloadCoordinator] Task {TaskId}: giving up on block {BlockIndex} after {Attempts} attempts - no seeders available.",
+                        session.TaskId, blockIndex, attempt);
+                    session.State.Status = SwarmTaskStatus.Failed;
+                    session.State.ErrorMessage = $"Unable to download block {blockIndex} after {attempt} attempts - no seeders available.";
+                    return;
                 }
             }
 
@@ -243,6 +269,106 @@ public class SwarmDownloadCoordinator : ISwarmDownloadCoordinator, IDisposable
             session.State.ErrorMessage = ex.Message;
             _logger.LogError(ex, "[DownloadCoordinator] Exception in task {TaskId}", session.TaskId);
         }
+    }
+
+    private async Task<HashSet<TorrentPeerDescriptor>> DiscoverSeedersAsync(PTorrentManifest manifest)
+    {
+        // Discover seeders: manifest initial peers + tracker announce registry + catalog consensus.
+        // TorrentPeerDescriptor has NodeId-based Equals/GetHashCode, so the HashSet dedupes
+        // across all three sources automatically.
+        var seeders = new HashSet<TorrentPeerDescriptor>(manifest.InitialPeers);
+
+        var trackerSeeders = await _trackerCoordinator.GetPeersForFileAsync(manifest.ContentHash);
+        foreach (var s in trackerSeeders) seeders.Add(s);
+
+        // Anything the file-catalog consensus channel has learned via epidemic relay about who
+        // hosts this content hash (see FileCatalogConsensusChannel / GenericChannelSyncService) -
+        // a third, independent source alongside the manifest's baked-in peers and the
+        // TrackerAnnounce registry. !IsLocalSeeding filters out our own entry.
+        var knownCatalogEntries = await _catalogChannel.GetAllKnownEntriesAsync();
+        int catalogMatches = 0;
+        foreach (var entry in knownCatalogEntries)
+        {
+            if (entry.IsLocalSeeding) continue;
+            if (string.IsNullOrEmpty(entry.HostNodeId)) continue;
+            if (!string.Equals(entry.Manifest?.ContentHash, manifest.ContentHash, StringComparison.OrdinalIgnoreCase)) continue;
+            if (entry.HostNodeId.Equals(_identity.NodeId, StringComparison.OrdinalIgnoreCase)) continue;
+
+            catalogMatches++;
+
+            // A lightweight catalog record only carries endpoints if an admin allowed that extra
+            // info type, so fall back to what the peer tracker already knows about this host.
+            var endpoints = entry.HostSignalingEndpoints;
+            if (endpoints == null || endpoints.Count == 0)
+            {
+                endpoints = _peerTracker.GetPeer(entry.HostNodeId)?.Identity.SignalingEndpoints ?? new List<string>();
+            }
+
+            seeders.Add(new TorrentPeerDescriptor
+            {
+                NodeId = entry.HostNodeId,
+                SignalingEndpoints = endpoints
+            });
+        }
+
+        _logger.LogInformation("[DownloadCoordinator] Discovery for {Hash}: {Count} candidate seeders ({Manifest} manifest, {Tracker} tracker, {Catalog} catalog).",
+            manifest.ContentHash, seeders.Count, manifest.InitialPeers.Count, trackerSeeders.Count, catalogMatches);
+
+        return seeders;
+    }
+
+    /// <summary>
+    /// Connects to any given seeders not already connected with an open channel for this session.
+    /// Safe to call repeatedly (e.g. on rediscovery) - skips peers that already have a working
+    /// channel rather than reconnecting them. Returns how many new channels were opened.
+    /// </summary>
+    private async Task<int> ConnectToSeedersAsync(DownloadSession session, IEnumerable<TorrentPeerDescriptor> seeders, CancellationToken token)
+    {
+        int newlyConnected = 0;
+
+        foreach (var seeder in seeders)
+        {
+            if (token.IsCancellationRequested) break;
+
+            if (session.ActiveChannels.TryGetValue(seeder.NodeId, out var existingChannel) &&
+                existingChannel.readyState == RTCDataChannelState.open)
+            {
+                continue; // already have a working channel to this seeder
+            }
+
+            var activeConn = _connectionManager.GetConnection(seeder.NodeId);
+            if (activeConn == null || activeConn.PeerConnection?.connectionState != RTCPeerConnectionState.connected)
+            {
+                await _connectionManager.ConnectPeerAsync(seeder.NodeId, seeder.SignalingEndpoints.ToArray(), "outbound");
+            }
+
+            string channelLabel = $"unmanaged:file:{session.Manifest.ContentHash}";
+            var channelResult = await _connectionManager.CreateUnmanagedDataChannelAsync(seeder.NodeId, channelLabel);
+            if (!channelResult.IsError && channelResult.Channel != null)
+            {
+                AttachChannelEvents(session, channelResult.Channel);
+                session.ActiveChannels[seeder.NodeId] = channelResult.Channel;
+                session.State.ConnectedPeerIds.Add(seeder.NodeId);
+                newlyConnected++;
+            }
+        }
+
+        session.State.ActiveSeedersCount = session.ActiveChannels.Values.Count(c => c.readyState == RTCDataChannelState.open);
+        return newlyConnected;
+    }
+
+    /// <summary>
+    /// Re-runs seeder discovery and connects to anything new. Called from the block loop when no
+    /// currently-connected channel is usable - closes the gap where a download would otherwise
+    /// stall forever against a stale, one-time seeder snapshot from task start.
+    /// </summary>
+    private async Task<int> RediscoverAndConnectSeedersAsync(DownloadSession session, CancellationToken token)
+    {
+        _logger.LogWarning("[DownloadCoordinator] Task {TaskId}: no usable connected seeders - rediscovering.", session.TaskId);
+        var freshSeeders = await DiscoverSeedersAsync(session.Manifest);
+        int newlyConnected = await ConnectToSeedersAsync(session, freshSeeders, token);
+        _logger.LogInformation("[DownloadCoordinator] Task {TaskId}: rediscovery connected {Count} new seeder(s).", session.TaskId, newlyConnected);
+        return newlyConnected;
     }
 
     private async Task<bool> DownloadBlockAsync(DownloadSession session, int blockIndex, CancellationToken token)

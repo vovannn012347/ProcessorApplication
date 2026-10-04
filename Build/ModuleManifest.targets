@@ -1,0 +1,63 @@
+<Project>
+  <!--
+    Import this from any module's .csproj (<Import Project="$(MSBuildThisFileDirectory)..\..\Build\ModuleManifest.targets" />)
+    to get module.manifest.json auto-regenerated after every build.
+
+    Pure MSBuild - no separate process, no reflection, no assembly loading of any kind. Three
+    previous attempts at a standalone reflection-based generator tool each hit a different
+    process/assembly-resolution failure in practice (wrong output path convention, wrong Private
+    setting, then an unexplained CLR exit code). None of that is a risk here - this never loads
+    anything, it just writes MSBuild data out as JSON text.
+
+    Uses the module's own existing $(ModuleKey) property (already set in every module's .csproj,
+    matching its IModule.ModuleId exactly - confirmed, not assumed) as the manifest's ModuleId, so
+    nothing new needs declaring there. The module declares its dependencies directly:
+        <ItemGroup>
+          <ModuleManifestDependency Include="P2P">
+            <MinVersion>1.0.0.0</MinVersion>
+          </ModuleManifestDependency>
+        </ItemGroup>
+    MinVersion is required on every dependency item (the build fails with a clear message if it's
+    missing) - this keeps the MSBuild side simple (no "is this empty, write null instead" branching).
+    MaxVersion isn't supported here (nothing in this codebase uses it); add it later if needed.
+
+    TRADE-OFF: this duplicates what's already declared in the module's own IModule.Dependencies
+    property in code - two places that can drift apart, where a reflection-based approach would
+    read Dependencies directly and need no duplication. ModuleLoader.cs still cross-checks the
+    manifest against the real IModule.Dependencies once a module actually loads and logs a warning
+    on mismatch, so drift won't go unnoticed - it just needs fixing in both places when it happens,
+    which should be rare since dependencies change rarely.
+  -->
+
+  <Target Name="GenerateModuleManifest" AfterTargets="Build">
+    <Error Text="ModuleKey is not set in this module's .csproj - it should already be there for the build.props appsettings hook; add &lt;ModuleKey&gt;YourModuleId&lt;/ModuleKey&gt; to a PropertyGroup if it's genuinely missing (must match IModule.ModuleId exactly)."
+           Condition="'$(ModuleKey)' == ''" />
+
+    <Error Text="ModuleManifestDependency '%(ModuleManifestDependency.Identity)' has no MinVersion set. Add &lt;MinVersion&gt;x.y.z.w&lt;/MinVersion&gt; metadata to it."
+           Condition="'%(ModuleManifestDependency.MinVersion)' == ''" />
+
+    <ItemGroup>
+      <_ModuleManifestDepLine Include="@(ModuleManifestDependency)" Condition="'@(ModuleManifestDependency)' != ''">
+        <Json>    { "ModuleId": "%(Identity)", "MinVersion": "%(MinVersion)" }</Json>
+      </_ModuleManifestDepLine>
+    </ItemGroup>
+
+    <PropertyGroup>
+      <_ModuleManifestDepsJoined>@(_ModuleManifestDepLine->'%(Json)', ',%0d%0a')</_ModuleManifestDepsJoined>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <_ModuleManifestLines Include="{" />
+      <_ModuleManifestLines Include="  &quot;ModuleId&quot;: &quot;$(ModuleKey)&quot;," />
+      <_ModuleManifestLines Include="  &quot;Dependencies&quot;: []" Condition="'@(ModuleManifestDependency)' == ''" />
+      <_ModuleManifestLines Include="  &quot;Dependencies&quot;: [" Condition="'@(ModuleManifestDependency)' != ''" />
+      <_ModuleManifestLines Include="$(_ModuleManifestDepsJoined)" Condition="'@(ModuleManifestDependency)' != ''" />
+      <_ModuleManifestLines Include="  ]" Condition="'@(ModuleManifestDependency)' != ''" />
+      <_ModuleManifestLines Include="}" />
+    </ItemGroup>
+
+    <WriteLinesToFile File="$(TargetDir)module.manifest.json" Lines="@(_ModuleManifestLines)" Overwrite="true" />
+
+    <Message Text="[ModuleManifest] Wrote $(TargetDir)module.manifest.json for '$(ModuleKey)'." Importance="high" />
+  </Target>
+</Project>

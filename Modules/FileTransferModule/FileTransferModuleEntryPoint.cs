@@ -1,8 +1,9 @@
-﻿using Common.Interfaces.Menu;
+﻿using Common.Interfaces.Consensus;
+using Common.Interfaces.Menu;
 using Common.Models;
 
-using FileSharingModule.Configuration;
-using FileSharingModule.Services;
+using FileTransferModule.Configuration;
+using FileTransferModule.Services;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -15,7 +16,7 @@ using Microsoft.Extensions.Hosting;
 using ProcessorApplication.Infrastructure;
 using ProcessorApplication.Utils;
 
-namespace FileSharingModule;
+namespace FileTransferModule;
 
 
 /// <summary>
@@ -27,17 +28,26 @@ namespace FileSharingModule;
 /// Main entry point for the PTorrent File Sharing & Transfer Module.
 /// Integrates storage engines, swarm coordinators, catalog crawlers, admin menus, and routing endpoints.
 /// </summary>
-public class FileTrModuleEntryPoint : IModule
+public class FileTransferModuleEntryPoint : IModule
 {
-    public const string MODULE_ID = "FileTr";
+    public const string MODULE_ID = "FileTransfer";
     public const string MODULE_NAMESPACE = "FileTransferModule";
     public string Name => "PTorrent";
     public string ModuleId => MODULE_ID;
     public Version Version => new Version("1.0.0.0");
 
-    // Extensible roles for the informational system
+    // Extensible roles for the informational system.
+    // "file_tracker" (opt-in via P2PSettings.NodeRoles, gossiped) = this node runs the tracker/
+    // directory service (FileTrackerCoordinator answers TrackerAnnounce/TrackerGetPeers/etc) and
+    // also participates in file exchange itself.
+    // "file_node" (opt-in via P2PSettings.NodeRoles, gossiped) = this node participates in file
+    // exchange (can seed/download) without necessarily running the tracker service. Both are
+    // independent opt-ins - a tracker that also seeds should have both set. Outbound
+    // TrackerAnnounce (see FileTrackerAnnounceService) only fires when this node itself
+    // advertises "file_node".
     public const string FileTracker = "file_tracker";
-    public IEnumerable<string> ListAdvertisedCapabilities() => new[] { FileTracker };
+    public const string FileNode = "file_node";
+    public IEnumerable<string> ListAdvertisedCapabilities() => new[] { FileTracker, FileNode };
 
     public ModuleDependency[] Dependencies => new[]
     {
@@ -47,7 +57,7 @@ public class FileTrModuleEntryPoint : IModule
     public IEnumerable<string> GetDefinedRoles() => Array.Empty<string>();
     public IEnumerable<string> GetRequiredRoles() => new[] { "Admin" };
 
-    public FileTrModuleEntryPoint()
+    public FileTransferModuleEntryPoint()
     {
     }
 
@@ -102,12 +112,29 @@ public class FileTrModuleEntryPoint : IModule
 
         // 4. Register local hosted archive and network catalog services
         services.AddSingleton<IFileArchiveService, FileArchiveService>();
+
+        // 5. File catalog consensus channel - implements Common.Interfaces.Consensus.IConsensusChannel
+        // so it's picked up automatically by P2PModule's ConsensusChannelRegistry. Advertise it by
+        // adding "filetr.catalog" (FileCatalogConsensusChannel.CHANNEL_ID) to P2PSettings'
+        // AdvertisedConsensusChannels - nothing is advertised/synced until that's done.
+        services.AddSingleton<FileCatalogConsensusChannel>();
+        services.AddSingleton<IConsensusChannel>(sp => sp.GetRequiredService<FileCatalogConsensusChannel>());
+        services.AddSingleton<IFileCatalogConsensusChannel>(sp => sp.GetRequiredService<FileCatalogConsensusChannel>());
+        // Runs the periodic flush of batched "still present" refreshes and the stale-record sweep.
+        services.AddHostedService(sp => sp.GetRequiredService<FileCatalogConsensusChannel>());
+
         services.AddSingleton<IFileCatalogService, FileCatalogService>();
+
+        // 6. Outbound TrackerAnnounce - see FileTrackerAnnounceService remarks. Only announces
+        // when this node advertises "file_node" in P2PSettings.NodeRoles.
+        services.AddSingleton<FileTrackerAnnounceService>();
+        services.AddSingleton<IFileTrackerAnnounceService>(sp => sp.GetRequiredService<FileTrackerAnnounceService>());
+        services.AddHostedService(sp => sp.GetRequiredService<FileTrackerAnnounceService>());
     }
 
     public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
     {
-        var assembly = typeof(FileTrModuleEntryPoint).Assembly;
+        var assembly = typeof(FileTransferModuleEntryPoint).Assembly;
         var moduleFolder = Path.GetDirectoryName(assembly.Location);
         var wwwrootPath = Path.Combine(moduleFolder!, "wwwroot");
 

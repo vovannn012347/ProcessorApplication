@@ -1,4 +1,4 @@
-﻿namespace FileSharingModule.Models.Torrent;
+﻿namespace FileTransferModule.Models.Torrent;
 
 public class TorrentPeerDescriptor
 {

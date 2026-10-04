@@ -33,7 +33,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Configs", "Configs", "{ABB6
 		ProcessorApplication\Resources\SharedResource.en-US.resx = ProcessorApplication\Resources\SharedResource.en-US.resx
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileSharingModule", "Modules\FileTransferModule\FileSharingModule.csproj", "{4904248B-B2CA-BC16-DAA7-042DC111E5E1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileTransferModule", "Modules\FileTransferModule\FileTransferModule.csproj", "{4904248B-B2CA-BC16-DAA7-042DC111E5E1}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

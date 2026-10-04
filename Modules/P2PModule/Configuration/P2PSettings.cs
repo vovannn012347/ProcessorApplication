@@ -19,6 +19,17 @@ public class P2PSettings
     /// </summary>
     public List<string> NodeRoles { get; set; } = new();
 
+    public bool IsTemporarilyPromotedTracker { get; set; } = false;
+
+    /// <summary>
+    /// Ids of installed IConsensusChannel implementations this node actively advertises and
+    /// participates in over the mesh (see Common.Interfaces.Consensus.IConsensusChannel).
+    /// A module being installed only makes a channel AVAILABLE - it does not get advertised or
+    /// synced until its ChannelId is explicitly added here. Empty by default: nothing is
+    /// advertised until the user opts in, same as NodeRoles above.
+    /// </summary>
+    public List<string> AdvertisedConsensusChannels { get; set; } = new();
+
     // Core P2P Configuration
     public string DataStoragePath { get; set; } = "./Module_Data/P2P";
     public int StartupDelaySeconds { get; set; } = 15;

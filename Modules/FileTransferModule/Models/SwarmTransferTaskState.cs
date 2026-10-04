@@ -1,4 +1,4 @@
-﻿namespace FileSharingModule.Models;
+﻿namespace FileTransferModule.Models;
 
 public enum SwarmTaskStatus
 {
@@ -16,6 +16,13 @@ public enum SwarmTaskStatus
 /// </summary>
 public class SwarmTransferTaskState
 {
+    /// <summary>
+    /// The id PauseDownloadAsync/ResumeDownloadAsync/CancelDownloadAsync/GetBitfieldState actually
+    /// key on - a random id assigned per download attempt (Guid.NewGuid() in StartDownloadAsync),
+    /// deliberately separate from ContentHash so downloading the same file twice (e.g. a retry) has
+    /// two independent, individually controllable tasks.
+    /// </summary>
+    public string TaskId { get; set; } = string.Empty;
     public string ContentHash { get; set; } = string.Empty;
     public string FileName { get; set; } = string.Empty;
     public long TotalSizeBytes { get; set; }

@@ -1,24 +1,24 @@
 ﻿@model List<FileSharingModule.Models.FileArchiveItemRecord>
 
-<div class="overflow-x-auto">
-    <table class="w-full text-left border-collapse text-xs">
+<div class="ftt-overflow-x-auto">
+    <table class="ftt-w-full ftt-text-left ftt-border-collapse ftt-text-xs">
         <thead>
-            <tr class="bg-slate-50 border-b border-gray-200 text-slate-500 uppercase tracking-wider text-[10px]">
-                <th class="py-3 px-4 font-semibold">File Name</th>
-                <th class="py-3 px-4 font-semibold">Content Hash (InfoHash)</th>
-                <th class="py-3 px-4 font-semibold">Size</th>
-                <th class="py-3 px-4 font-semibold">Blocks</th>
-                <th class="py-3 px-4 font-semibold">Visibility</th>
-                <th class="py-3 px-4 font-semibold">Uploaded</th>
-                <th class="py-3 px-4 font-semibold text-right">Actions</th>
+            <tr class="ftt-bg-slate-50 ftt-border-b ftt-border-gray-200 ftt-text-slate-500 ftt-uppercase ftt-tracking-wider ftt-text-[10px]">
+                <th class="ftt-py-3 ftt-px-4 ftt-font-semibold">File Name</th>
+                <th class="ftt-py-3 ftt-px-4 ftt-font-semibold">Content Hash</th>
+                <th class="ftt-py-3 ftt-px-4 ftt-font-semibold">Size</th>
+                <th class="ftt-py-3 ftt-px-4 ftt-font-semibold">Visibility</th>
+                <th class="ftt-py-3 ftt-px-4 ftt-font-semibold">Downloadable</th>
+                <th class="ftt-py-3 ftt-px-4 ftt-font-semibold">Uploaded</th>
+                <th class="ftt-py-3 ftt-px-4 ftt-font-semibold ftt-text-right">Actions</th>
             </tr>
         </thead>
-        <tbody class="divide-y divide-gray-100 text-slate-700">
+        <tbody class="ftt-divide-y ftt-divide-gray-100 ftt-text-slate-700">
             @if (Model == null || Model.Count == 0)
             {
                 <tr>
-                    <td colspan="7" class="py-8 text-center text-slate-400">
-                        <i class="fa-solid fa-box-open text-2xl mb-2 block"></i>
+                    <td colspan="7" class="ftt-py-8 ftt-text-center ftt-text-slate-400">
+                        <i class="fa-solid fa-box-open ftt-text-2xl ftt-mb-2 ftt-block"></i>
                         No files currently tracked or seeded on this node.
                     </td>
                 </tr>
@@ -27,45 +27,62 @@
             {
                 @foreach (var item in Model)
                 {
-                    <tr class="hover:bg-slate-50/70 transition">
-                        <td class="py-3 px-4 font-semibold text-slate-900 flex items-center gap-2">
-                            <i class="fa-regular fa-file-zipper text-indigo-500"></i>
+                    <tr class="hover:ftt-bg-slate-50/70 transition"
+                        data-hash="@item.Manifest.ContentHash"
+                        data-filename="@item.Manifest.FileName"
+                        data-hidden="@item.IsHidden.ToString().ToLowerInvariant()"
+                        data-allow-download="@item.AllowDownload.ToString().ToLowerInvariant()"
+                        data-description="@item.Description"
+                        data-custom-fields="@(item.CustomFields != null ? System.Text.Json.JsonSerializer.Serialize(item.CustomFields) : "{}")">
+                        <td class="ftt-py-3 ftt-px-4 ftt-font-semibold ftt-text-slate-900">
+                            <i class="fa-regular fa-file-zipper ftt-text-indigo-500 ftt-mr-1"></i>
                             @item.Manifest.FileName
                         </td>
-                        <td class="py-3 px-4 font-mono text-[11px] text-slate-500" title="@item.Manifest.ContentHash">
+                        <td class="ftt-py-3 ftt-px-4 ftt-font-mono ftt-text-[11px] ftt-text-slate-500" title="@item.Manifest.ContentHash">
                             @item.Manifest.ContentHash.Substring(0, Math.Min(12, item.Manifest.ContentHash.Length))...
                         </td>
-                        <td class="py-3 px-4 text-slate-600">
+                        <td class="ftt-py-3 ftt-px-4 ftt-text-slate-600">
                             @((item.Manifest.TotalSizeBytes / 1024.0 / 1024.0).ToString("F2")) MB
                         </td>
-                        <td class="py-3 px-4 text-slate-600">
-                            @item.Manifest.TotalBlocksCount blk
-                        </td>
-                        <td class="py-3 px-4">
+                        <td class="ftt-py-3 ftt-px-4">
                             @if (item.IsHidden)
                             {
-                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800">
-                                    <i class="fa-solid fa-eye-slash mr-1"></i> Hidden
+                                <span class="ftt-inline-flex ftt-items-center ftt-px-2 ftt-py-0.5 ftt-rounded ftt-text-[10px] ftt-font-medium ftt-bg-amber-100 ftt-text-amber-800">
+                                    <i class="fa-solid fa-eye-slash ftt-mr-1"></i> Hidden
                                 </span>
                             }
                             else
                             {
-                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-800">
-                                    <i class="fa-solid fa-globe mr-1"></i> Public
+                                <span class="ftt-inline-flex ftt-items-center ftt-px-2 ftt-py-0.5 ftt-rounded ftt-text-[10px] ftt-font-medium ftt-bg-emerald-100 ftt-text-emerald-800">
+                                    <i class="fa-solid fa-globe ftt-mr-1"></i> Public
                                 </span>
                             }
                         </td>
-                        <td class="py-3 px-4 text-slate-500 text-[11px]">
-                            @((item.TotalUploadedBytes / 1024.0 / 1024.0).ToString("F2")) MB
+                        <td class="ftt-py-3 ftt-px-4">
+                            @if (item.AllowDownload)
+                            {
+                                <span class="ftt-inline-flex ftt-items-center ftt-px-2 ftt-py-0.5 ftt-rounded ftt-text-[10px] ftt-font-medium ftt-bg-blue-100 ftt-text-blue-800">
+                                    <i class="fa-solid fa-play ftt-mr-1"></i> Seeding
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="ftt-inline-flex ftt-items-center ftt-px-2 ftt-py-0.5 ftt-rounded ftt-text-[10px] ftt-font-medium ftt-bg-gray-100 ftt-text-gray-500">
+                                    <i class="fa-solid fa-pause ftt-mr-1"></i> Paused
+                                </span>
+                            }
                         </td>
-                        <td class="py-3 px-4 text-right space-x-1">
-                            <a href="@Url.Action("DownloadManifest", "FileArchive", new { contentHash = item.Manifest.ContentHash })" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-medium inline-block" title="Download .ptorrent metadata">
-                                <i class="fa-solid fa-download"></i> .ptorrent
+                        <td class="ftt-py-3 ftt-px-4 ftt-text-slate-500 ftt-text-[11px]">
+                            @item.RegisteredUtc.ToString("yyyy-MM-dd HH:mm")
+                        </td>
+                        <td class="ftt-py-3 ftt-px-4 ftt-text-right ftt-space-x-1 ftt-whitespace-nowrap">
+                            <a href="@Url.Action("DownloadManifest", "FileArchive", new { contentHash = item.Manifest.ContentHash })" class="ftt-px-2 ftt-py-1 ftt-bg-slate-100 hover:ftt-bg-slate-200 ftt-text-slate-700 ftt-rounded ftt-text-[11px] ftt-font-medium ftt-inline-block" title="Download .ptorrent">
+                                <i class="fa-solid fa-download"></i>
                             </a>
-                            <button type="button" data-action="toggle-visibility" data-hash="@item.Manifest.ContentHash" class="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-medium" title="Toggle visibility">
-                                <i class="fa-solid @(item.IsHidden ? "fa-eye" : "fa-eye-slash")"></i>
+                            <button type="button" data-action="edit-info" class="ftt-px-2 ftt-py-1 ftt-bg-slate-100 hover:ftt-bg-slate-200 ftt-text-slate-700 ftt-rounded ftt-text-[11px] ftt-font-medium" title="Edit settings">
+                                <i class="fa-solid fa-pen-to-square"></i>
                             </button>
-                            <button type="button" data-action="delete-file" data-hash="@item.Manifest.ContentHash" class="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded text-[11px] font-medium" title="Stop & Delete">
+                            <button type="button" data-action="delete-file" class="ftt-px-2 ftt-py-1 ftt-bg-red-50 hover:ftt-bg-red-100 ftt-text-red-600 ftt-rounded ftt-text-[11px] ftt-font-medium" title="Stop &amp; delete">
                                 <i class="fa-solid fa-trash-can"></i>
                             </button>
                         </td>

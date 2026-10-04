@@ -12,6 +12,7 @@
 
     <!--for appsettings hook in build.props-->
     <ModuleKey>Providerless</ModuleKey>
+    <Version>1.0.0.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -40,4 +41,12 @@
     <Folder Include="configFiles\Debug\" />
   </ItemGroup>
   
+  <ItemGroup>
+    <ModuleManifestDependency Include="Main">
+      <MinVersion>1.0.0.0</MinVersion>
+    </ModuleManifestDependency>
+  </ItemGroup>
+
+  <Import Project="$(MSBuildThisFileDirectory)..\..\Build\ModuleManifest.targets" />
+
 </Project>

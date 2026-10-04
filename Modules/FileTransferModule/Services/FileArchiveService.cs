@@ -6,16 +6,16 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
-using FileSharingModule.Configuration;
-using FileSharingModule.Models;
-using FileSharingModule.Models.Torrent;
+using FileTransferModule.Configuration;
+using FileTransferModule.Models;
+using FileTransferModule.Models.Torrent;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using P2PModule.Interfaces;
 
-namespace FileSharingModule.Services;
+namespace FileTransferModule.Services;
 
 
 /// <summary>
@@ -25,10 +25,13 @@ namespace FileSharingModule.Services;
 public interface IFileArchiveService
 {
     /// <summary>
-    /// Ingests a local file, generates its .ptorrent manifest (2-5 MB blocks, 64 KB slices),
-    /// registers it with the local storage and swarm orchestrator, and saves metadata.
+    /// Ingests a file, generates its .ptorrent manifest (2-5 MB blocks, 64 KB slices), registers it
+    /// with local storage and the swarm orchestrator, and saves metadata. If copyToRepository is
+    /// true, the source file is first copied into FileSharingSettings.StorageRootPath/repository
+    /// (collision-safe naming) and the copy is what gets tracked/seeded, leaving the original
+    /// untouched; if false, the file is tracked in place at sourceFilePath.
     /// </summary>
-    Task<FileArchiveItemRecord> IngestAndTrackFileAsync(string sourceFilePath, bool isHidden = false);
+    Task<FileArchiveItemRecord> IngestAndTrackFileAsync(string sourceFilePath, bool isHidden = false, bool copyToRepository = false);
 
     /// <summary>
     /// Retrieves all locally tracked files.
@@ -41,14 +44,31 @@ public interface IFileArchiveService
     Task<FileArchiveItemRecord?> GetTrackedFileAsync(string contentHash);
 
     /// <summary>
-    /// Toggles the public visibility (IsHidden) of a tracked file.
+    /// Toggles the public visibility (IsHidden) of a tracked file. Kept for backward compatibility;
+    /// UpdateRecordSettingsAsync covers this and more.
     /// </summary>
     Task<bool> ToggleVisibilityAsync(string contentHash);
+
+    /// <summary>
+    /// Updates one or more casual per-record settings. Only non-null parameters are changed. When
+    /// allowDownload transitions, this actually starts/stops seeding via ISwarmOrchestratorService
+    /// (not just a stored flag) - "available for download" reflects real seeding state.
+    /// description/customFields are what CatalogGetFileInfo hands out to a peer that explicitly
+    /// asks about this file - passing customFields replaces the whole set, not a merge.
+    /// </summary>
+    Task<bool> UpdateRecordSettingsAsync(string contentHash, bool? isHidden = null, bool? allowDownload = null, string? description = null, Dictionary<string, string>? customFields = null);
 
     /// <summary>
     /// Stops seeding and removes a file from local tracking.
     /// </summary>
     Task<bool> DeleteTrackedFileAsync(string contentHash, bool deletePhysicalFile = false);
+
+    /// <summary>
+    /// Fires after a non-hidden file finishes ingestion and is ready to seed. Used by
+    /// FileTrackerAnnounceService to announce it to known "file_tracker" peers without
+    /// FileArchiveService needing to know that service exists.
+    /// </summary>
+    event Action<FileArchiveItemRecord>? OnFileIngested;
 }
 
 
@@ -61,6 +81,8 @@ public class FileArchiveService : IFileArchiveService
 
     private readonly ConcurrentDictionary<string, FileArchiveItemRecord> _trackedItems = new();
     private readonly string _recordsIndexPath;
+
+    public event Action<FileArchiveItemRecord>? OnFileIngested;
 
     public FileArchiveService(
         IOptionsMonitor<FileSharingSettings> settings,
@@ -77,10 +99,16 @@ public class FileArchiveService : IFileArchiveService
         LoadIndexRecords();
     }
 
-    public async Task<FileArchiveItemRecord> IngestAndTrackFileAsync(string sourceFilePath, bool isHidden = false)
+    public async Task<FileArchiveItemRecord> IngestAndTrackFileAsync(string sourceFilePath, bool isHidden = false, bool copyToRepository = false)
     {
         if (!File.Exists(sourceFilePath))
             throw new FileNotFoundException("File not found for archive ingestion.", sourceFilePath);
+
+        string trackedFilePath = sourceFilePath;
+        if (copyToRepository)
+        {
+            trackedFilePath = CopyIntoRepository(sourceFilePath);
+        }
 
         var localPeerDesc = new TorrentPeerDescriptor
         {
@@ -90,7 +118,7 @@ public class FileArchiveService : IFileArchiveService
 
         // 1. Generate clean PTorrentManifest (.ptorrent)
         var manifest = await PTorrentManifest.CreateFromFileAsync(
-            sourceFilePath,
+            trackedFilePath,
             new List<TorrentPeerDescriptor> { localPeerDesc },
             blockSizeBytes: _settings.CurrentValue.BlockSizeBytes,
             sliceSizeBytes: _settings.CurrentValue.SliceSizeBytes);
@@ -105,9 +133,10 @@ public class FileArchiveService : IFileArchiveService
         var record = new FileArchiveItemRecord
         {
             Manifest = manifest,
-            LocalFilePath = sourceFilePath,
+            LocalFilePath = trackedFilePath,
             ManifestFilePath = manifestPath,
             IsHidden = isHidden,
+            AllowDownload = true,
             RegisteredUtc = DateTime.UtcNow
         };
 
@@ -115,11 +144,38 @@ public class FileArchiveService : IFileArchiveService
         await SaveIndexRecordsAsync();
 
         // 4. Start seeding in Swarm
-        await _swarmOrchestrator.StartSeedingAsync(manifest, sourceFilePath);
+        await _swarmOrchestrator.StartSeedingAsync(manifest, trackedFilePath);
 
-        _logger.LogInformation("[FileArchive] Ingested and tracked file: {Name} (Hash: {Hash}, Hidden: {Hidden})",
-            manifest.FileName, manifest.ContentHash, isHidden);
+        _logger.LogInformation("[FileArchive] Ingested and tracked file: {Name} (Hash: {Hash}, Hidden: {Hidden}, Copied: {Copied})",
+            manifest.FileName, manifest.ContentHash, isHidden, copyToRepository);
+
+        if (!isHidden)
+        {
+            try { OnFileIngested?.Invoke(record); }
+            catch (Exception ex) { _logger.LogWarning(ex, "[FileArchive] OnFileIngested subscriber threw for {Hash}.", manifest.ContentHash); }
+        }
+
         return record;
+    }
+
+    /// <summary>Copies a file into StorageRootPath/repository, avoiding name collisions.</summary>
+    private string CopyIntoRepository(string sourceFilePath)
+    {
+        string repoDir = Path.Combine(_settings.CurrentValue.StorageRootPath, "repository");
+        Directory.CreateDirectory(repoDir);
+
+        string fileName = Path.GetFileName(sourceFilePath);
+        string destPath = Path.Combine(repoDir, fileName);
+
+        if (File.Exists(destPath))
+        {
+            string nameOnly = Path.GetFileNameWithoutExtension(fileName);
+            string ext = Path.GetExtension(fileName);
+            destPath = Path.Combine(repoDir, $"{nameOnly}_{Guid.NewGuid():N}{ext}");
+        }
+
+        File.Copy(sourceFilePath, destPath, overwrite: false);
+        return destPath;
     }
 
     public Task<List<FileArchiveItemRecord>> GetTrackedFilesAsync(bool includeHidden = true)
@@ -146,6 +202,34 @@ public class FileArchiveService : IFileArchiveService
             return true;
         }
         return false;
+    }
+
+    public async Task<bool> UpdateRecordSettingsAsync(string contentHash, bool? isHidden = null, bool? allowDownload = null, string? description = null, Dictionary<string, string>? customFields = null)
+    {
+        if (!_trackedItems.TryGetValue(contentHash, out var record)) return false;
+
+        if (isHidden.HasValue) record.IsHidden = isHidden.Value;
+        if (description != null) record.Description = description;
+        if (customFields != null) record.CustomFields = customFields;
+
+        if (allowDownload.HasValue && allowDownload.Value != record.AllowDownload)
+        {
+            record.AllowDownload = allowDownload.Value;
+
+            if (record.AllowDownload)
+            {
+                await _swarmOrchestrator.StartSeedingAsync(record.Manifest, record.LocalFilePath);
+            }
+            else
+            {
+                await _swarmOrchestrator.StopSeedingAsync(contentHash);
+            }
+        }
+
+        await SaveIndexRecordsAsync();
+        _logger.LogInformation("[FileArchive] Updated settings for {Hash}: Hidden={Hidden}, AllowDownload={AllowDownload}",
+            contentHash, record.IsHidden, record.AllowDownload);
+        return true;
     }
 
     public async Task<bool> DeleteTrackedFileAsync(string contentHash, bool deletePhysicalFile = false)
@@ -186,7 +270,10 @@ public class FileArchiveService : IFileArchiveService
                         if (File.Exists(item.LocalFilePath))
                         {
                             _trackedItems[item.Manifest.ContentHash] = item;
-                            _ = _swarmOrchestrator.StartSeedingAsync(item.Manifest, item.LocalFilePath);
+                            if (item.AllowDownload)
+                            {
+                                _ = _swarmOrchestrator.StartSeedingAsync(item.Manifest, item.LocalFilePath);
+                            }
                         }
                     }
                 }

@@ -1,0 +1,24 @@
+﻿@model FileSharingModule.Configuration.FileSharingSettings
+
+@if (ViewData["SuccessMessage"] != null)
+{
+    <div class="ftt-mb-4 ftt-p-3 ftt-bg-emerald-50 ftt-border ftt-border-emerald-200 ftt-text-emerald-700 ftt-rounded-lg ftt-text-xs ftt-font-semibold">
+        @ViewData["SuccessMessage"]
+    </div>
+}
+@if (ViewData["ErrorMessage"] != null)
+{
+    <div class="ftt-mb-4 ftt-p-3 ftt-bg-red-50 ftt-border ftt-border-red-200 ftt-text-red-700 ftt-rounded-lg ftt-text-xs ftt-font-semibold">
+        @ViewData["ErrorMessage"]
+    </div>
+}
+
+<form id="generalSettingsForm" asp-action="SaveSettings" method="post" autocomplete="off">
+    @Html.AntiForgeryToken()
+    @await Html.PartialAsync("_GeneralSettingsPartial", Model)
+    <div class="ftt-pt-6 ftt-mt-6 ftt-border-t ftt-border-gray-100 ftt-flex ftt-justify-end">
+        <button type="submit" id="saveGeneralSettingsButton" class="ftt-px-5 ftt-py-2.5 ftt-bg-indigo-600 hover:ftt-bg-indigo-700 ftt-text-white ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-shadow-sm transition">
+            Save Configuration
+        </button>
+    </div>
+</form>

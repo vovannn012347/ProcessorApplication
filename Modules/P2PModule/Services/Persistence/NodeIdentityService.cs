@@ -15,6 +15,7 @@ using P2PModule.Infrastructure;
 using P2PModule.Interfaces;
 using P2PModule.Models;
 using P2PModule.Models.Network;
+using P2PModule.Services.Maintenance;
 
 using ProcessorApplication.Services.HashStamps;
 
@@ -71,6 +72,7 @@ public class NodeIdentityService : INodeIdentityService, IDisposable
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptionsMonitor<P2PSettings> _p2pSettings;
     private readonly ILogger<NodeIdentityService> _logger;
+    private readonly IConsensusChannelRegistry _channelRegistry;
 
     private readonly object _lock = new();
     private readonly IDisposable _settingsChangeListener;
@@ -81,12 +83,14 @@ public class NodeIdentityService : INodeIdentityService, IDisposable
     public NodeIdentityService(
         ILogger<NodeIdentityService> logger,
         IOptionsMonitor<P2PSettings> settings,
-        IServiceScopeFactory scopeFactory)
+        IServiceScopeFactory scopeFactory,
+        IConsensusChannelRegistry channelRegistry)
     {
         //_hashStampService = hashStampService; 
         _scopeFactory = scopeFactory;
         _p2pSettings = settings;
         _logger = logger;
+        _channelRegistry = channelRegistry;
 
         UpdateSettings(_p2pSettings.CurrentValue);
         _settingsChangeListener = _p2pSettings.OnChange((settings, name) =>
@@ -546,6 +550,7 @@ public class NodeIdentityService : INodeIdentityService, IDisposable
             PublicEncryptionKey = PublicKey,
             SignalingEndpoints = GetEndpoints(),
             Roles = GetCapablities(),
+            ConsensusChannels = _channelRegistry.AdvertisedChannelIds.ToList(),
             SignatureTime = DateTime.UtcNow
         };
 

@@ -1,12 +1,14 @@
 ﻿/**
  * file-exchange/index.js (Live Swarm Transfers Telemetry & Bitfield Inspector)
  * Polls active downloads every 3s, manages task actions (Pause/Resume/Cancel),
- * and dynamically renders real-time chunk verification bitfields and WebRTC lane states.
+ * and renders the bitfield/peer-lanes modal. data-task carries TaskId (not ContentHash -
+ * those are deliberately different ids, see SwarmTransferTaskState remarks).
  */
 (function () {
-    const SCRIPT_ID = "file-exchange";
+    const SCRIPT_ID = "ftt-exchange";
     const WRAPPER_ID = "file-exchange-wrapper";
     const CONTROLLER_PATH = "FileTr/FileExchange";
+    const POLL_INTERVAL_MS = 3000;
 
     let root = {};
     window.ModuleRegistry = window.ModuleRegistry || {};
@@ -23,18 +25,22 @@
             this.startTelemetryPolling(root);
         },
 
+        getAntiForgeryToken: function (rootElement) {
+            const input = rootElement.querySelector('input[name="__RequestVerificationToken"]');
+            return input ? input.value : null;
+        },
+
         bindEvents: function (rootElement) {
-            const token = rootElement.querySelector('input[name="__RequestVerificationToken"]')?.value;
             const telemetryContainer = rootElement.querySelector('#exchange-telemetry-container');
             const btnRefresh = rootElement.querySelector('#btn-refresh-exchange');
 
-            const bitfieldModal = rootElement.querySelector('#bitfield-modal') || document.getElementById('bitfield-modal');
+            const bitfieldModal = document.getElementById('bitfield-modal');
             const bitfieldContent = bitfieldModal?.querySelector('#bitfield-modal-content');
             const btnCloseBitfield = bitfieldModal?.querySelector('#btn-close-bitfield-modal');
 
             if (btnCloseBitfield && bitfieldModal) {
                 btnCloseBitfield.onclick = () => {
-                    bitfieldModal.classList.add('hidden');
+                    bitfieldModal.classList.add('ftt-hidden');
                     if (bitfieldContent) bitfieldContent.innerHTML = '';
                 };
             }
@@ -43,7 +49,6 @@
                 btnRefresh.onclick = () => this.refreshTelemetry(telemetryContainer);
             }
 
-            // Delegated Task Actions (Bitfield / Pause / Resume / Cancel)
             if (telemetryContainer) {
                 telemetryContainer.onclick = (e) => {
                     const btn = e.target.closest('button[data-action]');
@@ -53,84 +58,61 @@
                     const taskId = btn.dataset.task;
 
                     if (action === 'view-bitfield') {
-                        const url = `${window.location.origin}/${CONTROLLER_PATH}/GetBitfieldState?taskId=${encodeURIComponent(taskId)}`;
-                        fetch(url, {
+                        fetch(`/${CONTROLLER_PATH}/GetBitfieldState?taskId=${encodeURIComponent(taskId)}`, {
                             headers: { 'X-Requested-With': 'XMLHttpRequest' }
                         })
                             .then(res => res.text())
                             .then(html => {
                                 if (bitfieldContent && bitfieldModal) {
                                     bitfieldContent.innerHTML = html;
-                                    bitfieldModal.classList.remove('hidden');
+                                    bitfieldModal.classList.remove('ftt-hidden');
                                 }
                             })
                             .catch(err => console.error(`[${SCRIPT_ID}] Bitfield state error:`, err));
                     } else if (action === 'pause-task') {
-                        this.executePostAction('Pause', { taskId: taskId }, token, null, () => {
-                            this.refreshTelemetry(telemetryContainer);
-                        });
+                        this.executePostAction(rootElement, 'Pause', { taskId }, null, () => this.refreshTelemetry(telemetryContainer));
                     } else if (action === 'resume-task') {
-                        this.executePostAction('Resume', { taskId: taskId }, token, null, () => {
-                            this.refreshTelemetry(telemetryContainer);
-                        });
+                        this.executePostAction(rootElement, 'Resume', { taskId }, null, () => this.refreshTelemetry(telemetryContainer));
                     } else if (action === 'cancel-task') {
-                        this.executePostAction('Cancel', { taskId: taskId }, token, 'Cancel and abort this swarm transfer?', () => {
-                            this.refreshTelemetry(telemetryContainer);
-                        });
+                        this.executePostAction(rootElement, 'Cancel', { taskId }, 'Cancel and abort this swarm transfer?', () => this.refreshTelemetry(telemetryContainer));
                     }
                 };
             }
         },
 
         startTelemetryPolling: function (rootElement) {
-            const telemetryContainer = rootElement.querySelector('#exchange-telemetry-container');
             if (this.pollTimer) clearInterval(this.pollTimer);
 
-            // Poll active transfers every 3 seconds
             this.pollTimer = setInterval(() => {
                 if (!document.getElementById(WRAPPER_ID)) {
                     this.dispose();
                     return;
                 }
-                this.refreshTelemetry(telemetryContainer);
-            }, 3000);
+                this.refreshTelemetry(rootElement.querySelector('#exchange-telemetry-container'));
+            }, POLL_INTERVAL_MS);
         },
 
         refreshTelemetry: function (container) {
             if (!container) return;
-            const url = `${window.location.origin}/${CONTROLLER_PATH}/GetTransfersTelemetry`;
-
-            fetch(url, {
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            })
+            fetch(`/${CONTROLLER_PATH}/GetTransfersTelemetry`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(res => res.text())
-                .then(html => {
-                    container.innerHTML = html;
-                })
+                .then(html => { container.innerHTML = html; })
                 .catch(err => console.warn(`[${SCRIPT_ID}] Polling error:`, err));
         },
 
-        executePostAction: function (actionName, payload, verificationToken, confirmMsg = null, callback = null) {
+        executePostAction: function (rootElement, actionName, payload, confirmMsg, callback) {
             if (confirmMsg && !confirm(confirmMsg)) return;
 
-            const url = `${window.location.origin}/${CONTROLLER_PATH}/${actionName}`;
-            const params = new URLSearchParams();
+            const token = this.getAntiForgeryToken(rootElement);
+            const body = new FormData();
+            for (const key in payload) body.append(key, payload[key]);
+            if (token) body.append('__RequestVerificationToken', token);
 
-            for (const key in payload) params.append(key, payload[key]);
-            if (verificationToken) params.append('__RequestVerificationToken', verificationToken);
-
-            fetch(url, {
-                method: 'POST',
-                body: params,
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
+            fetch(`/${CONTROLLER_PATH}/${actionName}`, {
+                method: 'POST', body: body, headers: { 'X-Requested-With': 'XMLHttpRequest' }
             })
                 .then(res => res.json())
-                .then(data => {
-                    if (callback) callback(data);
-                })
+                .then(data => { if (callback) callback(data); })
                 .catch(err => console.error(`[${SCRIPT_ID}] Command ${actionName} error:`, err));
         },
 

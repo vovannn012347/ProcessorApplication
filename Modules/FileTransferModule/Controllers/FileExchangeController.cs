@@ -1,13 +1,13 @@
-﻿using FileSharingModule.Services;
+﻿using FileTransferModule.Services;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 using ProcessorApplication.Attributes;
 
-namespace FileSharingModule.Controllers;
+namespace FileTransferModule.Controllers;
 
-[ModuleRoute(FileTrModuleEntryPoint.MODULE_ID)]
+[ModuleRoute(FileTransferModuleEntryPoint.MODULE_ID)]
 [Route("/[area]/[controller]/[action]/{id?}")]
 [Authorize(Policy = "AdminLocalPolicy", Roles = "Admin")]
 [ApiExplorerSettings(IgnoreApi = true)]

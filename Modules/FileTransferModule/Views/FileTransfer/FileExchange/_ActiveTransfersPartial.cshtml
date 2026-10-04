@@ -1,10 +1,10 @@
 ﻿@model List<FileSharingModule.Models.SwarmTransferTaskState>
 
-<div class="space-y-4">
+<div class="ftt-space-y-4">
     @if (Model == null || Model.Count == 0)
     {
-        <div class="py-12 text-center text-slate-400 bg-white border border-gray-200 rounded-xl shadow-sm">
-            <i class="fa-solid fa-network-wired text-3xl mb-2 block"></i>
+        <div class="ftt-py-12 ftt-text-center ftt-text-slate-400 ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-shadow-sm">
+            <i class="fa-solid fa-network-wired ftt-text-3xl ftt-mb-2 ftt-block"></i>
             No active downloads or transfer tasks currently running.
         </div>
     }
@@ -12,71 +12,71 @@
     {
         @foreach (var task in Model)
         {
-            <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-3">
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+            <div class="ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-p-5 ftt-shadow-sm ftt-space-y-3">
+                <div class="ftt-flex ftt-flex-col md:ftt-flex-row ftt-justify-between ftt-items-start md:ftt-items-center ftt-gap-2">
                     <div>
-                        <h4 class="text-sm font-bold text-slate-900 flex items-center gap-2">
-                            <i class="fa-solid fa-file-arrow-down text-indigo-600"></i>
+                        <h4 class="ftt-text-sm ftt-font-bold ftt-text-slate-900 ftt-flex ftt-items-center ftt-gap-2">
+                            <i class="fa-solid fa-file-arrow-down ftt-text-indigo-600"></i>
                             @task.FileName
                         </h4>
-                        <div class="text-[11px] text-slate-400 font-mono mt-0.5">
+                        <div class="ftt-text-[11px] ftt-text-slate-400 ftt-font-mono ftt-mt-0.5">
                             Hash: @task.ContentHash.Substring(0, Math.Min(16, task.ContentHash.Length))... | Path: @(string.IsNullOrEmpty(task.TargetSavePath) ? "Staging..." : task.TargetSavePath)
                         </div>
                     </div>
-                    <div class="flex items-center gap-2">
+                    <div class="ftt-flex ftt-items-center ftt-gap-2">
                         @switch (task.Status)
                         {
                             case FileSharingModule.Models.SwarmTaskStatus.Staging:
-                                <span class="px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-md text-xs font-semibold animate-pulse">Downloading</span>
+                                <span class="ftt-px-2.5 ftt-py-1 ftt-bg-indigo-50 ftt-text-indigo-700 ftt-rounded-md ftt-text-xs ftt-font-semibold animate-pulse">Downloading</span>
                                 break;
                             case FileSharingModule.Models.SwarmTaskStatus.Assembling:
-                                <span class="px-2.5 py-1 bg-amber-50 text-amber-700 rounded-md text-xs font-semibold">Assembling</span>
+                                <span class="ftt-px-2.5 ftt-py-1 ftt-bg-amber-50 ftt-text-amber-700 ftt-rounded-md ftt-text-xs ftt-font-semibold">Assembling</span>
                                 break;
                             case FileSharingModule.Models.SwarmTaskStatus.Complete:
-                                <span class="px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-md text-xs font-semibold">Complete</span>
+                                <span class="ftt-px-2.5 ftt-py-1 ftt-bg-emerald-50 ftt-text-emerald-700 ftt-rounded-md ftt-text-xs ftt-font-semibold">Complete</span>
                                 break;
                             case FileSharingModule.Models.SwarmTaskStatus.Paused:
-                                <span class="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-md text-xs font-semibold">Paused</span>
+                                <span class="ftt-px-2.5 ftt-py-1 ftt-bg-slate-100 ftt-text-slate-600 ftt-rounded-md ftt-text-xs ftt-font-semibold">Paused</span>
                                 break;
                             case FileSharingModule.Models.SwarmTaskStatus.Failed:
-                                <span class="px-2.5 py-1 bg-red-50 text-red-600 rounded-md text-xs font-semibold">Failed</span>
+                                <span class="ftt-px-2.5 ftt-py-1 ftt-bg-red-50 ftt-text-red-600 ftt-rounded-md ftt-text-xs ftt-font-semibold" title="@task.ErrorMessage">Failed</span>
                                 break;
                             default:
-                                <span class="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-md text-xs font-semibold">@task.Status</span>
+                                <span class="ftt-px-2.5 ftt-py-1 ftt-bg-slate-100 ftt-text-slate-600 ftt-rounded-md ftt-text-xs ftt-font-semibold">@task.Status</span>
                                 break;
                         }
                     </div>
                 </div>
 
                 <div>
-                    <div class="flex justify-between text-[11px] text-slate-600 mb-1 font-medium">
+                    <div class="ftt-flex ftt-justify-between ftt-text-[11px] ftt-text-slate-600 ftt-mb-1 ftt-font-medium">
                         <span>@task.ProgressPercentage.ToString("F1")% (@task.Bitfield.GetCompletedBlocksCount() / @task.Bitfield.TotalBlocks blocks)</span>
                         <span>Peers: @task.ActiveSeedersCount connected</span>
                     </div>
-                    <div class="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                        <div class="bg-indigo-600 h-2.5 rounded-full transition-all duration-300" style="width: @task.ProgressPercentage%"></div>
+                    <div class="ftt-w-full ftt-bg-slate-100 ftt-rounded-full ftt-h-2.5 ftt-overflow-hidden">
+                        <div class="ftt-bg-indigo-600 ftt-h-2.5 ftt-rounded-full transition-all duration-300" style="width: @task.ProgressPercentage%"></div>
                     </div>
                 </div>
 
-                <div class="pt-2 border-t border-gray-100 flex justify-between items-center text-xs">
-                    <button type="button" data-action="view-bitfield" data-task="@task.ContentHash" class="text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1">
+                <div class="ftt-pt-2 ftt-border-t ftt-border-gray-100 ftt-flex ftt-justify-between ftt-items-center ftt-text-xs">
+                    <button type="button" data-action="view-bitfield" data-task="@task.TaskId" class="ftt-text-indigo-600 hover:ftt-text-indigo-800 ftt-font-semibold ftt-flex ftt-items-center ftt-gap-1">
                         <i class="fa-solid fa-cubes"></i> View Bitfield Map
                     </button>
 
-                    <div class="flex gap-2">
+                    <div class="ftt-flex ftt-gap-2">
                         @if (task.Status == FileSharingModule.Models.SwarmTaskStatus.Staging)
                         {
-                            <button type="button" data-action="pause-task" data-task="@task.ContentHash" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-medium">
+                            <button type="button" data-action="pause-task" data-task="@task.TaskId" class="ftt-px-2.5 ftt-py-1 ftt-bg-slate-100 hover:ftt-bg-slate-200 ftt-text-slate-700 ftt-rounded ftt-text-xs ftt-font-medium">
                                 <i class="fa-solid fa-pause"></i> Pause
                             </button>
                         }
                         else if (task.Status == FileSharingModule.Models.SwarmTaskStatus.Paused)
                         {
-                            <button type="button" data-action="resume-task" data-task="@task.ContentHash" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-medium">
+                            <button type="button" data-action="resume-task" data-task="@task.TaskId" class="ftt-px-2.5 ftt-py-1 ftt-bg-slate-100 hover:ftt-bg-slate-200 ftt-text-slate-700 ftt-rounded ftt-text-xs ftt-font-medium">
                                 <i class="fa-solid fa-play"></i> Resume
                             </button>
                         }
-                        <button type="button" data-action="cancel-task" data-task="@task.ContentHash" class="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded text-xs font-medium">
+                        <button type="button" data-action="cancel-task" data-task="@task.TaskId" class="ftt-px-2.5 ftt-py-1 ftt-bg-red-50 hover:ftt-bg-red-100 ftt-text-red-600 ftt-rounded ftt-text-xs ftt-font-medium">
                             <i class="fa-solid fa-xmark"></i> Cancel
                         </button>
                     </div>

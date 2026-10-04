@@ -1,58 +1,67 @@
 ﻿@model FileSharingModule.Configuration.FileSharingSettings
 
-<div class="space-y-6">
+<div class="ftt-space-y-6">
     <div>
-        <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider pb-2 border-b border-gray-100">Storage & Sandbox Layout</h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+        <h3 class="ftt-text-xs ftt-font-bold ftt-text-slate-800 ftt-uppercase ftt-tracking-wider ftt-pb-2 ftt-border-b ftt-border-gray-100">Storage &amp; Sandbox Layout</h3>
+        <div class="ftt-grid ftt-grid-cols-1 md:ftt-grid-cols-2 ftt-gap-4 ftt-mt-3">
             <div>
-                <label class="block text-[11px] font-bold text-slate-600 mb-1">Sandboxed Storage Root Path</label>
-                <input type="text" name="StorageRootPath" value="@Model.StorageRootPath" class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:ring-1 focus:ring-indigo-500" required />
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">Sandboxed Storage Root Path</label>
+                <input type="text" name="StorageRootPath" value="@Model.StorageRootPath" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2 focus:ftt-ring-1 focus:ftt-ring-indigo-500" required />
             </div>
             <div>
-                <label class="block text-[11px] font-bold text-slate-600 mb-1">Pending Downloads Path</label>
-                <input type="text" name="PendingDownloadsPath" value="@Model.PendingDownloadsPath" class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:ring-1 focus:ring-indigo-500" required />
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">Pending Downloads Path</label>
+                <input type="text" name="PendingDownloadsPath" value="@Model.PendingDownloadsPath" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2 focus:ftt-ring-1 focus:ftt-ring-indigo-500" required />
             </div>
-            <div class="md:col-span-2">
-                <label class="block text-[11px] font-bold text-slate-600 mb-1">Manifests (.ptorrent) Path</label>
-                <input type="text" name="ManifestsPath" value="@Model.ManifestsPath" class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:ring-1 focus:ring-indigo-500" required />
+            <div class="md:ftt-col-span-2">
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">Manifests (.ptorrent) Path</label>
+                <input type="text" name="ManifestsPath" value="@Model.ManifestsPath" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2 focus:ftt-ring-1 focus:ftt-ring-indigo-500" required />
+            </div>
+            <div class="md:ftt-col-span-2">
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">Catalogue Path (per-node records)</label>
+                <input type="text" name="CatalogPath" value="@Model.CatalogPath" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2 focus:ftt-ring-1 focus:ftt-ring-indigo-500" required />
+                <p class="ftt-text-[10px] ftt-text-slate-400 ftt-mt-0.5">Each host you've seen files from gets its own subfolder here. Changing this does not move records already saved under the old path.</p>
             </div>
         </div>
     </div>
 
     <div>
-        <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider pb-2 border-b border-gray-100">Chunking & Protocol Bounds</h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+        <h3 class="ftt-text-xs ftt-font-bold ftt-text-slate-800 ftt-uppercase ftt-tracking-wider ftt-pb-2 ftt-border-b ftt-border-gray-100">Chunking &amp; Protocol Bounds</h3>
+        <div class="ftt-grid ftt-grid-cols-1 md:ftt-grid-cols-2 ftt-gap-4 ftt-mt-3">
             <div>
-                <label class="block text-[11px] font-bold text-slate-600 mb-1">Block Verification Size (Bytes)</label>
-                <input type="number" name="BlockSizeBytes" value="@Model.BlockSizeBytes" class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2" required />
-                <p class="text-[10px] text-slate-400 mt-0.5">e.g., 2097152 (2 MB) or 5242880 (5 MB)</p>
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">Block Verification Size (Bytes)</label>
+                <input type="number" name="BlockSizeBytes" value="@Model.BlockSizeBytes" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" required />
+                <p class="ftt-text-[10px] ftt-text-slate-400 ftt-mt-0.5">e.g., 2097152 (2 MB) or 5242880 (5 MB)</p>
             </div>
             <div>
-                <label class="block text-[11px] font-bold text-slate-600 mb-1">Wire Slice Size (Bytes)</label>
-                <input type="number" name="SliceSizeBytes" value="@Model.SliceSizeBytes" class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2" required />
-                <p class="text-[10px] text-slate-400 mt-0.5">Standard WebRTC chunk: 65536 (64 KB)</p>
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">Wire Slice Size (Bytes)</label>
+                <input type="number" name="SliceSizeBytes" value="@Model.SliceSizeBytes" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" required />
+                <p class="ftt-text-[10px] ftt-text-slate-400 ftt-mt-0.5">Standard WebRTC chunk: 65536 (64 KB)</p>
             </div>
         </div>
     </div>
 
     <div>
-        <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider pb-2 border-b border-gray-100">Swarm Concurrency & Timeouts</h3>
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mt-3">
+        <h3 class="ftt-text-xs ftt-font-bold ftt-text-slate-800 ftt-uppercase ftt-tracking-wider ftt-pb-2 ftt-border-b ftt-border-gray-100">Swarm Concurrency &amp; Timeouts</h3>
+        <div class="ftt-grid ftt-grid-cols-1 sm:ftt-grid-cols-2 md:ftt-grid-cols-4 ftt-gap-4 ftt-mt-3">
             <div>
-                <label class="block text-[11px] font-bold text-slate-600 mb-1">Max Uploads</label>
-                <input type="number" name="MaxActiveUploads" value="@Model.MaxActiveUploads" class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2" required />
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">Max Uploads</label>
+                <input type="number" name="MaxActiveUploads" value="@Model.MaxActiveUploads" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" required />
             </div>
             <div>
-                <label class="block text-[11px] font-bold text-slate-600 mb-1">Max Downloads</label>
-                <input type="number" name="MaxActiveDownloads" value="@Model.MaxActiveDownloads" class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2" required />
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">Max Downloads</label>
+                <input type="number" name="MaxActiveDownloads" value="@Model.MaxActiveDownloads" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" required />
             </div>
             <div>
-                <label class="block text-[11px] font-bold text-slate-600 mb-1">Slice Timeout (s)</label>
-                <input type="number" name="SliceRequestTimeoutSeconds" value="@Model.SliceRequestTimeoutSeconds" class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2" required />
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">Max Peers Per File</label>
+                <input type="number" name="MaxPeerConnectionsPerFile" value="@Model.MaxPeerConnectionsPerFile" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" required />
             </div>
             <div>
-                <label class="block text-[11px] font-bold text-slate-600 mb-1">Discovery Timeout (s)</label>
-                <input type="number" name="SeederDiscoveryTimeoutSeconds" value="@Model.SeederDiscoveryTimeoutSeconds" class="w-full text-xs border border-gray-200 rounded-lg px-3 py-2" required />
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">Slice Timeout (s)</label>
+                <input type="number" name="SliceRequestTimeoutSeconds" value="@Model.SliceRequestTimeoutSeconds" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" required />
+            </div>
+            <div>
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">Discovery Timeout (s)</label>
+                <input type="number" name="SeederDiscoveryTimeoutSeconds" value="@Model.SeederDiscoveryTimeoutSeconds" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" required />
             </div>
         </div>
     </div>

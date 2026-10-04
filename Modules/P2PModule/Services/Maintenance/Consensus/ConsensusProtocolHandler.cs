@@ -47,11 +47,19 @@ public class ConsensusRequest
     public string Nonce { get; set; } = string.Empty;
     public byte[] Signature { get; set; } = Array.Empty<byte>();
     public double? StartingRating { get; set; }
+    /// <summary>
+    /// Id of the consensus channel (see Common.Interfaces.Consensus.IConsensusChannel) this
+    /// negotiation is for. Defaults to the built-in peer-trust channel so today's single-channel
+    /// behavior is completely unchanged - this field is what lets a future second channel's
+    /// handler run its own independent start-ping/merge-init handshake over the same command
+    /// channel without colliding with this one.
+    /// </summary>
+    public string ChannelId { get; set; } = PeerTrustConsensusChannel.CHANNEL_ID;
 
     public byte[] GetHash()
     {
         return SHA256.HashData(
-            Encoding.UTF8.GetBytes($"{NodeIdFrom}|{TimeStamp:o}|{NonTransitive}|{Nonce}"));
+            Encoding.UTF8.GetBytes($"{NodeIdFrom}|{TimeStamp:o}|{NonTransitive}|{Nonce}|{ChannelId}"));
     }
 }
 

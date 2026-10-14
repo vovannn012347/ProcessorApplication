@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using FileTransferModule.Configuration;
 using FileTransferModule.Models;
 
 using P2PModule.Configuration;
@@ -41,7 +42,7 @@ public interface IFileTrackerAnnounceService
     /// <summary>
     /// Manually announces every currently-tracked non-hidden local file to every currently known
     /// "file_tracker" peer, right now - for a UI "announce now" button, independent of the
-    /// periodic 10-minute loop and the event-driven triggers. Still gated on this node advertising
+    /// periodic re-announce loop (TrackerReannounceIntervalMinutes) and the event-driven triggers. Still gated on this node advertising
     /// "file_node" in P2PSettings.NodeRoles; returns 0 without announcing anything if not.
     /// Returns the number of (file, tracker) announce attempts made.
     /// </summary>
@@ -62,11 +63,11 @@ public class FileTrackerAnnounceService : IFileTrackerAnnounceService, IHostedSe
     private readonly IP2PRouterService _routerService;
     private readonly INodeIdentityService _identity;
     private readonly IOptionsMonitor<P2PSettings> _p2pSettings;
+    private readonly IOptionsMonitor<FileSharingSettings> _fileSettings;
     private readonly ILogger<FileTrackerAnnounceService> _logger;
 
     private readonly HashSet<string> _caughtUpTrackerNodeIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _caughtUpLock = new();
-    private static readonly TimeSpan ReannounceInterval = TimeSpan.FromMinutes(10); // safely under FileTrackerCoordinator's 15-min TTL
     private CancellationTokenSource? _periodicCts;
     private Task? _periodicTask;
 
@@ -76,6 +77,7 @@ public class FileTrackerAnnounceService : IFileTrackerAnnounceService, IHostedSe
         IP2PRouterService routerService,
         INodeIdentityService identity,
         IOptionsMonitor<P2PSettings> p2pSettings,
+        IOptionsMonitor<FileSharingSettings> fileSettings,
         ILogger<FileTrackerAnnounceService> logger)
     {
         _peerTracker = peerTracker;
@@ -83,17 +85,19 @@ public class FileTrackerAnnounceService : IFileTrackerAnnounceService, IHostedSe
         _routerService = routerService;
         _identity = identity;
         _p2pSettings = p2pSettings;
+        _fileSettings = fileSettings;
         _logger = logger;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _archiveService.OnFileIngested += OnFileIngested;
+        _archiveService.OnFileBecameAvailable += OnFileIngested; // same action: announce this one file now
         _peerTracker.OnPeerNew += OnPeerDiscoveredOrUpdated;
         _peerTracker.OnPeerUpdate += OnPeerDiscoveredOrUpdated;
 
         // Proactive re-announce so a live seeder never actually goes stale in a tracker's registry -
-        // the 15-min TTL in FileTrackerCoordinator is a dead-node cleanup safety net, not a
+        // the tracker's TTL (1.5x our TrackerReannounceIntervalMinutes) is a dead-node cleanup safety net, not a
         // deliberate cutoff for nodes that are still around. Only announces while file_node is
         // advertised; if that's turned off, this loop simply stops sending anything (checked fresh
         // every cycle) rather than needing to be told to stop.
@@ -106,6 +110,7 @@ public class FileTrackerAnnounceService : IFileTrackerAnnounceService, IHostedSe
     public Task StopAsync(CancellationToken cancellationToken)
     {
         _archiveService.OnFileIngested -= OnFileIngested;
+        _archiveService.OnFileBecameAvailable -= OnFileIngested;
         _peerTracker.OnPeerNew -= OnPeerDiscoveredOrUpdated;
         _peerTracker.OnPeerUpdate -= OnPeerDiscoveredOrUpdated;
 
@@ -117,12 +122,14 @@ public class FileTrackerAnnounceService : IFileTrackerAnnounceService, IHostedSe
     {
         try
         {
-            using var timer = new PeriodicTimer(ReannounceInterval);
-            while (await timer.WaitForNextTickAsync(ct))
+            while (!ct.IsCancellationRequested)
             {
+                // Re-read every cycle so a changed TrackerReannounceIntervalMinutes applies without a restart.
+                await Task.Delay(TrackerAnnounceTiming.IntervalFromSettings(_fileSettings.CurrentValue), ct);
+
                 if (!WeAdvertiseFileNode()) continue; // opted out - stay silent this cycle
 
-                var localFiles = await _archiveService.GetTrackedFilesAsync(includeHidden: false);
+                var localFiles = await GetAnnounceableFilesAsync();
                 if (localFiles.Count == 0) continue;
 
                 var trackerPeerIds = GetKnownTrackerPeerIds();
@@ -160,7 +167,7 @@ public class FileTrackerAnnounceService : IFileTrackerAnnounceService, IHostedSe
             return 0;
         }
 
-        var localFiles = await _archiveService.GetTrackedFilesAsync(includeHidden: false);
+        var localFiles = await GetAnnounceableFilesAsync();
         var trackerPeerIds = GetKnownTrackerPeerIds();
 
         if (localFiles.Count == 0 || trackerPeerIds.Count == 0)
@@ -187,6 +194,16 @@ public class FileTrackerAnnounceService : IFileTrackerAnnounceService, IHostedSe
         return attempts;
     }
 
+    /// <summary>
+    /// Files worth announcing: visible (not hidden) AND currently served (AllowDownload). Announcing
+    /// a file with downloads switched off would just point leechers at a node that refuses them.
+    /// </summary>
+    private async Task<List<FileArchiveItemRecord>> GetAnnounceableFilesAsync()
+    {
+        var visible = await _archiveService.GetTrackedFilesAsync(includeHidden: false);
+        return visible.Where(f => f.AllowDownload).ToList();
+    }
+
     private bool WeAdvertiseFileNode()
     {
         var roles = _p2pSettings.CurrentValue.NodeRoles;
@@ -202,6 +219,7 @@ public class FileTrackerAnnounceService : IFileTrackerAnnounceService, IHostedSe
         }
 
         if (string.IsNullOrEmpty(record.Manifest?.ContentHash)) return;
+        if (record.IsHidden || !record.AllowDownload) return; // not something we should point leechers at
 
         var trackerPeerIds = GetKnownTrackerPeerIds();
         if (trackerPeerIds.Count == 0)
@@ -238,7 +256,7 @@ public class FileTrackerAnnounceService : IFileTrackerAnnounceService, IHostedSe
 
     private async Task CatchUpAnnounceAsync(string trackerNodeId)
     {
-        var localFiles = await _archiveService.GetTrackedFilesAsync(includeHidden: false);
+        var localFiles = await GetAnnounceableFilesAsync();
         if (localFiles.Count == 0)
         {
             _logger.LogInformation("[FileTrackerAnnounce] Discovered file_tracker {TrackerNodeId} but have nothing to announce yet.", trackerNodeId);
@@ -275,7 +293,10 @@ public class FileTrackerAnnounceService : IFileTrackerAnnounceService, IHostedSe
             {
                 ContentHash = contentHash,
                 NodeId = _identity.NodeId,
-                SignalingEndpoints = _identity.GetEndpoints()
+                SignalingEndpoints = _identity.GetEndpoints(),
+                // Tells the tracker how long to keep us: 1.5x this, so nodes with different
+                // settings don't expire each other early.
+                ReannounceIntervalSeconds = (int)TrackerAnnounceTiming.IntervalFromSettings(_fileSettings.CurrentValue).TotalSeconds
             };
 
             var result = await _routerService.SendRequestAsync(

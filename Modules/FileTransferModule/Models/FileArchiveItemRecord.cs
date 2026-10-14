@@ -26,6 +26,5 @@ public class FileArchiveItemRecord
     public string? Description { get; set; }
     /// <summary>Same rule as Description: flat, user-provided, explicit-request only.</summary>
     public Dictionary<string, string> CustomFields { get; set; } = new();
-    public long TotalUploadedBytes { get; set; }
     public DateTime RegisteredUtc { get; set; } = DateTime.UtcNow;
 }

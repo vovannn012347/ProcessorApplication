@@ -6,8 +6,8 @@
 (function () {
     const SCRIPT_ID = "ftt-settings";
     const WRAPPER_ID = "file-sharing-settings-wrapper";
-    const CATALOG_CONTROLLER_BASE = "/FileTr/FileCatalog";
-    const SETTINGS_CONTROLLER_BASE = "/FileTr/Settings";
+    const CATALOG_CONTROLLER_BASE = "/FileTransfer/FileCatalog";
+    const SETTINGS_CONTROLLER_BASE = "/FileTransfer/Settings";
 
     let root = {};
     window.ModuleRegistry = window.ModuleRegistry || {};

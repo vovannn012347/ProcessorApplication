@@ -40,7 +40,7 @@ public class WindowsNoneSandboxPython : ISandboxProcessing
         if (subJob == null) throw new Exception($"Sub-job {orchestrationId} not found.");
 
         // 1. Resolve and Validate Executor Path
-        string executorPath = _pythonSettings.CurrentValue.PythonExecutablePath;
+        string executorPath = Path.GetFullPath(_pythonSettings.CurrentValue.PythonExecutablePath);
 
         // Check if path is a directory; if so, look for executor.exe inside
         if (Directory.Exists(executorPath))
@@ -54,14 +54,17 @@ public class WindowsNoneSandboxPython : ISandboxProcessing
             throw new FileNotFoundException($"Critical Error: Python Executor not found at {executorPath}");
         }
 
-        string jobRoot = subJob.ParentJob.PhysicalPathRoot;
+        // The executor runs with WorkingDirectory = jobRoot, so every path handed to it must be absolute
+        // (relative ones would be resolved inside the job folder). The manifest path is the exception:
+        // the executor contract defines it as relative to --processing-dir.
+        string jobRoot = Path.GetFullPath(subJob.ParentJob.PhysicalPathRoot);
 
         var scriptIndex = await db.Scripts.FirstOrDefaultAsync(s => s.ScriptIdentifier == subJob.ScriptId);
 
         if (scriptIndex == null)
             throw new Exception($"Execution Error: Script metadata for {subJob.ScriptId} not found.");
 
-        string scriptSourceDir = Path.Combine(_settings.CurrentValue.ScriptSourcePath, scriptIndex.ManifestDirectoryPath);
+        string scriptSourceDir = Path.GetFullPath(Path.Combine(_settings.CurrentValue.ScriptSourcePath, scriptIndex.ManifestDirectoryPath));
         string manifestRelPath = $"{MicsConstants.OrchestrationDirectory}/{subJob.Id}.json";
 
         try
@@ -69,7 +72,15 @@ public class WindowsNoneSandboxPython : ISandboxProcessing
             var startInfo = new ProcessStartInfo
             {
                 FileName = executorPath,
-                Arguments = $"--processing-dir \"{jobRoot}\" --script-source-dir \"{scriptSourceDir}\" --manifest-file \"{manifestRelPath}\"",
+                // ArgumentList quotes/escapes each value correctly. A hand-built string breaks on a
+                // trailing backslash: "C:\dir\" ends with \" which Windows reads as an escaped quote,
+                // so everything after it is glued into the previous argument.
+                ArgumentList =
+                {
+                    "--processing-dir", Path.TrimEndingDirectorySeparator(jobRoot),
+                    "--script-source-dir", Path.TrimEndingDirectorySeparator(scriptSourceDir),
+                    "--manifest-file", manifestRelPath
+                },
                 WorkingDirectory = jobRoot,
                 RedirectStandardError = true,
                 RedirectStandardOutput = true,
@@ -79,13 +90,20 @@ public class WindowsNoneSandboxPython : ISandboxProcessing
 
             using var process = new Process { StartInfo = startInfo };
             process.Start();
+
+            // Drain both pipes while waiting, otherwise a chatty script fills the buffer and hangs
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync();
+            await Task.WhenAll(stdoutTask, stderrTask);
 
             if (process.ExitCode != 0)
             {
-                string errorOutput = await process.StandardError.ReadToEndAsync();
                 // Exit code errors are treated as script-level "Error"
-                throw new InvalidOperationException(errorOutput);
+                string errorOutput = stderrTask.Result;
+                throw new InvalidOperationException(string.IsNullOrWhiteSpace(errorOutput)
+                    ? $"Executor exited with code {process.ExitCode}. {stdoutTask.Result}"
+                    : errorOutput);
             }
         }
         finally

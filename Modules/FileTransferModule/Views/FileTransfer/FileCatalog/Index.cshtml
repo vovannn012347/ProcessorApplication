@@ -1,4 +1,4 @@
-﻿@model FileSharingModule.Models.CatalogPageResponse
+﻿@model FileTransferModule.Models.CatalogPageResponse
 @{
     ViewData["Title"] = "Network File Catalog";
     var isAjax = Context.Request.Headers["X-Requested-With"] == "XMLHttpRequest";
@@ -9,10 +9,10 @@
 }
 
 @section Styles {
-    <link rel="stylesheet" href="/filetr/css/ftt.min.css" asp-append-version="true" />
+    <link rel="stylesheet" href="/FileTransfer/css/ftt.min.css" asp-append-version="true" />
 }
 
-<link rel="stylesheet" href="/filetr/css/ftt.min.css" asp-append-version="true" />
+<link rel="stylesheet" href="/FileTransfer/css/ftt.min.css" asp-append-version="true" />
 
 <div id="file-catalog-wrapper" data-script-id="ftt-catalog">
     <div class="ftt-container ftt-mx-auto ftt-py-6 ftt-px-4">
@@ -115,5 +115,5 @@
 </div>
 
 @section Scripts {
-    <script src="~/filetr/js/pages/file-catalog/index.js" asp-append-version="true"></script>
+    <script src="~/FileTransfer/js/pages/file-catalog/index.js" asp-append-version="true"></script>
 }

@@ -1,4 +1,4 @@
-﻿@model List<FileSharingModule.Models.SwarmTransferTaskState>
+﻿@model FileTransferModule.Models.ExchangeTelemetryViewModel
 @{
     ViewData["Title"] = "Active File Swarm & Transfers";
     var isAjax = Context.Request.Headers["X-Requested-With"] == "XMLHttpRequest";
@@ -9,10 +9,10 @@
 }
 
 @section Styles {
-    <link rel="stylesheet" href="/filetr/css/ftt.min.css" asp-append-version="true" />
+    <link rel="stylesheet" href="/FileTransfer/css/ftt.min.css" asp-append-version="true" />
 }
 
-<link rel="stylesheet" href="/filetr/css/ftt.min.css" asp-append-version="true" />
+<link rel="stylesheet" href="/FileTransfer/css/ftt.min.css" asp-append-version="true" />
 
 <div id="file-exchange-wrapper" data-script-id="ftt-exchange">
     <div class="ftt-container ftt-mx-auto ftt-py-6 ftt-px-4">
@@ -50,5 +50,5 @@
 </div>
 
 @section Scripts {
-    <script src="~/filetr/js/pages/file-exchange/index.js" asp-append-version="true"></script>
+    <script src="~/FileTransfer/js/pages/file-exchange/index.js" asp-append-version="true"></script>
 }

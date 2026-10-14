@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using P2PModule.Interfaces;
+using P2PModule.Services.Persistence;
 
 namespace FileTransferModule.Services;
 

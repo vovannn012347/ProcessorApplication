@@ -170,13 +170,43 @@ public class GenericChannelSyncService : IGenericChannelSyncService, IHostedServ
         _peerTracker.OnPeerNew += OnPeerDiscoveredOrUpdated;
         _peerTracker.OnPeerUpdate += OnPeerDiscoveredOrUpdated;
 
+        // React when the user opts a channel in/out (settings), without waiting for peer gossip.
+        _channelRegistry.AdvertisedChannelsChanged += OnAdvertisedChannelsChanged;
+
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Newly advertised channel: start its walk right away against peers already known to support
+    /// it. No-longer-advertised channel: stop its walk and forget its visited set, so opting back in
+    /// later starts a fresh walk. Peer-trust has its own protocol and is never walked here.
+    /// </summary>
+    private void OnAdvertisedChannelsChanged(AdvertisedChannelsChange change)
+    {
+        foreach (var channelId in change.Added)
+        {
+            if (channelId.Equals(PeerTrustConsensusChannel.CHANNEL_ID, StringComparison.OrdinalIgnoreCase)) continue;
+            _ = EnsureChannelWalkRunningAsync(channelId);
+        }
+
+        foreach (var channelId in change.Removed)
+        {
+            lock (_walkLock)
+            {
+                if (_walkStateByChannel.Remove(channelId, out var state))
+                {
+                    state.LoopCts?.Cancel();
+                    _logger.LogInformation("[Generic Channel Sync] Channel '{ChannelId}' no longer advertised - walk stopped.", channelId);
+                }
+            }
+        }
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
         _peerTracker.OnPeerNew -= OnPeerDiscoveredOrUpdated;
         _peerTracker.OnPeerUpdate -= OnPeerDiscoveredOrUpdated;
+        _channelRegistry.AdvertisedChannelsChanged -= OnAdvertisedChannelsChanged;
 
         lock (_walkLock)
         {

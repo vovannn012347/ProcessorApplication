@@ -55,23 +55,39 @@ public class SettingsController : Controller
 
         try
         {
+            _settingsService.SetAutoUpdate(false);
             await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.StorageRootPath)}", model.StorageRootPath);
             await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.PendingDownloadsPath)}", model.PendingDownloadsPath);
             await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.ManifestsPath)}", model.ManifestsPath);
             await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.CatalogPath)}", model.CatalogPath);
             await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.BlockSizeBytes)}", model.BlockSizeBytes);
             await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.SliceSizeBytes)}", model.SliceSizeBytes);
-            await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.MaxActiveUploads)}", model.MaxActiveUploads);
-            await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.MaxActiveDownloads)}", model.MaxActiveDownloads);
+            await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.MaxActiveDownloads)}", Math.Max(1, model.MaxActiveDownloads));
+            await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.MaxUploadSlots)}", Math.Max(1, model.MaxUploadSlots));
+            await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.MaxUploadSlotsPerPeer)}", Math.Max(1, model.MaxUploadSlotsPerPeer));
+            await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.MaxUploadRateKBps)}", Math.Max(0, model.MaxUploadRateKBps));
             await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.MaxPeerConnectionsPerFile)}", model.MaxPeerConnectionsPerFile);
             await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.SliceRequestTimeoutSeconds)}", model.SliceRequestTimeoutSeconds);
             await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.SeederDiscoveryTimeoutSeconds)}", model.SeederDiscoveryTimeoutSeconds);
+            await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.TrackerReannounceIntervalMinutes)}", Math.Max(1, model.TrackerReannounceIntervalMinutes));
+            await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.SeedCompletedDownloads)}", model.SeedCompletedDownloads);
+            await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.MaxOutstandingRequestsPerPeer)}", Math.Max(1, model.MaxOutstandingRequestsPerPeer));
+            await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.UploadQueueLimitPerChannel)}", Math.Max(1, model.UploadQueueLimitPerChannel));
+            await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.UploadSendBufferHighWaterBytes)}", Math.Max(65536, model.UploadSendBufferHighWaterBytes));
+            await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.PeerBanAfterBadBlocks)}", Math.Max(1, model.PeerBanAfterBadBlocks));
+            await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(model.PeerBanDurationHours)}", Math.Max(1, model.PeerBanDurationHours));
 
             ViewData["SuccessMessage"] = "File Sharing settings successfully committed.";
         }
         catch (Exception ex)
         {
             ViewData["ErrorMessage"] = $"Failed to persist settings: {ex.Message}";
+        }
+        finally
+        {
+            // One reload for the whole save instead of one per key written.
+            _settingsService.SetAutoUpdate(true);
+            _settingsService.ForceUpdateOptionsMonitor();
         }
 
         return PartialView("_GeneralSettingsFormPartial", model);
@@ -108,6 +124,7 @@ public class SettingsController : Controller
 
         try
         {
+            _settingsService.SetAutoUpdate(false);
             if (maxCatalogRecordsPerHost.HasValue)
                 await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(FileSharingSettings.MaxCatalogRecordsPerHost)}", maxCatalogRecordsPerHost.Value);
             if (directQueryDefaultPageSize.HasValue)
@@ -120,6 +137,12 @@ public class SettingsController : Controller
         catch (Exception ex)
         {
             return Json(new { success = false, message = $"Failed to persist settings: {ex.Message}" });
+        }
+        finally
+        {
+            // One reload for the whole save instead of one per key written.
+            _settingsService.SetAutoUpdate(true);
+            _settingsService.ForceUpdateOptionsMonitor();
         }
     }
 
@@ -194,6 +217,7 @@ public class SettingsController : Controller
 
         try
         {
+            _settingsService.SetAutoUpdate(false);
             if (rules != null)
                 await _settingsService.SetAsync(ModuleId, $"{nameof(FileSharingSettings)}:{nameof(FileSharingSettings.CustomFieldAccessRules)}", rules);
             if (parsedDefault.HasValue)
@@ -204,6 +228,12 @@ public class SettingsController : Controller
         catch (Exception ex)
         {
             return Json(new { success = false, message = $"Failed to persist settings: {ex.Message}" });
+        }
+        finally
+        {
+            // One reload for the whole save instead of one per key written.
+            _settingsService.SetAutoUpdate(true);
+            _settingsService.ForceUpdateOptionsMonitor();
         }
     }
 

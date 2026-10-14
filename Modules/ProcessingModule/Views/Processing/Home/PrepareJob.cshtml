@@ -23,7 +23,13 @@
         {
             <div class="pm-bg-white pm-border pm-border-slate-200 pm-rounded-xl pm-p-4 pm-shadow-sm">
                 <div class="pm-flex pm-justify-between pm-items-start pm-mb-2">
-                    <label class="pm-text-xs pm-font-black pm-text-slate-700 pm-uppercase pm-tracking-tight">@input.Label</label>
+                    <div class="pm-flex pm-items-center pm-gap-2">
+                        <label class="pm-text-xs pm-font-black pm-text-slate-700 pm-uppercase pm-tracking-tight">@input.DisplayName</label>
+                        @if (input.DisplayName != input.Label)
+                        {
+                            <span class="pm-font-mono pm-text-[8px] pm-text-slate-300">@input.Label</span>
+                        }
+                    </div>
                     <span class="pm-text-[8px] pm-font-black pm-text-slate-300 pm-border pm-border-slate-100 pm-bg-slate-50 pm-px-2 pm-py-0.5 pm-rounded pm-uppercase">@input.Type</span>
                 </div>
 
@@ -31,7 +37,7 @@
                     @if (input.Type == "boolean")
                     {
                         <div class="pm-flex pm-items-center pm-gap-2">
-                            <input type="checkbox" name="values[@input.UniqueKey]" value="true" class="pm-h-5 pm-w-5 pm-text-indigo-600 pm-border-slate-300 pm-rounded focus:pm-ring-indigo-500" />
+                            <input type="checkbox" name="values[@input.UniqueKey]" value="true" checked="@input.DefaultChecked" class="pm-h-5 pm-w-5 pm-text-indigo-600 pm-border-slate-300 pm-rounded focus:pm-ring-indigo-500" />
                             <span class="pm-text-xs pm-text-slate-500 pm-italic">Enabled / Active</span>
                         </div>
                     }
@@ -43,9 +49,42 @@
                     {
                         <input type="file" name="folders_@input.UniqueKey" multiple onchange="handleFileSelect(this, '@input.UniqueKey')" class="pm-w-full pm-text-xs pm-text-slate-500 file:pm-mr-4 file:pm-py-2 file:pm-px-4 file:pm-rounded-full file:pm-border-0 file:pm-text-xs file:pm-font-semibold file:pm-bg-slate-50 file:pm-text-slate-700 hover:file:pm-bg-slate-100" required />
                     }
+                    else if (input.Choices.Any())
+                    {
+                        <select name="values[@input.UniqueKey]" class="pm-w-full pm-bg-slate-50 pm-border pm-border-slate-200 pm-text-sm pm-p-3 pm-rounded-lg pm-outline-none focus:pm-ring-2 focus:pm-ring-indigo-500/20 pm-transition-all">
+                            @foreach (var choice in input.Choices)
+                            {
+                                <option value="@choice.Value" selected="@(string.Equals(choice.Value, input.Default, StringComparison.OrdinalIgnoreCase))">@choice.Text</option>
+                            }
+                        </select>
+                    }
                     else
                     {
-                        <input type="@(new[] { "integer", "decimal" }.Contains(input.Type) ? "number" : "text")" name="values[@input.UniqueKey]" step="any" class="pm-w-full pm-bg-slate-50 pm-border pm-border-slate-200 pm-text-sm pm-p-3 pm-rounded-lg pm-outline-none focus:pm-ring-2 focus:pm-ring-indigo-500/20 pm-transition-all" placeholder="Enter @input.Label..." required />
+                        var isNumber = input.Type == "integer" || input.Type == "decimal";
+                        <input type="@(isNumber ? "number" : "text")" name="values[@input.UniqueKey]"
+                               min="@(isNumber && input.Min.HasValue ? GroupedInputViewModel.Fmt(input.Min) : null)"
+                               max="@(isNumber && input.Max.HasValue ? GroupedInputViewModel.Fmt(input.Max) : null)"
+                               step="@(isNumber ? (input.Step.HasValue ? GroupedInputViewModel.Fmt(input.Step) : (input.Type == "integer" ? "1" : "any")) : null)"
+                               class="pm-w-full pm-bg-slate-50 pm-border pm-border-slate-200 pm-text-sm pm-p-3 pm-rounded-lg pm-outline-none focus:pm-ring-2 focus:pm-ring-indigo-500/20 pm-transition-all"
+                               value="@input.Default" placeholder="@(input.Default != null ? $"default: {input.DefaultText}" : $"Enter {input.DisplayName}...")" required="@(!input.Optional && input.Default == null)" />
+                    }
+
+                    @if (input.DefaultText != null || input.RangeText != null)
+                    {
+                        <p class="pm-mt-1 pm-text-[10px] pm-text-slate-400">
+                            @if (input.DefaultText != null)
+                            {
+                                <span>Default: <span class="pm-font-semibold pm-text-slate-500">@input.DefaultText</span></span>
+                            }
+                            @if (input.DefaultText != null && input.RangeText != null)
+                            {
+                                <span> · </span>
+                            }
+                            @if (input.RangeText != null)
+                            {
+                                <span>Range: <span class="pm-font-semibold pm-text-slate-500">@input.RangeText</span></span>
+                            }
+                        </p>
                     }
 
                     <div id="preview_@input.UniqueKey" class="pm-hidden pm-mt-2 pm-p-2 pm-bg-slate-50 pm-rounded-lg pm-border pm-border-dashed pm-border-slate-200">
@@ -57,7 +96,7 @@
                     @foreach (var source in input.Sources)
                     {
                         <p class="pm-text-[10px] pm-text-slate-400 pm-leading-tight">
-                            <span class="pm-font-black pm-text-slate-500 pm-uppercase pm-text-[8px]">@source.ScriptLabel:</span> @source.LocalizedDescription
+                            <span class="pm-font-black pm-text-slate-500 pm-uppercase pm-text-[8px]">@source.ScriptLabel:</span> @(source.Help ?? source.LocalizedDescription)
                         </p>
                     }
                 </div>

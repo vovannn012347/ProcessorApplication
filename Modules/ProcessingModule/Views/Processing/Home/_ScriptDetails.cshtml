@@ -14,9 +14,15 @@
             <div class="pm-space-y-2">
                 @foreach (var input in Model.Inputs)
                 {
-                    <div class="pm-flex pm-items-center pm-justify-between pm-border-b pm-border-slate-100 pm-pb-1">
-                        <span class="pm-text-slate-600 pm-font-semibold">@input.DisplayName</span>
-                        <span class="pm-text-slate-400 pm-font-mono pm-text-[8px] pm-bg-slate-50 pm-px-1 pm-rounded pm-border">@input.Type</span>
+                    <div class="pm-border-b pm-border-slate-100 pm-pb-1">
+                        <div class="pm-flex pm-items-center pm-justify-between">
+                            <span class="pm-text-slate-600 pm-font-semibold">@input.DisplayName</span>
+                            <span class="pm-text-slate-400 pm-font-mono pm-text-[8px] pm-bg-slate-50 pm-px-1 pm-rounded pm-border">@input.Type</span>
+                        </div>
+                        @if (!string.IsNullOrEmpty(input.Description))
+                        {
+                            <p class="pm-text-slate-400 pm-leading-tight">@input.Description</p>
+                        }
                     </div>
                 }
             </div>
@@ -35,9 +41,15 @@
         <div class="pm-space-y-2">
             @foreach (var output in Model.Outputs)
             {
-                <div class="pm-flex pm-items-center pm-justify-between pm-border-b pm-border-slate-100 pm-pb-1">
-                    <span class="pm-text-slate-600 pm-font-semibold">@output.DisplayName</span>
-                    <span class="pm-text-slate-400 pm-font-mono pm-text-[8px] pm-bg-slate-50 pm-px-1 pm-rounded pm-border">@output.Type</span>
+                <div class="pm-border-b pm-border-slate-100 pm-pb-1">
+                    <div class="pm-flex pm-items-center pm-justify-between">
+                        <span class="pm-text-slate-600 pm-font-semibold">@output.DisplayName</span>
+                        <span class="pm-text-slate-400 pm-font-mono pm-text-[8px] pm-bg-slate-50 pm-px-1 pm-rounded pm-border">@output.Type</span>
+                    </div>
+                    @if (!string.IsNullOrEmpty(output.Description))
+                    {
+                        <p class="pm-text-slate-400 pm-leading-tight">@output.Description</p>
+                    }
                 </div>
             }
         </div>

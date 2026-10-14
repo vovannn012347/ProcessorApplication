@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 
 using P2PModule.Configuration;
 using P2PModule.Controllers.ViewModels;
+using P2PModule.Services.Maintenance;
 
 using ProcessorApplication;
 using ProcessorApplication.Attributes;
@@ -35,11 +36,13 @@ public class SettingsController : Controller
     private readonly IOptionsMonitor<RatingSettings> _ratingService;
     private readonly IEnumerable<IEndpointProvider> _endpointProviders;
     private readonly AdvertisedCapabilitiesRegistry _capabilities;
+    private readonly IConsensusChannelRegistry _channelRegistry;
 
     public SettingsController(
         ISettingService settingsService,
         IEnumerable<IEndpointProvider> endpointProviders,
         AdvertisedCapabilitiesRegistry capabilities,
+        IConsensusChannelRegistry channelRegistry,
         IOptionsMonitor<P2PSettings> general,
         IOptionsMonitor<StorageSettings> python,
         IOptionsMonitor<GossipSettings> none,
@@ -48,6 +51,7 @@ public class SettingsController : Controller
         _settingsService = settingsService;
         _endpointProviders = endpointProviders;
         _capabilities = capabilities;
+        _channelRegistry = channelRegistry;
         _generalSettings = general;
         _storageSettings = python;
         _gossipSandbox = none;
@@ -56,21 +60,14 @@ public class SettingsController : Controller
 
     public IActionResult Index()
     {
-        var discoverySources = _endpointProviders
-            .SelectMany(p => p.GetEndpointSources())
-            .Distinct()
-            .ToList();
-
-
         var model = new P2PSettingsViewModel
         {
-            EndpointProvisions = discoverySources,
-            AvailableRoles = _capabilities.All,
             General = _generalSettings.CurrentValue,
             Storage = _storageSettings.CurrentValue,
             Gossip = _gossipSandbox.CurrentValue,
             Rating = _ratingService.CurrentValue
         };
+        PopulateLookups(model);
 
         if (Request.IsAjaxRequest())
         {
@@ -90,7 +87,14 @@ public class SettingsController : Controller
             return PartialView("Index", model);
         }
 
+        // Lookups aren't posted back; without this the returned view looped over a null
+        // AvailableRoles after every save.
+        PopulateLookups(model);
+
         ModelState.Remove(nameof(model.EndpointProvisions));
+        ModelState.Remove(nameof(model.AvailableRoles));
+        ModelState.Remove(nameof(model.InstalledConsensusChannels));
+        ModelState.Remove(nameof(model.UnavailableConsensusChannels));
 
         // Isolated validation orchestration
         ValidateGeneral(model.General);
@@ -249,6 +253,42 @@ public class SettingsController : Controller
 
     #endregion
 
+    /// <summary>Fills the read-only lists the view needs (never posted back by the form).</summary>
+    private void PopulateLookups(P2PSettingsViewModel model)
+    {
+        model.EndpointProvisions = _endpointProviders
+            .SelectMany(p => p.GetEndpointSources())
+            .Distinct()
+            .ToList();
+        model.AvailableRoles = _capabilities.All;
+
+        var installed = _channelRegistry.AllChannelIds.OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+        model.InstalledConsensusChannels = installed;
+        model.UnavailableConsensusChannels = (_generalSettings.CurrentValue.AdvertisedConsensusChannels ?? new List<string>())
+            .Where(id => !installed.Contains(id, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    /// <summary>
+    /// What to store for AdvertisedConsensusChannels: the ticked installed channels, plus any
+    /// opted-in channel whose module isn't loaded right now (it can't be shown as a checkbox, so a
+    /// save must not silently drop it). The registry intersects this with what's installed.
+    /// </summary>
+    private List<string> MergeAdvertisedChannels(IEnumerable<string>? posted)
+    {
+        var installed = _channelRegistry.AllChannelIds;
+        var chosen = (posted ?? Enumerable.Empty<string>())
+            .Where(id => installed.Contains(id, StringComparer.OrdinalIgnoreCase));
+        var keptForAbsentModules = (_generalSettings.CurrentValue.AdvertisedConsensusChannels ?? new List<string>())
+            .Where(id => !installed.Contains(id, StringComparer.OrdinalIgnoreCase));
+
+        return chosen.Concat(keptForAbsentModules)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     #region Persistence Subroutines
 
     private async Task ProcessSaveGeneral(P2PSettings model)
@@ -260,6 +300,9 @@ public class SettingsController : Controller
         await _settingsService.SetAsync(ModuleId, $"{nameof(P2PSettings)}:{nameof(model.Endpoints)}", model.Endpoints);
         
         await _settingsService.SetAsync(ModuleId, $"{nameof(P2PSettings)}:{nameof(model.NodeRoles)}", model.NodeRoles);
+
+        model.AdvertisedConsensusChannels = MergeAdvertisedChannels(model.AdvertisedConsensusChannels);
+        await _settingsService.SetAsync(ModuleId, $"{nameof(P2PSettings)}:{nameof(model.AdvertisedConsensusChannels)}", model.AdvertisedConsensusChannels);
         // Persist temporary tracker flag state
         await _settingsService.SetAsync(ModuleId, $"{nameof(P2PSettings)}:{nameof(model.IsTemporarilyPromotedTracker)}", model.IsTemporarilyPromotedTracker);
 

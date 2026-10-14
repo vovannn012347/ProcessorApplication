@@ -28,7 +28,7 @@ public class PeerImmutableData
     /// <summary>
     /// Ids of consensus channels (see Common.Interfaces.Consensus.IConsensusChannel) this node currently
     /// supports and is willing to run epidemic consensus on. Deliberately separate from Roles, which
-    /// governs network-level access/promotion decisions (tracker, promoted_tracker, ...) and must not
+    /// governs network-level access/promotion decisions (tracker, ...) and must not
     /// be repurposed for this.
     /// </summary>
     public List<string> ConsensusChannels { get; set; } = new();

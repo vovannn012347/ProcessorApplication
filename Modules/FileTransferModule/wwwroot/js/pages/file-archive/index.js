@@ -6,7 +6,7 @@
 (function () {
     const SCRIPT_ID = "ftt-archive";
     const WRAPPER_ID = "file-archive-wrapper";
-    const CONTROLLER_PATH = "FileTr/FileArchive";
+    const CONTROLLER_PATH = "FileTransfer/FileArchive";
 
     let root = {};
     window.ModuleRegistry = window.ModuleRegistry || {};

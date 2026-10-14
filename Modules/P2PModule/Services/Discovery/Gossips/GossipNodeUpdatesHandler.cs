@@ -12,6 +12,7 @@ using P2PModule.Models;
 using P2PModule.Models.Gossips;
 using P2PModule.Services.Persistence;
 using P2PModule.Services.Rating;
+using ProcessorApplication.Utils;
 
 namespace P2PModule.Services.Discovery.Gossip;
 
@@ -93,7 +94,7 @@ public class GossipNodeUpdatesHandler : IHostedService, IDisposable
             => await BroadcastPendingNodeUpdatesAsync(), null,
             TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
 
-        _settingsChangeListener = _gossipSetting.OnChange((settings, name) => UpdateSettings());
+        _settingsChangeListener = _gossipSetting.OnChangeDebounced(_ => UpdateSettings());
 
         return Task.CompletedTask;
     }

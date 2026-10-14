@@ -53,6 +53,23 @@ public class InputMapping
     public string DiskPath { get; set; }
     [JsonProperty("optional")]
     public bool Optional { get; set; }
+    // Default for scalar inputs: pre-fills the job form and is used when the field is left empty.
+    // JSON numbers/booleans are read as strings ("1.4", "True"); parsed with InvariantCulture.
+    [JsonProperty("default")]
+    public string? Default { get; set; }
+
+    // Optional allowed values; the job form shows a dropdown. Display text per value comes from
+    // localization key "<text_label>.choice.<value>". Values outside the list fall back to the default.
+    [JsonProperty("choices")]
+    public List<string>? Choices { get; set; }
+
+    // Optional numeric limits for integer/decimal inputs (form attributes + server-side clamp)
+    [JsonProperty("min")]
+    public decimal? Min { get; set; }
+    [JsonProperty("max")]
+    public decimal? Max { get; set; }
+    [JsonProperty("step")]
+    public decimal? Step { get; set; }
 }
 
 public class OutputMapping

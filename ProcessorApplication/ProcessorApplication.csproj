@@ -61,4 +61,11 @@
     <Message Text="Copying Module wwwroot to $(OutputPath)wwwroot..." Importance="high" />
     <Copy SourceFiles="@(ModuleAssets)" DestinationFiles="@(ModuleAssets->'$(OutputPath)wwwroot\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
+
+  <!-- The host gets a module.manifest.json the same way every module does - ModuleLoader reads it
+       as a root entry in the same dependency graph, instead of hardcoding "Main is always
+       satisfied". No ModuleManifestDependency items needed: the host has no dependencies of its
+       own in this graph, it's the root. -->
+  <Import Project="$(MSBuildThisFileDirectory)..\Build\ModuleManifest.targets" />
+
 </Project>

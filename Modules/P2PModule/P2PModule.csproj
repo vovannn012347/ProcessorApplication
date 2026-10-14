@@ -21,7 +21,6 @@
   <ItemGroup>
     <PackageReference Include="SIPSorcery" Version="6.0.11" />
     <Content Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="module.manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <Folder Include="configFiles\Debug\" />
     <Folder Include="configFiles\Debug\Module_Data\P2P\identity\" />
     <Folder Include="wwwroot\css\" />

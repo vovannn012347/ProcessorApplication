@@ -33,10 +33,10 @@ public interface IScriptIndexer
 public class ScriptIndexer : IScriptIndexer
 {
     private readonly ProcessorDbContext _db;
-    private readonly IOptions<ProcessorSettings> _settings;
+    private readonly IOptionsMonitor<ProcessorSettings> _settings;
 
-    public ScriptIndexer(ProcessorDbContext db, 
-        IOptions<ProcessorSettings> settings)
+    public ScriptIndexer(ProcessorDbContext db,
+        IOptionsMonitor<ProcessorSettings> settings)
     {
         _db = db;
         _settings = settings;
@@ -52,12 +52,15 @@ public class ScriptIndexer : IScriptIndexer
     /// </summary>
     public async Task ContinuousReindexAsync(HttpContext context, Func<string, Task> log, CancellationToken ct)
     {
-        var root = _settings.Value.ScriptSourcePath;
+        var root = _settings.CurrentValue.ScriptSourcePath;
         if (!Directory.Exists(root))
         {
             await log($"[ERROR] Root script directory not found: {root}");
             return;
         }
+        // ManifestDirectoryPath is stored RELATIVE to the script root (see PreciseReindexAsync),
+        // so every DB path below must be resolved against the root, not the process working directory.
+        root = Path.GetFullPath(root);
 
         await log("[INIT] Audit started.");
 
@@ -69,25 +72,26 @@ public class ScriptIndexer : IScriptIndexer
         {
             if (ct.IsCancellationRequested) return;
 
-            string folderName = Path.GetFileName(script.ManifestDirectoryPath) ?? "Unknown";
+            string scriptDir = Path.GetFullPath(Path.Combine(root, script.ManifestDirectoryPath ?? string.Empty));
+            string folderName = Path.GetFileName(scriptDir) ?? "Unknown";
             string logPrefix = $"[DB_AUDIT] {script.ScriptLabel} (v{script.ScriptVersion}, ID: {script.Id})";
 
             // Track folder to prevent double-processing in the physical scan phase
             if (!string.IsNullOrEmpty(script.ManifestDirectoryPath))
             {
-                checkedFolders.Add(Path.GetFullPath(script.ManifestDirectoryPath));
+                checkedFolders.Add(scriptDir);
             }
 
             // Step A: Folder Presence
-            if (!Directory.Exists(script.ManifestDirectoryPath))
+            if (!Directory.Exists(scriptDir))
             {
                 script.IsAvailable = false;
-                await log($"{logPrefix} [FAIL]: Directory not found at {script.ManifestDirectoryPath}. Disabled.");
+                await log($"{logPrefix} [FAIL]: Directory not found at {scriptDir}. Disabled.");
                 continue;
             }
 
             // Step B: Manifest Check
-            var manifestPath = Path.Combine(script.ManifestDirectoryPath, "script_manifest.json");
+            var manifestPath = Path.Combine(scriptDir, MicsConstants.ScriptManifestFile);
             if (!File.Exists(manifestPath))
             {
                 script.IsAvailable = false;
@@ -110,7 +114,7 @@ public class ScriptIndexer : IScriptIndexer
                 // Step C: Source Files & Hash Check
                 var manifestedFiles = manifest.Inputs
                     .Where(m => !string.IsNullOrEmpty(m.DiskPath))
-                    .Select(m => Path.Combine(script.ManifestDirectoryPath, m.DiskPath))
+                    .Select(m => Path.Combine(scriptDir, m.DiskPath))
                     .ToList();
 
                 // Check if files actually exist on disk before hashing
@@ -134,9 +138,12 @@ public class ScriptIndexer : IScriptIndexer
                 var currentHash = ComputeTotalHash(manifestedFiles);
 
                 // Update DB state
-                script.HashMatch = (currentHash == manifest.ScriptHash);
+                // Same rule as PreciseReindexAsync: an empty manifest hash means "not pinned",
+                // so compare against the hash recorded when the script was first indexed.
+                string expectedHash = string.IsNullOrEmpty(manifest.ScriptHash) ? script.ArtifactHash : manifest.ScriptHash;
+                script.HashMatch = string.Equals(currentHash, expectedHash, StringComparison.OrdinalIgnoreCase);
 
-                if (!script.HashMatch && _settings.Value.UpdateHashOnMismatch)
+                if (!script.HashMatch && _settings.CurrentValue.UpdateHashOnMismatch)
                 {
                     script.ArtifactHash = currentHash; // Update DB with latest re-calculated hash
                 }
@@ -145,7 +152,9 @@ public class ScriptIndexer : IScriptIndexer
 
                 if (!script.HashMatch)
                 {
-                    await log($"{logPrefix} [WARN]: Hash mismatch detected. DB updated with new hash.");
+                    await log(_settings.CurrentValue.UpdateHashOnMismatch
+                        ? $"{logPrefix} [WARN]: Hash mismatch detected. DB updated with new hash."
+                        : $"{logPrefix} [WARN]: Hash mismatch detected (files changed since indexing). Hash kept.");
                 }
                 else
                 {
@@ -218,7 +227,7 @@ public class ScriptIndexer : IScriptIndexer
         Func<string, Task> log = null,
         bool saveDb = false)
     {
-        var root = _settings.Value.ScriptSourcePath;
+        var root = _settings.CurrentValue.ScriptSourcePath;
         string relativeFolder = Path.GetRelativePath(root, folderPath);
 
         var manifestPath = Path.Combine(folderPath, "script_manifest.json");
@@ -290,7 +299,7 @@ public class ScriptIndexer : IScriptIndexer
                 existing.ScriptLabel = label;
                 existing.ProcessorVersion = manifest.MinProcessorVersion;
 
-                if(!hashMatch && _settings.Value.UpdateHashOnMismatch)
+                if(!hashMatch && _settings.CurrentValue.UpdateHashOnMismatch)
                 {
                     existing.ArtifactHash = artifactHash;
                 }

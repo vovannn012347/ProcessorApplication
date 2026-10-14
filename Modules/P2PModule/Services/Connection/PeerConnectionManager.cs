@@ -20,6 +20,7 @@ using P2PModule.Services.Rating;
 using SIPSorcery.Net;
 
 using static P2PModule.Services.Connection.PeerConnectionManager;
+using ProcessorApplication.Utils;
 
 namespace P2PModule.Services.Connection;
 
@@ -108,7 +109,8 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
             TimeSpan.FromSeconds(syncIntervalMinutes), 
             TimeSpan.FromSeconds(syncIntervalMinutes));
 
-        _settingsChangeListener = _settings.OnChange((settings, name) => UpdateSettings());
+        // Debounced: one settings save fires several change notifications (see OnChangeDebounced).
+        _settingsChangeListener = _settings.OnChangeDebounced(_ => UpdateSettings());
     }
 
     private void UpdateSettings()

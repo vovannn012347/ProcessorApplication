@@ -72,23 +72,31 @@ public class WindowsOsSandboxPython : ISandboxProcessing, IDisposable
 
         if (string.IsNullOrWhiteSpace(genConfig.ScriptSourcePath)) throw new InvalidOperationException("Script Source Path is not configured.");
         
-        string executorPath = pyConfig.PythonExecutablePath;
-        if (string.IsNullOrWhiteSpace(executorPath)) throw new InvalidOperationException("Python/Executor Path is not configured.");
+        if (string.IsNullOrWhiteSpace(pyConfig.PythonExecutablePath)) throw new InvalidOperationException("Python/Executor Path is not configured.");
+
+        // Same resolution as the no-sandbox runner: accept the executor folder or the .exe itself
+        string executorPath = Path.GetFullPath(pyConfig.PythonExecutablePath);
+        if (Directory.Exists(executorPath))
+            executorPath = Path.Combine(executorPath, "executor.exe");
+        if (!File.Exists(executorPath))
+            throw new FileNotFoundException($"Critical Error: Python Executor not found at {executorPath}");
 
 
         using var db = await _factory.CreateDbContextAsync();
         var subJob = await db.ProcessingJobs.Include(s => s.ParentJob).FirstOrDefaultAsync(s => s.Id == orchestrationId);
         if (subJob == null) throw new Exception($"Sub-job {orchestrationId} not found.");
 
+        // The executor runs with WorkingDirectory = jobRoot, so every path handed to it must be absolute
+        // (relative ones would be resolved inside the job folder). The manifest path is the exception:
+        // the executor contract defines it as relative to --processing-dir.
         string jobRoot = Path.GetFullPath(subJob.ParentJob.PhysicalPathRoot);
-               executorPath = Path.Combine(executorPath, "executor.exe");
 
         var scriptIndex = await db.Scripts.FirstOrDefaultAsync(s => s.ScriptIdentifier == subJob.ScriptId);
 
         if (scriptIndex == null)
             throw new Exception($"Execution Error: Script metadata for {subJob.ScriptId} not found.");
 
-        string scriptSourceDir = Path.Combine(_settings.CurrentValue.ScriptSourcePath, scriptIndex.ManifestDirectoryPath);
+        string scriptSourceDir = Path.GetFullPath(Path.Combine(_settings.CurrentValue.ScriptSourcePath, scriptIndex.ManifestDirectoryPath));
         string manifestRelPath = $"{MicsConstants.OrchestrationDirectory}/{subJob.Id}.json";
 
         using var secureWorkerPass = new SecureString();
@@ -106,7 +114,15 @@ public class WindowsOsSandboxPython : ISandboxProcessing, IDisposable
             var startInfo = new ProcessStartInfo
             {
                 FileName = executorPath,
-                Arguments = $"--processing-dir \"{jobRoot}\" --script-source-dir \"{scriptSourceDir}\" --manifest-file \"{manifestRelPath}\"",
+                // ArgumentList quotes/escapes each value correctly. A hand-built string breaks on a
+                // trailing backslash: "C:\dir\" ends with \" which Windows reads as an escaped quote,
+                // so everything after it is glued into the previous argument.
+                ArgumentList =
+                {
+                    "--processing-dir", Path.TrimEndingDirectorySeparator(jobRoot),
+                    "--script-source-dir", Path.TrimEndingDirectorySeparator(scriptSourceDir),
+                    "--manifest-file", manifestRelPath
+                },
                 WorkingDirectory = jobRoot,
                 UserName = workerUser,
                 Password = secureWorkerPass,
@@ -121,9 +137,26 @@ public class WindowsOsSandboxPython : ISandboxProcessing, IDisposable
             process.Start();
 
             if (!AssignProcessToJobObject(_jobHandle, process.Handle))
-                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            {
+                int err = Marshal.GetLastWin32Error();
+                try { process.Kill(entireProcessTree: true); } catch { /* already gone */ }
+                throw new System.ComponentModel.Win32Exception(err);
+            }
 
+            // Drain both pipes while waiting, otherwise a chatty script fills the buffer and hangs
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync();
+            await Task.WhenAll(stdoutTask, stderrTask);
+
+            if (process.ExitCode != 0)
+            {
+                // Same contract as the no-sandbox runner: non-zero exit = script-level "Error"
+                string errorOutput = stderrTask.Result;
+                throw new InvalidOperationException(string.IsNullOrWhiteSpace(errorOutput)
+                    ? $"Executor exited with code {process.ExitCode}. {stdoutTask.Result}"
+                    : errorOutput);
+            }
         }
         finally
         {

@@ -1,4 +1,4 @@
-﻿@model FileSharingModule.Configuration.FileSharingSettings
+﻿@model FileTransferModule.Configuration.FileSharingSettings
 
 <div class="ftt-space-y-6">
     <div>
@@ -44,12 +44,40 @@
         <h3 class="ftt-text-xs ftt-font-bold ftt-text-slate-800 ftt-uppercase ftt-tracking-wider ftt-pb-2 ftt-border-b ftt-border-gray-100">Swarm Concurrency &amp; Timeouts</h3>
         <div class="ftt-grid ftt-grid-cols-1 sm:ftt-grid-cols-2 md:ftt-grid-cols-4 ftt-gap-4 ftt-mt-3">
             <div>
-                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">Max Uploads</label>
-                <input type="number" name="MaxActiveUploads" value="@Model.MaxActiveUploads" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" required />
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1" title="Max slice requests outstanding to one seeder at a time (download flow control).">Requests In Flight / Peer</label>
+                <input type="number" name="MaxOutstandingRequestsPerPeer" value="@Model.MaxOutstandingRequestsPerPeer" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" min="1" required />
             </div>
             <div>
-                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">Max Downloads</label>
-                <input type="number" name="MaxActiveDownloads" value="@Model.MaxActiveDownloads" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" required />
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1" title="Max queued slice requests per incoming channel; extra requests are dropped and re-requested by the downloader.">Upload Queue / Channel</label>
+                <input type="number" name="UploadQueueLimitPerChannel" value="@Model.UploadQueueLimitPerChannel" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" min="1" required />
+            </div>
+            <div>
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1" title="Seeder pauses sending while a channel's send buffer holds more than this.">Upload Buffer High-Water (bytes)</label>
+                <input type="number" name="UploadSendBufferHighWaterBytes" value="@Model.UploadSendBufferHighWaterBytes" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" min="1" required />
+            </div>
+            <div>
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1" title="Provably corrupt blocks from one peer before it is banned as a file source.">Ban After Bad Blocks</label>
+                <input type="number" name="PeerBanAfterBadBlocks" value="@Model.PeerBanAfterBadBlocks" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" min="1" required />
+            </div>
+            <div>
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1" title="How long a file-source ban lasts.">Ban Duration (h)</label>
+                <input type="number" name="PeerBanDurationHours" value="@Model.PeerBanDurationHours" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" min="1" required />
+            </div>
+            <div>
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1" title="Downloads running at once; the rest wait in the queue and start automatically.">Max Active Downloads</label>
+                <input type="number" name="MaxActiveDownloads" value="@Model.MaxActiveDownloads" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" min="1" required />
+            </div>
+            <div>
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1" title="Downloaders served at the same time across all files.">Upload Slots (node)</label>
+                <input type="number" name="MaxUploadSlots" value="@Model.MaxUploadSlots" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" min="1" required />
+            </div>
+            <div>
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1" title="Slots one peer may hold at once, so a single node can't take them all.">Upload Slots / Peer</label>
+                <input type="number" name="MaxUploadSlotsPerPeer" value="@Model.MaxUploadSlotsPerPeer" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" min="1" required />
+            </div>
+            <div>
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1" title="Node-wide upload bandwidth limit. 0 means unlimited.">Upload Cap (KB/s, 0 = off)</label>
+                <input type="number" name="MaxUploadRateKBps" value="@Model.MaxUploadRateKBps" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" min="0" required />
             </div>
             <div>
                 <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">Max Peers Per File</label>
@@ -62,6 +90,18 @@
             <div>
                 <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">Discovery Timeout (s)</label>
                 <input type="number" name="SeederDiscoveryTimeoutSeconds" value="@Model.SeederDiscoveryTimeoutSeconds" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" required />
+            </div>
+            <div>
+                <label class="ftt-block ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1" title="How often hosted files are re-announced to trackers. Trackers keep an announce for 1.5x the announcer's interval.">Re-announce Interval (min)</label>
+                <input type="number" name="TrackerReannounceIntervalMinutes" value="@Model.TrackerReannounceIntervalMinutes" class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" min="1" required />
+            </div>
+            <div>
+                <label class="ftt-flex ftt-items-center ftt-gap-2 ftt-text-[11px] ftt-font-bold ftt-text-slate-600 ftt-mb-1">
+                    @* Checkbox first so its "true" wins when checked; the hidden "false" is what posts when unchecked. *@
+                    <input type="checkbox" name="SeedCompletedDownloads" value="true" @(Model.SeedCompletedDownloads ? "checked" : "") class="ftt-rounded ftt-border-gray-300 ftt-text-indigo-600 focus:ftt-ring-indigo-500 ftt-h-4 ftt-w-4" />
+                    <input type="hidden" name="SeedCompletedDownloads" value="false" />
+                    Seed completed downloads
+                </label>
             </div>
         </div>
     </div>

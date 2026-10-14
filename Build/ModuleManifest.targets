@@ -9,32 +9,79 @@
     setting, then an unexplained CLR exit code). None of that is a risk here - this never loads
     anything, it just writes MSBuild data out as JSON text.
 
-    Uses the module's own existing $(ModuleKey) property (already set in every module's .csproj,
-    matching its IModule.ModuleId exactly - confirmed, not assumed) as the manifest's ModuleId, so
-    nothing new needs declaring there. The module declares its dependencies directly:
+    Uses the module's own existing $(ModuleKey)/$(Version) properties (already set in every
+    module's .csproj, matching its IModule.ModuleId/Version exactly - confirmed, not assumed) as
+    the manifest's ModuleId/Version, so nothing new needs declaring there. The module declares its
+    dependencies directly:
         <ItemGroup>
           <ModuleManifestDependency Include="P2P">
             <MinVersion>1.0.0.0</MinVersion>
           </ModuleManifestDependency>
         </ItemGroup>
-    MinVersion is required on every dependency item (the build fails with a clear message if it's
-    missing) - this keeps the MSBuild side simple (no "is this empty, write null instead" branching).
+    MinVersion is required on every dependency item that exists (the build fails with a clear
+    message if one is missing) - this keeps the MSBuild side simple (no "is this empty, write null
+    instead" branching). Having NO ModuleManifestDependency items at all is perfectly valid (e.g.
+    ProcessorApplication itself, the root of the graph, legitimately has none) and produces an
+    empty Dependencies array - see the guard comment below on why that distinction matters.
     MaxVersion isn't supported here (nothing in this codebase uses it); add it later if needed.
 
     TRADE-OFF: this duplicates what's already declared in the module's own IModule.Dependencies
     property in code - two places that can drift apart, where a reflection-based approach would
     read Dependencies directly and need no duplication. ModuleLoader.cs still cross-checks the
-    manifest against the real IModule.Dependencies once a module actually loads and logs a warning
-    on mismatch, so drift won't go unnoticed - it just needs fixing in both places when it happens,
-    which should be rare since dependencies change rarely.
+    manifest against the real IModule.Dependencies/Version once a module actually loads and logs a
+    warning on mismatch, so drift won't go unnoticed - it just needs fixing in both places when it
+    happens, which should be rare since dependencies change rarely.
   -->
+
+  <!--
+    Writes "{filename}|{size in bytes}" for each given file - used below to produce
+    {ModuleKey}.manifest.foreign-refs.txt, which /Modules/Directory.Build.targets' own deploy step
+    reads to decide what to skip copying (see that file's own comments). A small inline task rather
+    than a WriteLinesToFile + property-function combo, because getting a file's size inline via
+    MSBuild property functions ($([System.IO.FileInfo]::new(...).Length) and similar) isn't
+    something every property-function allowlist reliably supports across MSBuild/.NET SDK versions
+    - plain C# File I/O here has no such ambiguity.
+  -->
+  <UsingTask TaskName="WriteFileNameSizeList" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Files ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <OutputPath ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Linq" />
+      <Using Namespace="Microsoft.Build.Framework" />
+      <Code Type="Fragment" Language="cs">
+        <![CDATA[
+          var lines = Files
+              .Select(f => f.GetMetadata("FullPath"))
+              .Where(File.Exists)
+              .Select(p => Path.GetFileName(p) + "|" + new FileInfo(p).Length)
+              .Distinct()
+              .ToArray();
+
+          File.WriteAllLines(OutputPath, lines);
+        ]]>
+      </Code>
+    </Task>
+  </UsingTask>
 
   <Target Name="GenerateModuleManifest" AfterTargets="Build">
     <Error Text="ModuleKey is not set in this module's .csproj - it should already be there for the build.props appsettings hook; add &lt;ModuleKey&gt;YourModuleId&lt;/ModuleKey&gt; to a PropertyGroup if it's genuinely missing (must match IModule.ModuleId exactly)."
            Condition="'$(ModuleKey)' == ''" />
 
+    <Error Text="Version is not set in this module's .csproj - add &lt;Version&gt;x.y.z.w&lt;/Version&gt; to a PropertyGroup (must match IModule.Version exactly)."
+           Condition="'$(Version)' == ''" />
+
+    <!--
+      Guarded by '@(ModuleManifestDependency)' != '' first: on an EMPTY item list, MSBuild still
+      evaluates the batched %(ModuleManifestDependency.MinVersion) reference as an empty string
+      rather than skipping the task entirely, so without this guard the Error fires for every
+      project with NO dependencies at all (e.g. ProcessorApplication itself, which legitimately
+      has none - it's the root of the graph) - exactly backwards from what the check is for.
+    -->
     <Error Text="ModuleManifestDependency '%(ModuleManifestDependency.Identity)' has no MinVersion set. Add &lt;MinVersion&gt;x.y.z.w&lt;/MinVersion&gt; metadata to it."
-           Condition="'%(ModuleManifestDependency.MinVersion)' == ''" />
+           Condition="'@(ModuleManifestDependency)' != '' and '%(ModuleManifestDependency.MinVersion)' == ''" />
 
     <ItemGroup>
       <_ModuleManifestDepLine Include="@(ModuleManifestDependency)" Condition="'@(ModuleManifestDependency)' != ''">
@@ -49,6 +96,7 @@
     <ItemGroup>
       <_ModuleManifestLines Include="{" />
       <_ModuleManifestLines Include="  &quot;ModuleId&quot;: &quot;$(ModuleKey)&quot;," />
+      <_ModuleManifestLines Include="  &quot;Version&quot;: &quot;$(Version)&quot;," />
       <_ModuleManifestLines Include="  &quot;Dependencies&quot;: []" Condition="'@(ModuleManifestDependency)' == ''" />
       <_ModuleManifestLines Include="  &quot;Dependencies&quot;: [" Condition="'@(ModuleManifestDependency)' != ''" />
       <_ModuleManifestLines Include="$(_ModuleManifestDepsJoined)" Condition="'@(ModuleManifestDependency)' != ''" />
@@ -56,8 +104,45 @@
       <_ModuleManifestLines Include="}" />
     </ItemGroup>
 
-    <WriteLinesToFile File="$(TargetDir)module.manifest.json" Lines="@(_ModuleManifestLines)" Overwrite="true" />
+    <!--
+      $(ModuleKey).manifest.json, NOT a fixed "module.manifest.json" name shared by every
+      participant: /Modules/Directory.Build.targets (a separate, do-not-touch deploy script) skips
+      copying any file from a module's own build output into its isolated deployment folder when a
+      file with the SAME relative-path+filename already exists under the host's (ProcessorApplication's)
+      own output root - meant to drop genuinely shared/framework files the module doesn't need its
+      own copy of. The host gets a manifest the exact same way every module does (see
+      ProcessorApplication.csproj's own Import of this file), which sits in exactly that root - so
+      a fixed, identical filename here would make every module's own manifest collide with the
+      host's by name and get silently dropped as a "duplicate", despite having entirely different
+      content. $(ModuleKey) is unique per participant by construction, so this collision is not
+      possible no matter how that script's filtering works internally.
+    -->
+    <WriteLinesToFile File="$(TargetDir)$(ModuleKey).manifest.json" Lines="@(_ModuleManifestLines)" Overwrite="true" />
 
-    <Message Text="[ModuleManifest] Wrote $(TargetDir)module.manifest.json for '$(ModuleKey)'." Importance="high" />
+    <Message Text="[ModuleManifest] Wrote $(TargetDir)$(ModuleKey).manifest.json for '$(ModuleKey)'." Importance="high" />
+
+    <!--
+      {ModuleKey}.manifest.foreign-refs.txt: one "{filename}|{size in bytes}" line for every file
+      that landed in THIS module's own output directory via a ProjectReference (another module, or
+      the host) rather than being genuinely this module's own output - e.g. BouncyCastle.Crypto.dll
+      or P2PModule.dll, pulled in because this module references something that needs them.
+
+      /Modules/Directory.Build.targets' own deploy step reads this (after this target - see its
+      AfterTargets) to decide what to skip copying into this module's isolated deployment folder,
+      so the same file doesn't end up duplicated across every module that happens to reference it.
+      It's an exact, pre-computed exclusion list rather than that script scanning sibling module
+      folders itself: computed once here from MSBuild's own real reference resolution
+      (ReferenceSourceTarget == 'ProjectReference', the same @(ReferencePath) already used above to
+      drive ModuleAssemblyLoadContext's own resolution), name+size so a same-named-but-genuinely-
+      different file is never mistaken for a duplicate, and gives that script nothing to scan the
+      filesystem for at deploy time at all.
+    -->
+    <ItemGroup>
+      <_ForeignModuleRef Include="@(ReferencePath)" Condition="'%(ReferencePath.ReferenceSourceTarget)' == 'ProjectReference'" />
+    </ItemGroup>
+
+    <WriteFileNameSizeList Files="@(_ForeignModuleRef)" OutputPath="$(TargetDir)$(ModuleKey).manifest.foreign-refs.txt" />
+
+    <Message Text="[ModuleManifest] Wrote $(TargetDir)$(ModuleKey).manifest.foreign-refs.txt." Importance="low" />
   </Target>
 </Project>

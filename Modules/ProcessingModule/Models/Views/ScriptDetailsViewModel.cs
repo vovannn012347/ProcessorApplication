@@ -12,4 +12,6 @@ public class ParameterDetailViewModel
 {
     public string DisplayName { get; set; }
     public string Type { get; set; }
+    // Longer help text ("<text_label>.description"), optional
+    public string? Description { get; set; }
 }

@@ -14,12 +14,111 @@
     <TargetModuleFolder>$(MainProjectBinRoot)Modules\$(ProjectName)\</TargetModuleFolder>
   </PropertyGroup>
 
-  <Target Name="StripParentDuplicatesAndDeploy" AfterTargets="Build" Condition="'$(SolutionDir)' != ''">
+  <!--
+    Finds literal duplicates of this module's own build output from TWO sources together - neither
+    one alone is enough:
+
+    1. {ModuleKey}.manifest.foreign-refs.txt - a "{filename}|{size in bytes}" list pre-computed by
+       Build/ModuleManifest.targets's GenerateModuleManifest target (runs first - see this target's
+       AfterTargets below) from ReferenceSourceTarget == 'ProjectReference' entries in
+       @(ReferencePath). This only ever lists the referenced PROJECTS themselves (P2PModule.dll,
+       ProcessorApplication.dll) - MSBuild tags a NuGet package as 'ResolveAssemblyReference' even
+       when it only reached this project TRANSITIVELY through one of those project references, so
+       e.g. BouncyCastle.Crypto.dll (pulled in through P2PModule's own SIPSorcery dependency) never
+       appears here at all, no matter how this list is computed from @(ReferencePath) metadata.
+
+    2. Scanning $(MainProjectBinRoot) and $(MainProjectBinRoot)Modules\ for files that are already
+       there. This is what actually catches a transitive package like BouncyCastle.Crypto: the
+       module that genuinely owns that NuGet dependency (P2PModule) already deployed its own copy
+       of it into Modules\P2PModule\ by the time this runs (project build order via ProjectReference
+       guarantees a module this one depends on has already built AND deployed first) - so by
+       definition, if a file we're about to deploy already exists somewhere in that tree with the
+       same name and size, something else already provides it and copying our own copy too would
+       just be the duplicate this whole thing exists to prevent.
+
+    "Literal duplicate" = same file name AND same file size, not name alone - matching by name only
+    would (and did - this is why it needed fixing) treat any two same-named-but-different files as
+    interchangeable, which is wrong, and would equally mis-skip genuinely different files that just
+    happen to share a name. Deliberately NOT content-hash-based: name+size is cheap, needs no extra
+    dependency, and is already precise enough in practice for compiled assemblies (two different
+    DLLs sharing both name and exact byte size is not a realistic accident).
+  -->
+  <UsingTask TaskName="FindDuplicateFiles" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <CandidateFiles ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <ExclusionListFile ParameterType="System.String" Required="true" />
+      <SearchRoots ParameterType="System.String[]" Required="true" />
+      <DuplicateFiles ParameterType="Microsoft.Build.Framework.ITaskItem[]" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Collections.Generic" />
+      <Using Namespace="System.Linq" />
+      <Using Namespace="Microsoft.Build.Framework" />
+      <Code Type="Fragment" Language="cs">
+        <![CDATA[
+          var known = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+
+          // Source 1: the pre-computed project-reference list.
+          if (File.Exists(ExclusionListFile))
+          {
+              foreach (var line in File.ReadAllLines(ExclusionListFile))
+              {
+                  var parts = line.Split('|');
+                  if (parts.Length != 2) continue;
+                  if (long.TryParse(parts[1], out var size))
+                  {
+                      known[parts[0]] = size;
+                  }
+              }
+          }
+
+          // Source 2: whatever's already physically deployed - catches transitive package
+          // dependencies (e.g. BouncyCastle.Crypto via SIPSorcery) the list above can't see.
+          // First one found wins if the same name shows up more than once with different sizes
+          // somewhere - rare, and not worth failing the build over.
+          foreach (var root in SearchRoots)
+          {
+              if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) continue;
+              foreach (var file in Directory.GetFiles(root, "*.*", SearchOption.AllDirectories))
+              {
+                  var name = Path.GetFileName(file);
+                  if (known.ContainsKey(name)) continue;
+                  known[name] = new FileInfo(file).Length;
+              }
+          }
+
+          var dupes = new List<ITaskItem>();
+          foreach (var item in CandidateFiles)
+          {
+              var path = item.GetMetadata("FullPath");
+              if (!File.Exists(path)) continue;
+
+              var name = Path.GetFileName(path);
+              if (known.TryGetValue(name, out var knownSize) && knownSize == new FileInfo(path).Length)
+              {
+                  dupes.Add(item);
+              }
+          }
+
+          DuplicateFiles = dupes.ToArray();
+        ]]>
+      </Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="StripParentDuplicatesAndDeploy" AfterTargets="Build;GenerateModuleManifest" Condition="'$(SolutionDir)' != ''">
     <ItemGroup>
       <RawModuleOutputs Include="$(TargetDir)**\*.*" />
+    </ItemGroup>
 
-      <ParentDuplicateAssemblies Include="@(RawModuleOutputs)" Condition="Exists('$(MainProjectBinRoot)%(RecursiveDir)%(Filename)%(Extension)')" />
+    <FindDuplicateFiles CandidateFiles="@(RawModuleOutputs)"
+                         ExclusionListFile="$(TargetDir)$(ModuleKey).manifest.foreign-refs.txt"
+                         SearchRoots="$(MainProjectBinRoot);$(MainProjectBinRoot)Modules\">
+      <Output TaskParameter="DuplicateFiles" ItemName="ParentDuplicateAssemblies" />
+    </FindDuplicateFiles>
 
+    <ItemGroup>
       <IsolatedContextAssets Include="@(RawModuleOutputs)" />
       <IsolatedContextAssets Remove="@(ParentDuplicateAssemblies)" />
       <IsolatedContextAssets Remove="$(TargetDir)refs\**\*.*" />

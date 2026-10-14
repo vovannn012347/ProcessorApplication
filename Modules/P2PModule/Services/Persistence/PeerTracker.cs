@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using P2PModule.Configuration;
 using P2PModule.Interfaces;
 using P2PModule.Models;
+using ProcessorApplication.Utils;
 
 namespace P2PModule.Services.Persistence;
 
@@ -50,7 +51,7 @@ public interface IPeerTracker
 /// Manages high-frequency fluid runtime operations over /currentIndex and /nodeupdateindex in _baseDir.
 /// Utilizes IConsensusStore history paths as backfall frames for tracking context validation loops.
 /// </summary>
-public class PeerTracker : IPeerTracker, IDisposable
+public class PeerTracker : IPeerTracker, IDisposable, IAsyncDisposable
 {
     public static readonly Comparison<PeerNodeHistoric> DefaultNodeComparer = (a, b) =>
     {
@@ -140,8 +141,8 @@ public class PeerTracker : IPeerTracker, IDisposable
         _storageSettings = storageSettings;
 
         UpdateSettings();
-        _settingsChangeListener = _p2pSettings.OnChange((settings, name) => UpdateSettings());
-        _settingsChangeListener2 = _storageSettings.OnChange((settings, name) => UpdateSettings());
+        _settingsChangeListener = _p2pSettings.OnChangeDebounced(_ => UpdateSettings());
+        _settingsChangeListener2 = _storageSettings.OnChangeDebounced(_ => UpdateSettings());
     }
 
     private void UpdateSettings()
@@ -758,11 +759,27 @@ public class PeerTracker : IPeerTracker, IDisposable
 
     #endregion
 
+    /// <summary>
+    /// Preferred shutdown path: the host disposes singletons asynchronously, so the final flush is
+    /// awaited rather than blocked on.
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+        _settingsChangeListener?.Dispose();
+        _settingsChangeListener2?.Dispose();
+        await FlushPendingUpdatesToDiskAsync();
+    }
+
+    /// <summary>Synchronous fallback for callers that can only dispose synchronously.</summary>
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
         _settingsChangeListener?.Dispose();
         _settingsChangeListener2?.Dispose();
         FlushPendingUpdatesToDiskAsync().GetAwaiter().GetResult();
     }
+
+    private int _disposed;
 
 }

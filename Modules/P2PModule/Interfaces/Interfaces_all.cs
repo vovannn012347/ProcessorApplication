@@ -34,46 +34,6 @@ public interface IConsensusStore
     bool IsOutdated();
 }
 
-public interface INodeIdentityService
-{
-    public string NodeId { get; }
-    void LoadOrCreateIdentity();
-    string GetLocalNodeId();
-
-    //i prove who am i
-    byte[] PublicKey { get; } //today
-    byte[] PrivateKey { get; } //today
-    byte[]? GetPublicKey(string day = "");
-    byte[]? GetPrivateKey(string day = "");
-
-    //this proves i signed it
-    byte[] PublicVerifyKey { get; } //today
-    byte[] PrivateSignatureKey { get; } //today
-    byte[]? GetPublicVerificator(string day = "");
-    byte[]? GetPrivateCertificate(string day = "");
-    //byte[] RefreshVerify { get; } //today ONLY
-    //byte[] RefreshCert { get; } //today ONLY
-    //byte[]? GetPublicRefresh(string day = "");
-    //byte[]? GetPrivateRefresh(string day = "");
-    List<string> GetEndpoints();
-    List<string> GetCapablities();
-    bool HasRole(string role);
-    void ResetIdentity();
-    void UpdateDailyKeys(bool forceUpdate = false);
-    //trigger update stuffs
-    void TriggerUpdate();
-
-    /// <summary>
-    /// Gets a list of last n available historical day keys sorted from most recent to least recent (descending order).
-    /// </summary>
-    List<string> GetRecentDayKeys(int n);
-    PeerImmutableData GetImmutableData();
-
-    /// <summary>
-    /// returns old identity day key
-    /// </summary>
-    event Action<string>? OnIdentityUpdated;
-}
 
 public interface IConsensusCoordinatorService
 {

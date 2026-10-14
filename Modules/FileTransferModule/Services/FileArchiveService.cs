@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using P2PModule.Interfaces;
+using P2PModule.Services.Persistence;
 
 namespace FileTransferModule.Services;
 
@@ -32,6 +33,14 @@ public interface IFileArchiveService
     /// untouched; if false, the file is tracked in place at sourceFilePath.
     /// </summary>
     Task<FileArchiveItemRecord> IngestAndTrackFileAsync(string sourceFilePath, bool isHidden = false, bool copyToRepository = false);
+
+    /// <summary>
+    /// Registers a file that was just assembled by a swarm download, reusing the manifest it was
+    /// downloaded with (no rehash, same ContentHash, original InitialPeers kept), and starts
+    /// seeding it. Returns the existing record unchanged if this ContentHash is already tracked.
+    /// Fires OnFileIngested when not hidden, so it is announced like any other new local file.
+    /// </summary>
+    Task<FileArchiveItemRecord> RegisterDownloadedFileAsync(PTorrentManifest manifest, string localFilePath, bool isHidden = false);
 
     /// <summary>
     /// Retrieves all locally tracked files.
@@ -69,6 +78,14 @@ public interface IFileArchiveService
     /// FileArchiveService needing to know that service exists.
     /// </summary>
     event Action<FileArchiveItemRecord>? OnFileIngested;
+
+    /// <summary>
+    /// Fires when an already-tracked file becomes publicly available again - i.e. it transitions
+    /// into (not hidden AND AllowDownload) via ToggleVisibilityAsync or UpdateRecordSettingsAsync.
+    /// Lets FileTrackerAnnounceService announce it right away instead of waiting for the next
+    /// periodic re-announce.
+    /// </summary>
+    event Action<FileArchiveItemRecord>? OnFileBecameAvailable;
 }
 
 
@@ -83,6 +100,15 @@ public class FileArchiveService : IFileArchiveService
     private readonly string _recordsIndexPath;
 
     public event Action<FileArchiveItemRecord>? OnFileIngested;
+    public event Action<FileArchiveItemRecord>? OnFileBecameAvailable;
+
+    private static bool IsPubliclyAvailable(FileArchiveItemRecord r) => !r.IsHidden && r.AllowDownload;
+
+    private void RaiseBecameAvailable(FileArchiveItemRecord record)
+    {
+        try { OnFileBecameAvailable?.Invoke(record); }
+        catch (Exception ex) { _logger.LogWarning(ex, "[FileArchive] OnFileBecameAvailable subscriber threw for {Hash}.", record.Manifest?.ContentHash); }
+    }
 
     public FileArchiveService(
         IOptionsMonitor<FileSharingSettings> settings,
@@ -158,6 +184,54 @@ public class FileArchiveService : IFileArchiveService
         return record;
     }
 
+    public async Task<FileArchiveItemRecord> RegisterDownloadedFileAsync(PTorrentManifest manifest, string localFilePath, bool isHidden = false)
+    {
+        if (manifest == null || string.IsNullOrWhiteSpace(manifest.ContentHash))
+            throw new ArgumentException("A manifest with a ContentHash is required.", nameof(manifest));
+        if (!File.Exists(localFilePath))
+            throw new FileNotFoundException("Downloaded file not found for archive registration.", localFilePath);
+
+        if (_trackedItems.TryGetValue(manifest.ContentHash, out var existing))
+        {
+            _logger.LogInformation("[FileArchive] Downloaded file {Hash} is already tracked at {Path} - not re-registering.", manifest.ContentHash, existing.LocalFilePath);
+            return existing;
+        }
+
+        string manifestsDir = _settings.CurrentValue.ManifestsPath;
+        Directory.CreateDirectory(manifestsDir);
+        string manifestPath = Path.Combine(manifestsDir, $"{manifest.ContentHash}.ptorrent");
+        await File.WriteAllTextAsync(manifestPath, manifest.SerializeToJson());
+
+        var record = new FileArchiveItemRecord
+        {
+            Manifest = manifest,
+            LocalFilePath = localFilePath,
+            ManifestFilePath = manifestPath,
+            IsHidden = isHidden,
+            AllowDownload = true,
+            RegisteredUtc = DateTime.UtcNow
+        };
+
+        if (!_trackedItems.TryAdd(manifest.ContentHash, record))
+        {
+            // Lost a race with a concurrent registration of the same hash.
+            return _trackedItems[manifest.ContentHash];
+        }
+
+        await SaveIndexRecordsAsync();
+        await _swarmOrchestrator.StartSeedingAsync(manifest, localFilePath);
+
+        _logger.LogInformation("[FileArchive] Registered downloaded file {Name} (Hash: {Hash}) for seeding.", manifest.FileName, manifest.ContentHash);
+
+        if (!isHidden)
+        {
+            try { OnFileIngested?.Invoke(record); }
+            catch (Exception ex) { _logger.LogWarning(ex, "[FileArchive] OnFileIngested subscriber threw for {Hash}.", manifest.ContentHash); }
+        }
+
+        return record;
+    }
+
     /// <summary>Copies a file into StorageRootPath/repository, avoiding name collisions.</summary>
     private string CopyIntoRepository(string sourceFilePath)
     {
@@ -196,9 +270,11 @@ public class FileArchiveService : IFileArchiveService
     {
         if (_trackedItems.TryGetValue(contentHash, out var record))
         {
+            bool wasAvailable = IsPubliclyAvailable(record);
             record.IsHidden = !record.IsHidden;
             await SaveIndexRecordsAsync();
             _logger.LogInformation("[FileArchive] Toggled visibility for {Hash}. Hidden={Hidden}", contentHash, record.IsHidden);
+            if (!wasAvailable && IsPubliclyAvailable(record)) RaiseBecameAvailable(record);
             return true;
         }
         return false;
@@ -207,6 +283,8 @@ public class FileArchiveService : IFileArchiveService
     public async Task<bool> UpdateRecordSettingsAsync(string contentHash, bool? isHidden = null, bool? allowDownload = null, string? description = null, Dictionary<string, string>? customFields = null)
     {
         if (!_trackedItems.TryGetValue(contentHash, out var record)) return false;
+
+        bool wasAvailable = IsPubliclyAvailable(record);
 
         if (isHidden.HasValue) record.IsHidden = isHidden.Value;
         if (description != null) record.Description = description;
@@ -229,6 +307,9 @@ public class FileArchiveService : IFileArchiveService
         await SaveIndexRecordsAsync();
         _logger.LogInformation("[FileArchive] Updated settings for {Hash}: Hidden={Hidden}, AllowDownload={AllowDownload}",
             contentHash, record.IsHidden, record.AllowDownload);
+
+        // Seeding (if re-enabled) has already started above, so announcing now is safe.
+        if (!wasAvailable && IsPubliclyAvailable(record)) RaiseBecameAvailable(record);
         return true;
     }
 

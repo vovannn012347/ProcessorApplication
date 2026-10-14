@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using FileTransferModule.Configuration;
 using FileTransferModule.Models.Torrent;
 
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -36,7 +37,8 @@ public interface IFileTrackerCoordinator
     /// <summary>
     /// Registers a peer as a seeder for the specified ContentHash in the tracker table.
     /// </summary>
-    Task RegisterAnnounceAsync(string contentHash, TorrentPeerDescriptor peer);
+    /// <param name="validFor">How long the entry stays valid; null = derived from this node's TrackerReannounceIntervalMinutes.</param>
+    Task RegisterAnnounceAsync(string contentHash, TorrentPeerDescriptor peer, TimeSpan? validFor = null);
 
     /// <summary>
     /// Removes a peer from the active seeders list (e.g., on disconnect).
@@ -49,17 +51,12 @@ public interface IFileTrackerCoordinator
     Task<List<TorrentPeerDescriptor>> GetPeersForFileAsync(string contentHash);
 
     /// <summary>
-    /// Stores / registers a new .ptorrent manifest on this tracker node.
-    /// </summary>
-    Task RegisterManifestAsync(PTorrentManifest manifest);
-
-    /// <summary>
-    /// Retrieves a manifest by its ContentHash if hosted on this tracker.
+    /// Retrieves a manifest by its ContentHash if this node hosts the file (archive-backed).
     /// </summary>
     Task<PTorrentManifest?> GetManifestAsync(string contentHash);
 
     /// <summary>
-    /// Returns all manifests tracked by this node.
+    /// Returns the manifests of all files this node hosts (archive-backed).
     /// </summary>
     Task<List<PTorrentManifest>> GetAllTrackedManifestsAsync(bool includeHidden = false);
 }
@@ -69,40 +66,159 @@ public class TrackerAnnouncePayload
     public string ContentHash { get; set; } = string.Empty;
     public string NodeId { get; set; } = string.Empty;
     public List<string> SignalingEndpoints { get; set; } = new();
+
+    /// <summary>
+    /// The announcer's own re-announce interval. The tracker keeps this entry for 1.5x of it.
+    /// 0/missing (older announcers) = the tracker uses its own TrackerReannounceIntervalMinutes.
+    /// </summary>
+    public int ReannounceIntervalSeconds { get; set; }
 }
 
 public class SwarmRegistrationRecord
 {
     public TorrentPeerDescriptor Peer { get; set; } = new();
     public DateTime LastAnnouncedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime ExpiresUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>Single place that turns a re-announce interval into an announce lifetime.</summary>
+public static class TrackerAnnounceTiming
+{
+    private static readonly TimeSpan MinTtl = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan MaxTtl = TimeSpan.FromHours(36);
+
+    /// <summary>1.5x the interval (one missed re-announce tolerated), clamped to [2 min, 36 h].</summary>
+    public static TimeSpan TtlFor(TimeSpan reannounceInterval)
+    {
+        var ttl = TimeSpan.FromTicks((long)(reannounceInterval.Ticks * 1.5));
+        if (ttl < MinTtl) return MinTtl;
+        if (ttl > MaxTtl) return MaxTtl;
+        return ttl;
+    }
+
+    public static TimeSpan IntervalFromSettings(FileSharingSettings s) =>
+        TimeSpan.FromMinutes(Math.Max(1, s.TrackerReannounceIntervalMinutes));
 }
 
 /// <summary>
 /// Coordinator for the "file_tracker" role. Manages in-memory and local index mapping
 /// of ContentHash -> Peers and responds to network tracker commands over IP2PRouterService.
 /// </summary>
-public class FileTrackerCoordinator : IFileTrackerCoordinator, IDisposable
+public class FileTrackerCoordinator : IFileTrackerCoordinator, IHostedService, IDisposable
 {
     private readonly IP2PRouterService _router;
     private readonly IFileArchiveService _archiveService;
+    private readonly INodeIdentityService _identity;
+    private readonly IOptionsMonitor<FileSharingSettings> _settings;
     private readonly ILogger<FileTrackerCoordinator> _logger;
 
     // ContentHash -> (NodeId -> RegistrationRecord)
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, SwarmRegistrationRecord>> _swarmRegistry = new(StringComparer.OrdinalIgnoreCase);
 
-    // Standalone registry for remote manifests stored on tracker nodes
-    private readonly ConcurrentDictionary<string, PTorrentManifest> _remoteManifestStore = new(StringComparer.OrdinalIgnoreCase);
+    // Announce lifetime is per entry (SwarmRegistrationRecord.ExpiresUtc), derived from the
+    // announcer's own re-announce interval - see TrackerAnnounceTiming. A live seeder never
+    // expires; a dead one drops out of TrackerGetPeers at ExpiresUtc and the sweep deletes it.
+
+    private CancellationTokenSource? _sweepCts;
 
     public FileTrackerCoordinator(
         IP2PRouterService router,
         IFileArchiveService archiveService,
+        INodeIdentityService identity,
+        IOptionsMonitor<FileSharingSettings> settings,
         ILogger<FileTrackerCoordinator> logger)
     {
         _router = router;
         _archiveService = archiveService;
+        _identity = identity;
+        _settings = settings;
         _logger = logger;
+    }
 
+    // Registered as a hosted service (see FileTransferModuleEntryPoint) so the tracker command
+    // handlers are live from host start. Previously they were registered in the constructor, which
+    // only ran the first time something resolved ISwarmDownloadCoordinator (e.g. a controller hit) -
+    // until then a "file_tracker" node silently dropped TrackerAnnounce/TrackerGetPeers requests.
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
         RegisterTrackerHandlers();
+        _logger.LogInformation("[FileTracker] Tracker command handlers registered.");
+
+        _sweepCts = new CancellationTokenSource();
+        _ = Task.Run(() => RunSweepLoopAsync(_sweepCts.Token), CancellationToken.None);
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        _sweepCts?.Cancel();
+        UnregisterTrackerHandlers();
+        return Task.CompletedTask;
+    }
+
+    private async Task RunSweepLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                // Sweep at half our own re-announce interval (1-5 min); re-read every cycle so a
+                // settings change applies without a restart.
+                var half = TrackerAnnounceTiming.IntervalFromSettings(_settings.CurrentValue) / 2;
+                var sweepEvery = half < TimeSpan.FromMinutes(1) ? TimeSpan.FromMinutes(1)
+                    : half > TimeSpan.FromMinutes(5) ? TimeSpan.FromMinutes(5) : half;
+                await Task.Delay(sweepEvery, ct);
+
+                int removed = SweepExpiredAnnounces();
+                if (removed > 0)
+                {
+                    _logger.LogInformation("[FileTracker] Swept {Count} expired announce(s); {Hashes} content hash(es) still tracked.", removed, _swarmRegistry.Count);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // shutdown
+        }
+    }
+
+    /// <summary>
+    /// Physically removes announces past their ExpiresUtc, and content hashes left with no peers.
+    /// Before this, expired entries were only filtered out on read and never deleted, so a
+    /// long-running tracker's registry grew without bound.
+    /// </summary>
+    private int SweepExpiredAnnounces()
+    {
+        var now = DateTime.UtcNow;
+        int removed = 0;
+
+        foreach (var (contentHash, peers) in _swarmRegistry)
+        {
+            foreach (var entry in peers)
+            {
+                if (entry.Value.ExpiresUtc <= now && peers.TryRemove(entry))
+                {
+                    removed++;
+                }
+            }
+
+            if (peers.IsEmpty)
+            {
+                // Only remove the hash if it is still this (empty) dictionary - a concurrent
+                // announce may have just added a peer to it.
+                _swarmRegistry.TryRemove(new KeyValuePair<string, ConcurrentDictionary<string, SwarmRegistrationRecord>>(contentHash, peers));
+            }
+        }
+
+        return removed;
+    }
+
+    private void UnregisterTrackerHandlers()
+    {
+        _router.UnregisterCommandHandler("TrackerAnnounce");
+        _router.UnregisterCommandHandler("TrackerGetPeers");
+        _router.UnregisterCommandHandler("TrackerGetManifest");
+        _router.UnregisterCommandHandler("TrackerGetAllManifests");
     }
 
     private void RegisterTrackerHandlers()
@@ -126,7 +242,12 @@ public class FileTrackerCoordinator : IFileTrackerCoordinator, IDisposable
                     SignalingEndpoints = payload.SignalingEndpoints ?? new List<string>()
                 };
 
-                await RegisterAnnounceAsync(payload.ContentHash, peer);
+                // Lifetime follows the ANNOUNCER's interval (older announcers send none -> ours).
+                TimeSpan? validFor = payload.ReannounceIntervalSeconds > 0
+                    ? TrackerAnnounceTiming.TtlFor(TimeSpan.FromSeconds(payload.ReannounceIntervalSeconds))
+                    : null;
+
+                await RegisterAnnounceAsync(payload.ContentHash, peer, validFor);
                 return "{\"success\":true}";
             }
             catch (Exception ex)
@@ -207,7 +328,7 @@ public class FileTrackerCoordinator : IFileTrackerCoordinator, IDisposable
 
     #region IFileTrackerCoordinator Implementation
 
-    public Task RegisterAnnounceAsync(string contentHash, TorrentPeerDescriptor peer)
+    public Task RegisterAnnounceAsync(string contentHash, TorrentPeerDescriptor peer, TimeSpan? validFor = null)
     {
         if (string.IsNullOrWhiteSpace(contentHash) || peer == null || string.IsNullOrWhiteSpace(peer.NodeId))
         {
@@ -215,10 +336,13 @@ public class FileTrackerCoordinator : IFileTrackerCoordinator, IDisposable
         }
 
         var swarms = _swarmRegistry.GetOrAdd(contentHash, _ => new ConcurrentDictionary<string, SwarmRegistrationRecord>(StringComparer.OrdinalIgnoreCase));
+        var now = DateTime.UtcNow;
+        var ttl = validFor ?? TrackerAnnounceTiming.TtlFor(TrackerAnnounceTiming.IntervalFromSettings(_settings.CurrentValue));
         swarms[peer.NodeId] = new SwarmRegistrationRecord
         {
             Peer = peer,
-            LastAnnouncedUtc = DateTime.UtcNow
+            LastAnnouncedUtc = now,
+            ExpiresUtc = now + ttl
         };
 
         _logger.LogDebug("[FileTracker] Peer {NodeId} registered for ContentHash {Hash}", peer.NodeId, contentHash);
@@ -247,96 +371,83 @@ public class FileTrackerCoordinator : IFileTrackerCoordinator, IDisposable
         if (string.IsNullOrWhiteSpace(contentHash)) return new List<TorrentPeerDescriptor>();
 
         var peers = new List<TorrentPeerDescriptor>();
-        var cutoff = DateTime.UtcNow.AddMinutes(-15);
+        var now = DateTime.UtcNow;
 
-        // 1. Gather active in-memory announced peers
+        // 1. Gather active (not yet expired) announced peers
         if (_swarmRegistry.TryGetValue(contentHash, out var swarmDict))
         {
             peers.AddRange(
                 swarmDict.Values
-                    .Where(r => r.LastAnnouncedUtc >= cutoff)
+                    .Where(r => r.ExpiresUtc > now)
                     .Select(r => r.Peer)
             );
         }
 
-        // 2. If locally hosted/seeded, ensure local node initial peers are included
+        // 2. If this node holds the file locally:
+        //    - list THIS node as a seeder only while it actually serves slices (AllowDownload).
+        //      Previously the local manifest's InitialPeers were returned unconditionally, so a file
+        //      with downloads switched off still sent leechers here to a channel that never answered.
+        //    - still pass along the manifest's other InitialPeers (other nodes' original seeders),
+        //      since our own AllowDownload says nothing about them.
         var localFile = await _archiveService.GetTrackedFileAsync(contentHash);
         if (localFile != null && localFile.Manifest != null)
         {
+            string selfId = _identity.NodeId;
+
+            if (localFile.AllowDownload && !string.IsNullOrEmpty(selfId))
+            {
+                AddIfMissing(peers, new TorrentPeerDescriptor
+                {
+                    NodeId = selfId,
+                    SignalingEndpoints = _identity.GetEndpoints()
+                });
+            }
+
             foreach (var initialSeeder in localFile.Manifest.InitialPeers)
             {
-                if (!peers.Any(p => string.Equals(p.NodeId, initialSeeder.NodeId, StringComparison.OrdinalIgnoreCase)))
-                {
-                    peers.Add(initialSeeder);
-                }
+                if (string.Equals(initialSeeder.NodeId, selfId, StringComparison.OrdinalIgnoreCase)) continue;
+                AddIfMissing(peers, initialSeeder);
             }
         }
 
         return peers;
     }
 
-    public Task RegisterManifestAsync(PTorrentManifest manifest)
+    private static void AddIfMissing(List<TorrentPeerDescriptor> peers, TorrentPeerDescriptor candidate)
     {
-        if (manifest != null && !string.IsNullOrWhiteSpace(manifest.ContentHash))
+        if (string.IsNullOrWhiteSpace(candidate.NodeId)) return;
+        if (!peers.Any(p => string.Equals(p.NodeId, candidate.NodeId, StringComparison.OrdinalIgnoreCase)))
         {
-            _remoteManifestStore[manifest.ContentHash] = manifest;
+            peers.Add(candidate);
         }
-
-        return Task.CompletedTask;
     }
 
     public async Task<PTorrentManifest?> GetManifestAsync(string contentHash)
     {
         if (string.IsNullOrWhiteSpace(contentHash)) return null;
 
-        // 1. Check local archive service
+        // Hidden files are still returned to a peer that already knows the exact hash - hidden
+        // means "not listed", not "not downloadable".
         var localRecord = await _archiveService.GetTrackedFileAsync(contentHash);
-        if (localRecord != null)
-        {
-            return localRecord.Manifest;
-        }
-
-        // 2. Check remote manifest memory store
-        if (_remoteManifestStore.TryGetValue(contentHash, out var manifest))
-        {
-            return manifest;
-        }
-
-        return null;
+        return localRecord?.Manifest;
     }
 
     public async Task<List<PTorrentManifest>> GetAllTrackedManifestsAsync(bool includeHidden = false)
     {
-        var result = new Dictionary<string, PTorrentManifest>(StringComparer.OrdinalIgnoreCase);
-
-        // 1. Local archive files filtered by the includeHidden parameter
         var localFiles = await _archiveService.GetTrackedFilesAsync(includeHidden);
-        foreach (var file in localFiles)
-        {
-            result[file.Manifest.ContentHash] = file.Manifest;
-        }
-
-        // 2. Add remote tracked manifests
-        foreach (var kvp in _remoteManifestStore)
-        {
-            if (!result.ContainsKey(kvp.Key))
-            {
-                result[kvp.Key] = kvp.Value;
-            }
-        }
-
-        return result.Values.ToList();
+        return localFiles
+            .Where(f => f.Manifest != null && !string.IsNullOrEmpty(f.Manifest.ContentHash))
+            .GroupBy(f => f.Manifest.ContentHash, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First().Manifest)
+            .ToList();
     }
 
     #endregion
 
     public void Dispose()
     {
-        _router.UnregisterCommandHandler("TrackerAnnounce");
-        _router.UnregisterCommandHandler("TrackerGetPeers");
-        _router.UnregisterCommandHandler("TrackerGetManifest");
-        _router.UnregisterCommandHandler("TrackerGetAllManifests");
+        UnregisterTrackerHandlers();
+        _sweepCts?.Cancel();
         _swarmRegistry.Clear();
-        _remoteManifestStore.Clear();
     }
 }

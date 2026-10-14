@@ -40,7 +40,7 @@ public static class MicsConstants
 {
     public const string FileInputsDirectory = "inputs";
     public const string JournalsDirectory = "journals";
-    public const string LocalizationDirectory = "journals";
+    public const string LocalizationDirectory = "localization";
 
     public const string ScriptManifestFile = "script_manifest.json";
     public const string DirectInputFile = "direct_input.json";

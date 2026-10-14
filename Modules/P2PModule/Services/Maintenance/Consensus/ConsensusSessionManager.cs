@@ -114,7 +114,8 @@ public interface IConsensusSessionManager
     /// this is what makes several-channel consensus possible: a different channelId gets its own
     /// completely independent session, acquired/visited/finalized on its own schedule.
     /// </summary>
-    bool TryAcquireSession(string initiatorNodeId, out ConsensusMergeSession? session, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    /// <summary>Returns the new session, or null if the channel already has one running or starting (BUSY).</summary>
+    Task<ConsensusMergeSession?> TryAcquireSessionAsync(string initiatorNodeId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     ConsensusMergeSession? GetActiveSession(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     bool IsBusy(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     void SetActiveTargetNode(string? targetNodeId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
@@ -127,7 +128,7 @@ public interface IConsensusSessionManager
     List<string> GetPastSyncSetNodes(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     Task<ConsensusSessionDeltaItem?> CreateLocalDeltaAsync(List<ChainSignature>? signatureChain = null, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     bool PrepareDownloadedDeltaFolder(out string deltaId, out string destFolderPath, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
-    bool RegisterDownloadedDelta(string sourceNodeId, string downloadedFolderPath, List<ChainSignature>? signatureChain = null, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    Task<bool> RegisterDownloadedDeltaAsync(string sourceNodeId, string downloadedFolderPath, List<ChainSignature>? signatureChain = null, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     List<ConsensusSessionDeltaItem> GetPendingDeltasToMerge(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     bool HasPendingDeltas(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     bool RemovePendingDelta(string deltaId, bool deleteFolder = false, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
@@ -155,6 +156,8 @@ public class ConsensusSessionManager : IConsensusSessionManager
     // this replaces) - session churn is low-frequency enough that a shared lock across channels is not
     // a contention concern, and it avoids introducing any new per-channel locking subtleties.
     private readonly Dictionary<string, ConsensusMergeSession> _activeSessionsByChannel = new(StringComparer.OrdinalIgnoreCase);
+    // Channels whose session is being created right now (staging workspace in progress) - counts as BUSY.
+    private readonly HashSet<string> _reservedChannels = new(StringComparer.OrdinalIgnoreCase);
 
     public ConsensusSessionManager(
         IConsensusMergeEngine mergeEngine,
@@ -168,20 +171,34 @@ public class ConsensusSessionManager : IConsensusSessionManager
         _logger = logger;
     }
 
-    public bool TryAcquireSession(string initiatorNodeId, out ConsensusMergeSession? session, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
+    /// <summary>
+    /// Acquires the session for a channel, or returns null if one is already running (BUSY).
+    /// Async because creating the staging workspace is async: the old synchronous version blocked
+    /// on it (.GetAwaiter().GetResult()) while holding _sessionLock. Now the channel is RESERVED
+    /// under the lock, the workspace is created with no lock held, and the session is installed
+    /// under the lock again - so a concurrent request still sees BUSY the whole time.
+    /// </summary>
+    public async Task<ConsensusMergeSession?> TryAcquireSessionAsync(string initiatorNodeId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         lock (_sessionLock)
         {
-            if (_activeSessionsByChannel.TryGetValue(channelId, out var existing) && existing != null)
+            if ((_activeSessionsByChannel.TryGetValue(channelId, out var existing) && existing != null) || _reservedChannels.Contains(channelId))
             {
-                _logger.LogWarning("[Session Manager] Rejecting session request from {Initiator} for channel '{ChannelId}' - Active session {SessionId} is already running (BUSY).",
-                    initiatorNodeId, channelId, existing.SessionId);
-                session = null;
-                return false;
+                _logger.LogWarning("[Session Manager] Rejecting session request from {Initiator} for channel '{ChannelId}' - a session is already running or starting (BUSY).",
+                    initiatorNodeId, channelId);
+                return null;
             }
+            _reservedChannels.Add(channelId);
+        }
 
+        try
+        {
             string todayKey = DateTime.UtcNow.ToString("yyyy-MM-dd");
-            var stagingOp = _mergeEngine.CreateStagingOperationAsync(todayKey).GetAwaiter().GetResult();
+            var stagingOp = await _mergeEngine.CreateStagingOperationAsync(todayKey);
+
+            // The session caches its own copy of the day keys, taken as ONE locked snapshot: the
+            // whole session signs/verifies with a matching set even if keys rotate mid-session.
+            var dayKeys = _identity.GetDayKeys();
 
             var newSession = new ConsensusMergeSession
             {
@@ -194,25 +211,34 @@ public class ConsensusSessionManager : IConsensusSessionManager
                 GeneratedDeltasDir = Path.Combine(stagingOp.BasePath, "generated_deltas"),
                 DownloadedDeltasDir = Path.Combine(stagingOp.BasePath, "downloaded_deltas"),
 
-                DayKeyPrivateKey = _identity.PrivateKey ?? Array.Empty<byte>(),
-                DayKeyPublicKey = _identity.PublicKey ?? Array.Empty<byte>(),
-                DayKeySignatureKey = _identity.PrivateSignatureKey ?? Array.Empty<byte>(),
-                DayKeyVerifyKey = _identity.PublicVerifyKey ?? Array.Empty<byte>()
+                DayKeyPrivateKey = dayKeys.PrivateKey,
+                DayKeyPublicKey = dayKeys.PublicKey,
+                DayKeySignatureKey = dayKeys.PrivateSignatureKey,
+                DayKeyVerifyKey = dayKeys.PublicVerifyKey
             };
 
             Directory.CreateDirectory(newSession.GeneratedDeltasDir);
             Directory.CreateDirectory(newSession.DownloadedDeltasDir);
 
-            newSession.PastSyncSet.Add(_identity.NodeId);
-            newSession.VisitedNodes.Add(_identity.NodeId);
+            newSession.PastSyncSet.Add(dayKeys.NodeId);
+            newSession.VisitedNodes.Add(dayKeys.NodeId);
 
-            _activeSessionsByChannel[channelId] = newSession;
+            lock (_sessionLock)
+            {
+                _activeSessionsByChannel[channelId] = newSession;
+            }
 
             _logger.LogInformation("[Session Manager] Consensus session {SessionId} acquired for channel '{ChannelId}' date {Date} by {Initiator}. BasePath: {BasePath}.",
                 newSession.SessionId, channelId, todayKey, initiatorNodeId, stagingOp.BasePath);
 
-            session = newSession;
-            return true;
+            return newSession;
+        }
+        finally
+        {
+            lock (_sessionLock)
+            {
+                _reservedChannels.Remove(channelId);
+            }
         }
     }
 
@@ -236,7 +262,7 @@ public class ConsensusSessionManager : IConsensusSessionManager
     {
         lock (_sessionLock)
         {
-            return _activeSessionsByChannel.ContainsKey(channelId);
+            return _activeSessionsByChannel.ContainsKey(channelId) || _reservedChannels.Contains(channelId);
         }
     }
 
@@ -530,7 +556,7 @@ public class ConsensusSessionManager : IConsensusSessionManager
         }
     }
 
-    public bool RegisterDownloadedDelta(string sourceNodeId, string downloadedFolderPath, List<ChainSignature>? signatureChain = null, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
+    public async Task<bool> RegisterDownloadedDeltaAsync(string sourceNodeId, string downloadedFolderPath, List<ChainSignature>? signatureChain = null, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         ConsensusMergeSession? session;
         lock (_sessionLock)
@@ -560,7 +586,7 @@ public class ConsensusSessionManager : IConsensusSessionManager
 
         var chain = signatureChain ?? incomingMetadata?.SignatureChain ?? new List<ChainSignature>();
 
-        bool isChainValid = VerifySignatureChain(chain, nodeVerifyKeys, session);
+        bool isChainValid = await VerifySignatureChainAsync(chain, nodeVerifyKeys, session);
         if (!isChainValid)
         {
             _logger.LogWarning("[Session Manager] Early verification failed for downloaded delta {DeltaId} from {SourceNodeId}. Purging folder.", deltaId, sourceNodeId);
@@ -863,7 +889,8 @@ public class ConsensusSessionManager : IConsensusSessionManager
         return result;
     }
 
-    private bool VerifySignatureChain(List<ChainSignature> chain, Dictionary<string, byte[]> nodeVerifyKeys, ConsensusMergeSession? session)
+    /// <summary>Async so the historic-key fallback lookup is awaited instead of blocked on (was .GetAwaiter().GetResult()).</summary>
+    private async Task<bool> VerifySignatureChainAsync(List<ChainSignature> chain, Dictionary<string, byte[]> nodeVerifyKeys, ConsensusMergeSession? session)
     {
         if (chain == null || chain.Count == 0) return true;
 
@@ -878,7 +905,7 @@ public class ConsensusSessionManager : IConsensusSessionManager
             {
                 if (session?.StagingOperation != null)
                 {
-                    var historicPeer = _mergeEngine.GetNodeFromStagingHierarchyAsync(session.StagingOperation, sig.SignerNodeId).GetAwaiter().GetResult();
+                    var historicPeer = await _mergeEngine.GetNodeFromStagingHierarchyAsync(session.StagingOperation, sig.SignerNodeId);
                     if (historicPeer?.Identity?.PublicVerifyKey != null && historicPeer.Identity.PublicVerifyKey.Length > 0)
                     {
                         publicVerifyKey = historicPeer.Identity.PublicVerifyKey;

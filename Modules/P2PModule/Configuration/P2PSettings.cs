@@ -15,7 +15,7 @@ public class P2PSettings
     /// </summary>
     public List<string> Endpoints { get; set; } = new();
     /// <summary>
-    /// "Tracker", "Promoted_Tracker", possibly other roles
+    /// "Tracker", possibly other roles
     /// </summary>
     public List<string> NodeRoles { get; set; } = new();
 

@@ -18,11 +18,11 @@ public class SwarmBitfield
     public SwarmBitfield(int totalBlocks, byte[] byteArray)
     {
         TotalBlocks = totalBlocks;
-        _bits = new BitArray(byteArray);
-        if (_bits.Length > totalBlocks)
-        {
-            _bits.Length = totalBlocks;
-        }
+        _bits = new BitArray(byteArray ?? Array.Empty<byte>());
+        // Always normalise to exactly totalBlocks: truncate extra padding bits, and zero-extend a
+        // short/empty payload (an empty BITFIELD means "I have nothing"). Previously a short payload
+        // left _bits shorter than TotalBlocks, so HasBlock() threw ArgumentOutOfRangeException.
+        _bits.Length = totalBlocks;
     }
 
     public bool HasBlock(int blockIndex)

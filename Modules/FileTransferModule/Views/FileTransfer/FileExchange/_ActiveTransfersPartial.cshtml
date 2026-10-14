@@ -1,18 +1,78 @@
-﻿@model List<FileSharingModule.Models.SwarmTransferTaskState>
+﻿@model FileTransferModule.Models.ExchangeTelemetryViewModel
 
-<div class="ftt-space-y-4">
-    @if (Model == null || Model.Count == 0)
+<div class="ftt-space-y-4" data-telemetry data-generated-ms="@Model.GeneratedUnixMs">
+
+    @* Node-wide traffic. Numbers are computed when this snapshot is rendered; "since refresh" is the
+       difference to the previous snapshot this page received (filled in by file-exchange/index.js). *@
+    <div class="ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-p-4 ftt-shadow-sm ftt-grid ftt-grid-cols-1 md:ftt-grid-cols-3 ftt-gap-3 ftt-text-xs ftt-text-slate-700"
+         data-traffic-key="node" data-dl-total="@Model.NodeDownload.TotalBytes" data-ul-total="@Model.NodeUpload.TotalBytes">
+        <div>
+            <div class="ftt-text-[10px] ftt-uppercase ftt-tracking-wider ftt-text-slate-400 ftt-font-bold ftt-mb-1"><i class="fa-solid fa-arrow-down ftt-text-indigo-500"></i> Downloaded (this node)</div>
+            <div class="ftt-text-base ftt-font-bold ftt-text-slate-900">@FormatRate(Model.NodeDownload.RateBps)</div>
+            <div class="ftt-text-slate-500">last min @FormatBytes(Model.NodeDownload.LastMinuteBytes) &middot; total @FormatBytes(Model.NodeDownload.TotalBytes)</div>
+            <div class="ftt-text-slate-500" data-since="dl">since refresh: &mdash;</div>
+        </div>
+        <div>
+            <div class="ftt-text-[10px] ftt-uppercase ftt-tracking-wider ftt-text-slate-400 ftt-font-bold ftt-mb-1"><i class="fa-solid fa-arrow-up ftt-text-emerald-500"></i> Uploaded to peers (this node)</div>
+            <div class="ftt-text-base ftt-font-bold ftt-text-slate-900">@FormatRate(Model.NodeUpload.RateBps)</div>
+            <div class="ftt-text-slate-500">last min @FormatBytes(Model.NodeUpload.LastMinuteBytes) &middot; total @FormatBytes(Model.NodeUpload.TotalBytes)</div>
+            <div class="ftt-text-slate-500" data-since="ul">since refresh: &mdash;</div>
+        </div>
+        <div>
+            <div class="ftt-text-[10px] ftt-uppercase ftt-tracking-wider ftt-text-slate-400 ftt-font-bold ftt-mb-1"><i class="fa-solid fa-gauge"></i> Capacity</div>
+            <div>Downloads running: <span class="ftt-font-semibold">@Model.ActiveDownloads / @Model.MaxActiveDownloads</span></div>
+            <div>Upload slots in use: <span class="ftt-font-semibold">@Model.UploadSlotsInUse / @Model.UploadSlotsMax</span></div>
+            <div class="ftt-text-slate-400">Totals count since the node started.</div>
+        </div>
+    </div>
+
+    @* Files peers are downloading from this node right now (or did within the last minute) -
+       hosted files and finished downloads alike. *@
+    @if (Model.Uploads.Count > 0)
+    {
+        <div class="ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-shadow-sm ftt-overflow-x-auto">
+            <div class="ftt-px-4 ftt-py-2 ftt-text-xs ftt-font-bold ftt-text-slate-700 ftt-border-b ftt-border-gray-100"><i class="fa-solid fa-arrow-up ftt-text-emerald-500"></i> Serving to peers</div>
+            <table class="ftt-min-w-full ftt-text-xs">
+                <thead class="ftt-bg-slate-50 ftt-text-slate-500 ftt-uppercase ftt-tracking-wider ftt-text-[10px]">
+                    <tr>
+                        <th class="ftt-px-4 ftt-py-2 ftt-text-left">File</th>
+                        <th class="ftt-px-4 ftt-py-2 ftt-text-right">Peers</th>
+                        <th class="ftt-px-4 ftt-py-2 ftt-text-right">Rate</th>
+                        <th class="ftt-px-4 ftt-py-2 ftt-text-right">Last min</th>
+                        <th class="ftt-px-4 ftt-py-2 ftt-text-right">Total</th>
+                        <th class="ftt-px-4 ftt-py-2 ftt-text-right">Since refresh</th>
+                    </tr>
+                </thead>
+                <tbody class="ftt-divide-y ftt-divide-gray-100 ftt-text-slate-700">
+                    @foreach (var up in Model.Uploads)
+                    {
+                        <tr data-traffic-key="up:@up.ContentHash" data-ul-total="@up.Upload.TotalBytes">
+                            <td class="ftt-px-4 ftt-py-2" title="@up.ContentHash">@up.FileName</td>
+                            <td class="ftt-px-4 ftt-py-2 ftt-text-right">@up.ActiveChannels</td>
+                            <td class="ftt-px-4 ftt-py-2 ftt-text-right">@FormatRate(up.Upload.RateBps)</td>
+                            <td class="ftt-px-4 ftt-py-2 ftt-text-right">@FormatBytes(up.Upload.LastMinuteBytes)</td>
+                            <td class="ftt-px-4 ftt-py-2 ftt-text-right">@FormatBytes(up.Upload.TotalBytes)</td>
+                            <td class="ftt-px-4 ftt-py-2 ftt-text-right ftt-text-slate-500" data-since="ul">&mdash;</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (Model.Tasks.Count == 0)
     {
         <div class="ftt-py-12 ftt-text-center ftt-text-slate-400 ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-shadow-sm">
             <i class="fa-solid fa-network-wired ftt-text-3xl ftt-mb-2 ftt-block"></i>
-            No active downloads or transfer tasks currently running.
+            No download tasks. Files peers are downloading from this node appear under "Serving to peers".
         </div>
     }
     else
     {
-        @foreach (var task in Model)
+        @foreach (var task in Model.Tasks)
         {
-            <div class="ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-p-5 ftt-shadow-sm ftt-space-y-3">
+            <div class="ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-p-5 ftt-shadow-sm ftt-space-y-3"
+                 data-traffic-key="task:@task.TaskId" data-dl-total="@task.TotalDownloadedBytes" data-ul-total="@task.TotalUploadedBytes">
                 <div class="ftt-flex ftt-flex-col md:ftt-flex-row ftt-justify-between ftt-items-start md:ftt-items-center ftt-gap-2">
                     <div>
                         <h4 class="ftt-text-sm ftt-font-bold ftt-text-slate-900 ftt-flex ftt-items-center ftt-gap-2">
@@ -26,19 +86,22 @@
                     <div class="ftt-flex ftt-items-center ftt-gap-2">
                         @switch (task.Status)
                         {
-                            case FileSharingModule.Models.SwarmTaskStatus.Staging:
+                            case FileTransferModule.Models.SwarmTaskStatus.Staging:
                                 <span class="ftt-px-2.5 ftt-py-1 ftt-bg-indigo-50 ftt-text-indigo-700 ftt-rounded-md ftt-text-xs ftt-font-semibold animate-pulse">Downloading</span>
                                 break;
-                            case FileSharingModule.Models.SwarmTaskStatus.Assembling:
+                            case FileTransferModule.Models.SwarmTaskStatus.Assembling:
                                 <span class="ftt-px-2.5 ftt-py-1 ftt-bg-amber-50 ftt-text-amber-700 ftt-rounded-md ftt-text-xs ftt-font-semibold">Assembling</span>
                                 break;
-                            case FileSharingModule.Models.SwarmTaskStatus.Complete:
+                            case FileTransferModule.Models.SwarmTaskStatus.Complete:
                                 <span class="ftt-px-2.5 ftt-py-1 ftt-bg-emerald-50 ftt-text-emerald-700 ftt-rounded-md ftt-text-xs ftt-font-semibold">Complete</span>
                                 break;
-                            case FileSharingModule.Models.SwarmTaskStatus.Paused:
+                            case FileTransferModule.Models.SwarmTaskStatus.Queued:
+                                <span class="ftt-px-2.5 ftt-py-1 ftt-bg-sky-50 ftt-text-sky-700 ftt-rounded-md ftt-text-xs ftt-font-semibold" title="Waiting for a free download slot (Max Active Downloads).">Queued</span>
+                                break;
+                            case FileTransferModule.Models.SwarmTaskStatus.Paused:
                                 <span class="ftt-px-2.5 ftt-py-1 ftt-bg-slate-100 ftt-text-slate-600 ftt-rounded-md ftt-text-xs ftt-font-semibold">Paused</span>
                                 break;
-                            case FileSharingModule.Models.SwarmTaskStatus.Failed:
+                            case FileTransferModule.Models.SwarmTaskStatus.Failed:
                                 <span class="ftt-px-2.5 ftt-py-1 ftt-bg-red-50 ftt-text-red-600 ftt-rounded-md ftt-text-xs ftt-font-semibold" title="@task.ErrorMessage">Failed</span>
                                 break;
                             default:
@@ -56,6 +119,22 @@
                     <div class="ftt-w-full ftt-bg-slate-100 ftt-rounded-full ftt-h-2.5 ftt-overflow-hidden">
                         <div class="ftt-bg-indigo-600 ftt-h-2.5 ftt-rounded-full transition-all duration-300" style="width: @task.ProgressPercentage%"></div>
                     </div>
+                    <div class="ftt-mt-2 ftt-space-y-0.5 ftt-text-[11px] ftt-text-slate-600">
+                        <div class="ftt-flex ftt-flex-wrap ftt-items-center ftt-gap-x-3 ftt-gap-y-0.5">
+                                <span class="ftt-font-semibold"><i class="fa-solid fa-arrow-down ftt-text-indigo-500"></i> Down</span>
+                                <span>@FormatRate(task.DownloadSpeedBps)</span>
+                                <span class="ftt-text-slate-400">last min @FormatBytes(task.DownloadedLastMinuteBytes)</span>
+                                <span class="ftt-text-slate-400">total @FormatBytes(task.TotalDownloadedBytes)</span>
+                                <span class="ftt-text-slate-500" data-since="dl">since refresh: &mdash;</span>
+                            </div>
+                        <div class="ftt-flex ftt-flex-wrap ftt-items-center ftt-gap-x-3 ftt-gap-y-0.5">
+                                <span class="ftt-font-semibold"><i class="fa-solid fa-arrow-up ftt-text-emerald-500"></i> Up</span>
+                                <span>@FormatRate(task.UploadSpeedBps)</span>
+                                <span class="ftt-text-slate-400">last min @FormatBytes(task.UploadedLastMinuteBytes)</span>
+                                <span class="ftt-text-slate-400">total @FormatBytes(task.TotalUploadedBytes)</span>
+                                <span class="ftt-text-slate-500" data-since="ul">since refresh: &mdash;</span>
+                            </div>
+                    </div>
                 </div>
 
                 <div class="ftt-pt-2 ftt-border-t ftt-border-gray-100 ftt-flex ftt-justify-between ftt-items-center ftt-text-xs">
@@ -64,13 +143,13 @@
                     </button>
 
                     <div class="ftt-flex ftt-gap-2">
-                        @if (task.Status == FileSharingModule.Models.SwarmTaskStatus.Staging)
+                        @if (task.Status == FileTransferModule.Models.SwarmTaskStatus.Staging || task.Status == FileTransferModule.Models.SwarmTaskStatus.Queued)
                         {
                             <button type="button" data-action="pause-task" data-task="@task.TaskId" class="ftt-px-2.5 ftt-py-1 ftt-bg-slate-100 hover:ftt-bg-slate-200 ftt-text-slate-700 ftt-rounded ftt-text-xs ftt-font-medium">
                                 <i class="fa-solid fa-pause"></i> Pause
                             </button>
                         }
-                        else if (task.Status == FileSharingModule.Models.SwarmTaskStatus.Paused)
+                        else if (task.Status == FileTransferModule.Models.SwarmTaskStatus.Paused)
                         {
                             <button type="button" data-action="resume-task" data-task="@task.TaskId" class="ftt-px-2.5 ftt-py-1 ftt-bg-slate-100 hover:ftt-bg-slate-200 ftt-text-slate-700 ftt-rounded ftt-text-xs ftt-font-medium">
                                 <i class="fa-solid fa-play"></i> Resume
@@ -85,3 +164,20 @@
         }
     }
 </div>
+
+@functions {
+    private static string FormatRate(double bytesPerSecond)
+    {
+        if (bytesPerSecond >= 1024 * 1024) return (bytesPerSecond / (1024 * 1024)).ToString("F1") + " MB/s";
+        if (bytesPerSecond >= 1024) return (bytesPerSecond / 1024).ToString("F0") + " KB/s";
+        return bytesPerSecond.ToString("F0") + " B/s";
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes >= 1L << 30) return (bytes / (double)(1L << 30)).ToString("F2") + " GB";
+        if (bytes >= 1L << 20) return (bytes / (double)(1L << 20)).ToString("F1") + " MB";
+        if (bytes >= 1L << 10) return (bytes / (double)(1L << 10)).ToString("F0") + " KB";
+        return bytes + " B";
+    }
+}

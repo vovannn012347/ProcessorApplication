@@ -42,6 +42,39 @@
             }
         </div>
     </div>
+
+    <div class="p2p-mt-4">
+        <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest p2p-block p2p-mb-1">Advertised Consensus Channels</label>
+        <span class="p2p-text-xs p2p-text-gray-500 p2p-block p2p-mb-2">Datasets this node syncs with peers. Only installed channels can be advertised; changes are announced to the network once, shortly after saving.</span>
+        <div class="p2p-grid p2p-grid-cols-1 sm:p2p-grid-cols-3 p2p-gap-4 p2p-p-3 p2p-bg-gray-50 p2p-border p2p-border-gray-200 p2p-rounded-lg">
+            @if (Model.InstalledConsensusChannels == null || !Model.InstalledConsensusChannels.Any())
+            {
+                <span class="p2p-text-xs p2p-text-gray-400 p2p-italic">No consensus channels installed.</span>
+            }
+            else
+            {
+                var advertised = Model.General.AdvertisedConsensusChannels ?? new List<string>();
+                foreach (var channelId in Model.InstalledConsensusChannels)
+                {
+                    <label class="p2p-flex p2p-items-center p2p-gap-2.5 p2p-text-sm p2p-text-slate-700 p2p-cursor-pointer">
+                        <input type="checkbox" name="General.AdvertisedConsensusChannels" value="@channelId" @(advertised.Contains(channelId, StringComparer.OrdinalIgnoreCase) ? "checked" : "") class="p2p-rounded p2p-border-gray-300 p2p-text-blue-600 focus:p2p-ring-blue-500" />
+                        <span class="p2p-font-mono p2p-text-xs">@channelId</span>
+                    </label>
+                }
+            }
+            @if (Model.UnavailableConsensusChannels != null)
+            {
+                foreach (var channelId in Model.UnavailableConsensusChannels)
+                {
+                    <label class="p2p-flex p2p-items-center p2p-gap-2.5 p2p-text-sm p2p-text-gray-400" title="Opted in, but the module providing this channel isn't loaded. Kept, and advertised again once the module is back.">
+                        <input type="checkbox" checked disabled class="p2p-rounded p2p-border-gray-300" />
+                        <span class="p2p-font-mono p2p-text-xs">@channelId</span>
+                        <span class="p2p-text-[10px] p2p-italic">(module not loaded)</span>
+                    </label>
+                }
+            }
+        </div>
+    </div>
 </div>
 
 <div class="p2p-border-t p2p-border-gray-100 p2p-pt-6 p2p-mt-6 p2p-space-y-4">

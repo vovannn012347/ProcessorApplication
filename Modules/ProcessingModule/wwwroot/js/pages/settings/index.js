@@ -6,7 +6,8 @@
     const SCRIPT_ID = "processor-settings";
     const WRAPPER_ID = "settings-partial-wrapper";
 
-    root = {}
+    // Module-scoped (was an undeclared assignment, which leaked a global window.root).
+    let root = null;
 
     window.ModuleRegistry = window.ModuleRegistry || {};
 
@@ -40,7 +41,7 @@
         /**
          * AJAX Save Handling
          */
-        handleSave: function (root) {
+        handleSave: function (root, form) {
             const btn = root.querySelector('#saveSettingsButton');
             const url = form.action;
             const formData = new FormData(form);

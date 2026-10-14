@@ -6,7 +6,7 @@
 (function () {
     const SCRIPT_ID = "ftt-catalog";
     const WRAPPER_ID = "file-catalog-wrapper";
-    const CONTROLLER_PATH = "FileTr/FileCatalog";
+    const CONTROLLER_PATH = "FileTransfer/FileCatalog";
 
     let root = {};
     let currentPage = 0;

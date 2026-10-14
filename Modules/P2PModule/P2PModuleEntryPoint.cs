@@ -44,9 +44,9 @@ public class P2PModuleEntryPoint : IModule
 
     // Extensible roles for the informational system
     public const string RoleTracker = "tracker";
-    public const string TempTracker = "promoted_tracker"; //temporary role, if no trackers
+    //public const string TempTracker = "promote d_tracker"; //temporary role, if no trackers
 
-    public IEnumerable<string> ListAdvertisedCapabilities() => new[] { RoleTracker, TempTracker };
+    public IEnumerable<string> ListAdvertisedCapabilities() => new[] { RoleTracker };
 
     public ModuleDependency[] Dependencies => new[]
     {

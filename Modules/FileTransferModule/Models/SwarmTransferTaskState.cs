@@ -33,6 +33,13 @@ public class SwarmTransferTaskState
     public double ProgressPercentage => Bitfield.GetProgressPercentage();
     public double DownloadSpeedBps { get; set; }
     public double UploadSpeedBps { get; set; }
+
+    /// <summary>Bytes received for this task (accepted slices) since it started.</summary>
+    public long TotalDownloadedBytes { get; set; }
+    /// <summary>Bytes this node served to peers of the same file since the node started.</summary>
+    public long TotalUploadedBytes { get; set; }
+    public long DownloadedLastMinuteBytes { get; set; }
+    public long UploadedLastMinuteBytes { get; set; }
     public int ActiveSeedersCount { get; set; }
     public List<string> ConnectedPeerIds { get; set; } = new();
 

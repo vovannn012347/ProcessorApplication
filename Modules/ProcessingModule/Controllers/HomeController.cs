@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Globalization;
 using System.Security.Claims;
 using System.Threading;
 
@@ -210,6 +211,11 @@ public class HomeController : Controller
                 return rawLabel; // Fallback to raw label if orchestration mapping missing
             }
 
+            // Optional help text: "<text_label>.description"
+            string? GetDescription(string rawLabel, Dictionary<string, string> keyMap) =>
+                keyMap.TryGetValue(rawLabel, out var locKey) &&
+                localizationDict.TryGetValue($"{locKey}.description", out var text) ? text : null;
+
             var systemTypes = InOutType.SourceInput;
 
             var viewModel = new ScriptDetailsViewModel
@@ -219,14 +225,16 @@ public class HomeController : Controller
                     .Select(i => new ParameterDetailViewModel
                     {
                         DisplayName = GetLocalizedLabel(i.Label, inputKeyMap),
-                        Type = i.Type
+                        Type = i.Type,
+                        Description = GetDescription(i.Label, inputKeyMap)
                     }).ToList(),
 
                 Outputs = manifest.Outputs
                     .Select(o => new ParameterDetailViewModel
                     {
                         DisplayName = GetLocalizedLabel(o.Label, outputKeyMap),
-                        Type = o.Type
+                        Type = o.Type,
+                        Description = GetDescription(o.Label, outputKeyMap)
                     }).ToList()
             };
 
@@ -277,24 +285,44 @@ public class HomeController : Controller
                 string key = $"{input.Label}|{input.Type}";
 
                 string description = input.Label;
-                if (orchestratorMap.TryGetValue(input.Label, out var locKey))
+                if (orchestratorMap.TryGetValue(input.Label, out string? locKey))
                 {
                     if (!localization.TryGetValue(locKey, out description))
                         description = locKey;
                 }
 
+                // Optional extras from localization: "<key>.description" and "<key>.choice.<value>"
+                string? help = null;
+                if (locKey != null) localization.TryGetValue($"{locKey}.description", out help);
+
                 var meta = new ScriptInputMetadata
                 {
                     ScriptLabel = script.ScriptLabel,
-                    LocalizedDescription = description
+                    LocalizedDescription = description,
+                    Help = help
                 };
 
                 if (!inputGroups.TryGetValue(key, out var group))
                 {
-                    group = new GroupedInputViewModel { Label = input.Label, Type = input.Type };
+                    group = new GroupedInputViewModel { Label = input.Label, Type = input.Type, DisplayName = description };
                     inputGroups[key] = group;
                 }
                 group.Sources.Add(meta);
+                group.Optional &= input.Optional;
+                group.Default ??= input.Default;
+
+                // Shared inputs: the first script that defines choices/limits wins
+                if (group.Choices.Count == 0 && input.Choices is { Count: > 0 })
+                {
+                    group.Choices = input.Choices.Select(v => new ChoiceOptionViewModel
+                    {
+                        Value = v,
+                        Text = locKey != null && localization.TryGetValue($"{locKey}.choice.{v}", out var t) ? t : v
+                    }).ToList();
+                }
+                group.Min ??= input.Min;
+                group.Max ??= input.Max;
+                group.Step ??= input.Step;
             }
         }
 
@@ -429,17 +457,22 @@ public class HomeController : Controller
                     inputsBase[label] = fileDirPathValue;
                     stepInputs[label] = fileDirPathValue;
                 }
-                else 
-                if (InOutType.ScalarInput.Contains(type.ToLower()) &&
-                    values.TryGetValue(key, out var userValue))
+                else
+                if (InOutType.ScalarInput.Contains(type.ToLower()))
                 {
-                    directInputs[label] = type switch
-                    {
-                        InOutType.Boolean => bool.TryParse(userValue, out bool b) && b,
-                        InOutType.Integer => int.TryParse(userValue, out int iv) ? iv : 0,
-                        InOutType.Decimal => decimal.TryParse(userValue, out decimal dv) ? dv : 0m,
-                        _ => userValue
-                    };
+                    values.TryGetValue(key, out var userValue);
+
+                    // Unchecked checkboxes post nothing, so a missing boolean means false.
+                    // Other scalars left empty fall back to the manifest default;
+                    // with no default they are omitted and the script uses its own.
+                    object? parsed = type == InOutType.Boolean
+                        ? ParseScalar(type, userValue ?? "false")
+                        : ParseScalar(type, userValue) ?? ParseScalar(type, input.Default);
+
+                    parsed = ApplyConstraints(input, type, parsed);
+
+                    if (parsed == null) continue;
+                    directInputs[label] = parsed;
 
                     string relScalarPath = $"./{subJob.StepDirectoryName}/{MicsConstants.DirectInputFile}";
                     inputsBase[label] = relScalarPath;
@@ -599,6 +632,71 @@ public class HomeController : Controller
 
         return localization.TryGetValue(defaultLocale, out var fallback) ? fallback : localization.Values.FirstOrDefault() ?? "";
     }
+
+    /// <summary>
+    /// Parses a posted or default scalar with InvariantCulture
+    /// (number inputs always post "0.5", whatever the server culture).
+    /// Returns null for empty or unparsable values.
+    /// </summary>
+    private static object? ParseScalar(string type, string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        raw = raw.Trim();
+        var inv = CultureInfo.InvariantCulture;
+        switch (type)
+        {
+            case InOutType.Boolean:
+                if (bool.TryParse(raw, out var b)) return b;
+                return raw == "1" || raw.Equals("on", StringComparison.OrdinalIgnoreCase);
+            case InOutType.Integer:
+                if (int.TryParse(raw, NumberStyles.Integer, inv, out var iv)) return iv;
+                if (decimal.TryParse(raw.Replace(',', '.'), NumberStyles.Number, inv, out var di)) return (int)Math.Round(di);
+                return null;
+            case InOutType.Decimal:
+                if (decimal.TryParse(raw.Replace(',', '.'), NumberStyles.Number, inv, out var dv)) return dv;
+                return null;
+            default:
+                return raw;
+        }
+    }
+
+    /// <summary>
+    /// Enforces manifest "choices" / "min" / "max" on a parsed scalar (the form does the same, but
+    /// a request can carry anything). A value outside the choices falls back to the manifest default;
+    /// numbers are clamped into range. Choice matching is case-insensitive and returns the manifest's spelling.
+    /// </summary>
+    private static object? ApplyConstraints(InputMapping input, string type, object? parsed)
+    {
+        if (parsed == null || type == InOutType.Boolean) return parsed;
+
+        if (input.Choices is { Count: > 0 })
+        {
+            var inv = CultureInfo.InvariantCulture;
+            string asText = Convert.ToString(parsed, inv) ?? string.Empty;
+            string? match = input.Choices.FirstOrDefault(c =>
+                string.Equals(c, asText, StringComparison.OrdinalIgnoreCase) ||
+                (type != InOutType.String &&
+                 decimal.TryParse(c, NumberStyles.Number, inv, out var cv) &&
+                 cv == Convert.ToDecimal(parsed, inv)));
+
+            return match != null ? ParseScalar(type, match) : ParseScalar(type, input.Default);
+        }
+
+        switch (parsed)
+        {
+            case int i:
+                if (input.Min is decimal iLo && i < iLo) i = (int)Math.Ceiling(iLo);
+                if (input.Max is decimal iHi && i > iHi) i = (int)Math.Floor(iHi);
+                return i;
+            case decimal d:
+                if (input.Min is decimal dLo && d < dLo) d = dLo;
+                if (input.Max is decimal dHi && d > dHi) d = dHi;
+                return d;
+            default:
+                return parsed;
+        }
+    }
+
     private async Task<ScriptManifest?> LoadManifestAsync(ScriptIndex scriptIndex)
     {
         string baseSourcePath = _settings.CurrentValue.ScriptSourcePath;

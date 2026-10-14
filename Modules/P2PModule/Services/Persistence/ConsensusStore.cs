@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 using P2PModule.Configuration;
 using P2PModule.Interfaces;
 using P2PModule.Models;
+using ProcessorApplication.Utils;
 
 namespace P2PModule.Services.Persistence;
 
@@ -53,8 +54,8 @@ public class ConsensusStore : IConsensusStore, IDisposable
         UpdateSettings();
         InitializeAsync();
 
-        _settingsChangeListener = _p2pSettings.OnChange((settings, name) => UpdateSettings());
-        _settingsChangeListener2 = _storageSettings.OnChange((settings, name) => UpdateSettings());
+        _settingsChangeListener = _p2pSettings.OnChangeDebounced(_ => UpdateSettings());
+        _settingsChangeListener2 = _storageSettings.OnChangeDebounced(_ => UpdateSettings());
     }
 
     private void UpdateSettings()

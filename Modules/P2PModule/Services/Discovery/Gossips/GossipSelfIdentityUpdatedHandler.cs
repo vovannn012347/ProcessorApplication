@@ -7,6 +7,7 @@ using P2PModule.Infrastructure;
 using P2PModule.Interfaces;
 using P2PModule.Models;
 using P2PModule.Models.Gossips;
+using P2PModule.Services.Persistence;
 
 namespace P2PModule.Services.Discovery.Gossip;
 

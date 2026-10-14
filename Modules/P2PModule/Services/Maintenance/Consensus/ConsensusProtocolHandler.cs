@@ -198,7 +198,8 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
             return false;
         }
 
-        if (!_sessionManager.TryAcquireSession(_identity.NodeId, out var session) || session == null)
+        var session = await _sessionManager.TryAcquireSessionAsync(_identity.NodeId);
+        if (session == null)
         {
             return false;
         }
@@ -371,7 +372,8 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         _logger.LogInformation("[Consensus Protocol] Received ConsensusStartPing from {SenderNodeId}. Debuffing rating and starting session...", senderNodeId);
         await _ratingService.ApplyLocalReputationUpdateAsync(senderNodeId, -5);
 
-        if (_sessionManager.TryAcquireSession(_identity.NodeId, out var newSession) && newSession != null)
+        var newSession = await _sessionManager.TryAcquireSessionAsync(_identity.NodeId);
+        if (newSession != null)
         {
             SeedVisitQueueFromPeerTracker();
             RegisterConsensusNetworkHandlers();
@@ -765,7 +767,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                 bool downloaded = await DownloadDeltaFilesAsync(senderNodeId, remoteDeltaId, destFolderPath, ct);
                 if (downloaded)
                 {
-                    bool registered = _sessionManager.RegisterDownloadedDelta(senderNodeId, destFolderPath, ping.SignatureChain);
+                    bool registered = await _sessionManager.RegisterDownloadedDeltaAsync(senderNodeId, destFolderPath, ping.SignatureChain);
                     if (registered)
                     {
                         _logger.LogInformation("[Consensus Protocol] Successfully downloaded and registered delta {DeltaId} from {Sender}.", assignedDeltaId, senderNodeId);
@@ -1121,19 +1123,18 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
             .ToList();
 
         var trackerCandidates = allPeers
-            .Where(p => p.Identity!.Roles.Contains("tracker") || p.Identity.Roles.Contains("promoted_tracker"))
+            .Where(p => p.Identity!.Roles.Contains("tracker"))
             .Select(p => p.Identity!.NodeId)
             .ToList();
 
         if (trackerCandidates.Count > 0)
         {
-            _ = EnsureSelfDemotedAsync();
             _sessionManager.QueueNodesToVisit(trackerCandidates);
-            _logger.LogInformation("[Consensus Protocol] Seeded visit queue with {Count} tracker/promoted_tracker nodes.", trackerCandidates.Count);
+            _logger.LogInformation("[Consensus Protocol] Seeded visit queue with {Count} tracker node(s).", trackerCandidates.Count);
         }
         else
         {
-            _logger.LogWarning("[Consensus Role] No trackers found in vicinity! Promoting local node to 'promoted_tracker' to drive fallback loop.");
+            _logger.LogWarning("[Consensus Role] No trackers found in vicinity! Self-promoting local node to 'tracker' to drive fallback loop.");
             _ = PromoteSelfToTrackerAsync();
 
             var peerCandidates = allPeers.Select(p => p.Identity!.NodeId).ToList();
@@ -1141,42 +1142,74 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         }
     }
 
+    /// <summary>
+    /// No separate "promoted_tracker" role exists - self-promotion adds the SAME "tracker" role
+    /// everyone else already checks for, directly into NodeRoles. IsTemporarilyPromotedTracker is
+    /// pure bookkeeping: it only records whether WE were the one who added "tracker" ourselves, so
+    /// EnsureSelfDemotedAsync knows it's safe to remove it later - if "tracker" was already present
+    /// (the user's own permanent config), this does nothing and never sets the flag, so a later
+    /// demote can never strip a role the user explicitly configured.
+    /// </summary>
     private async Task PromoteSelfToTrackerAsync()
     {
-        var capacities = _identity.GetCapablities();
-        if (!capacities.Contains("promoted_tracker"))
+        var roles = new List<string>(_p2pSettings.CurrentValue.NodeRoles);
+        if (roles.Contains("tracker", StringComparer.OrdinalIgnoreCase))
         {
-            capacities.Add("promoted_tracker");
-            var roleName = nameof(_p2pSettings.CurrentValue.NodeRoles);
-
-            using (var scope = _scopeFactory.CreateScope())
-            {
-                var settingService = scope.ServiceProvider.GetRequiredService<ISettingService>();
-                await settingService.SetAsync(P2PModuleEntryPoint.MODULE_ID, $"{nameof(P2PSettings)}:{roleName}", capacities);
-            }
-
-            _identity.TriggerUpdate();
-            _logger.LogInformation("[Consensus Role] Local node successfully promoted to 'promoted_tracker'.");
+            return; // already a tracker (permanently, via the user's own config) - nothing to self-promote, nothing to later undo
         }
+
+        if (_p2pSettings.CurrentValue.IsTemporarilyPromotedTracker) return; // already self-promoted from an earlier call this round
+
+        roles.Add("tracker");
+
+        using (var scope = _scopeFactory.CreateScope())
+        {
+            var settingService = scope.ServiceProvider.GetRequiredService<ISettingService>();
+            // Both keys in one reload (was two), so listeners see roles + flag change together.
+            settingService.SetAutoUpdate(false);
+            try
+            {
+                await settingService.SetAsync(P2PModuleEntryPoint.MODULE_ID, $"{nameof(P2PSettings)}:{nameof(P2PSettings.NodeRoles)}", roles);
+                await settingService.SetAsync(P2PModuleEntryPoint.MODULE_ID, $"{nameof(P2PSettings)}:{nameof(P2PSettings.IsTemporarilyPromotedTracker)}", true);
+            }
+            finally
+            {
+                settingService.SetAutoUpdate(true);
+                settingService.ForceUpdateOptionsMonitor();
+            }
+        }
+
+        _identity.TriggerUpdate();
+        _logger.LogInformation("[Consensus Role] Local node self-promoted to 'tracker' (temporary - IsTemporarilyPromotedTracker=true).");
     }
 
+    /// <summary>Only ever removes "tracker" if WE added it (IsTemporarilyPromotedTracker=true) - never touches a permanently user-configured one.</summary>
     private async Task EnsureSelfDemotedAsync()
     {
-        var capacities = _identity.GetCapablities();
-        if (capacities.Contains("promoted_tracker"))
+        if (!_p2pSettings.CurrentValue.IsTemporarilyPromotedTracker) return; // nothing to undo
+
+        var roles = new List<string>(_p2pSettings.CurrentValue.NodeRoles);
+        roles.RemoveAll(r => string.Equals(r, "tracker", StringComparison.OrdinalIgnoreCase));
+
+        using (var scope = _scopeFactory.CreateScope())
         {
-            capacities.Remove("promoted_tracker");
-            var roleName = nameof(_p2pSettings.CurrentValue.NodeRoles);
-
-            using (var scope = _scopeFactory.CreateScope())
+            var settingService = scope.ServiceProvider.GetRequiredService<ISettingService>();
+            // Both keys in one reload (was two), so listeners see roles + flag change together.
+            settingService.SetAutoUpdate(false);
+            try
             {
-                var settingService = scope.ServiceProvider.GetRequiredService<ISettingService>();
-                await settingService.SetAsync(P2PModuleEntryPoint.MODULE_ID, $"{nameof(P2PSettings)}:{roleName}", capacities);
+                await settingService.SetAsync(P2PModuleEntryPoint.MODULE_ID, $"{nameof(P2PSettings)}:{nameof(P2PSettings.NodeRoles)}", roles);
+                await settingService.SetAsync(P2PModuleEntryPoint.MODULE_ID, $"{nameof(P2PSettings)}:{nameof(P2PSettings.IsTemporarilyPromotedTracker)}", false);
             }
-
-            _identity.TriggerUpdate();
-            _logger.LogInformation("[Consensus Role] Official trackers detected. Demoted local node from 'promoted_tracker'.");
+            finally
+            {
+                settingService.SetAutoUpdate(true);
+                settingService.ForceUpdateOptionsMonitor();
+            }
         }
+
+        _identity.TriggerUpdate();
+        _logger.LogInformation("[Consensus Role] Self-demoted from temporary 'tracker' role (IsTemporarilyPromotedTracker=false).");
     }
 
     private async Task<List<PeerNodeTransferred>> LoadLocalNodesForSwapAsync(ConsensusMergeSession session)
@@ -1245,6 +1278,13 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
     {
         UnregisterConsensusNetworkHandlers();
         await _sessionManager.FinalizeSessionAsync();
+
+        // Self-promotion (if it happened at all this round) is strictly for driving THIS round
+        // when nothing else was around to do it - always demote once the round is done,
+        // regardless of whether a real tracker ever showed up. Several isolated peers can end up
+        // briefly self-promoted at once; that's fine, each demotes after its own round and that
+        // demotion gossips out like any other role change - no coordination needed between them.
+        _ = EnsureSelfDemotedAsync();
     }
 
     private byte[] ComputeChainLinkSignature(byte[]? previousSig, int order, string signerNodeId, string targetNodeId, long timestampTicks, byte[] daySignatureKey)

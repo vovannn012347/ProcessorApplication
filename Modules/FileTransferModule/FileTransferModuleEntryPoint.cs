@@ -88,6 +88,13 @@ public class FileTransferModuleEntryPoint : IModule
             },
             new MenuItemViewModel
             {
+                Name = "Peer Reputation",
+                IconClass = "fa-solid fa-user-shield",
+                Url = $"/{ModuleId}/FileExchange/PeerReputation",
+                Roles = "Admin"
+            },
+            new MenuItemViewModel
+            {
                 Name = "Settings",
                 IconClass = "fa-solid fa-sliders",
                 Url = $"/{ModuleId}/Settings/Index",
@@ -105,8 +112,15 @@ public class FileTransferModuleEntryPoint : IModule
         services.AddSingleton<ITorrentWireHandler, TorrentWireHandler>();
         services.AddSingleton<IFileChunkStorageEngine, FileChunkStorageEngine>();
 
+        // File-source reputation (separate from P2P node rating) - used by the download coordinator.
+        services.AddSingleton<IFilePeerReputationService, FilePeerReputationService>();
+
         // 3. Register Swarm orchestrator, multi-source download coordinator & tracker role handler
-        services.AddSingleton<IFileTrackerCoordinator, FileTrackerCoordinator>();
+        // FileTrackerCoordinator is also a hosted service so its tracker command handlers are
+        // registered at host start rather than on first resolve.
+        services.AddSingleton<FileTrackerCoordinator>();
+        services.AddSingleton<IFileTrackerCoordinator>(sp => sp.GetRequiredService<FileTrackerCoordinator>());
+        services.AddHostedService(sp => sp.GetRequiredService<FileTrackerCoordinator>());
         services.AddSingleton<ISwarmOrchestratorService, SwarmOrchestratorService>();
         services.AddSingleton<ISwarmDownloadCoordinator, SwarmDownloadCoordinator>();
 

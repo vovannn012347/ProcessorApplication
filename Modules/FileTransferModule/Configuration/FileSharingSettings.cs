@@ -47,19 +47,56 @@ public class FileSharingSettings
     public int SliceSizeBytes { get; set; } = 65536;
 
     /// <summary>
-    /// Maximum concurrent active file upload lanes allowed.
+    /// Download tasks that run at the same time. Further tasks wait in the queue (status Queued)
+    /// and start automatically, oldest first, when a running one finishes, fails or is paused.
     /// </summary>
-    public int MaxActiveUploads { get; set; } = 10;
+    public int MaxActiveDownloads { get; set; } = 3;
 
     /// <summary>
-    /// Maximum concurrent active file download tasks allowed.
+    /// Node-wide number of downloaders served at once (one upload channel each). A downloader
+    /// arriving when all slots are taken is told "nothing here" (empty BITFIELD) and moves on to
+    /// other seeders, retrying this node later.
     /// </summary>
-    public int MaxActiveDownloads { get; set; } = 5;
+    public int MaxUploadSlots { get; set; } = 16;
+
+    /// <summary>Upload slots any single peer may hold at once (across all files), so one node can't take them all.</summary>
+    public int MaxUploadSlotsPerPeer { get; set; } = 2;
+
+    /// <summary>Node-wide upload bandwidth cap in KB/s across all upload channels. 0 = unlimited.</summary>
+    public int MaxUploadRateKBps { get; set; } = 0;
 
     /// <summary>
-    /// Maximum concurrent peer connections per active file download task.
+    /// Maximum seeders a single download task keeps channels open to. Seeders are tried in order
+    /// of file-transfer reputation (best first); banned peers are never used.
     /// </summary>
     public int MaxPeerConnectionsPerFile { get; set; } = 8;
+
+    /// <summary>
+    /// Download side flow control: max slice requests outstanding to one peer at a time. Keeps a
+    /// fast downloader from flooding a seeder's send buffer with a whole block of requests at once.
+    /// </summary>
+    public int MaxOutstandingRequestsPerPeer { get; set; } = 16;
+
+    /// <summary>
+    /// Upload side: max slice requests queued per incoming channel. Requests beyond this are
+    /// dropped (the downloader re-requests after its timeout) instead of piling up in memory.
+    /// </summary>
+    public int UploadQueueLimitPerChannel { get; set; } = 64;
+
+    /// <summary>
+    /// Upload side backpressure: when a channel's SCTP send buffer holds more than this many bytes,
+    /// the seeder waits for it to drain before sending the next slice. Default 1 MB.
+    /// </summary>
+    public int UploadSendBufferHighWaterBytes { get; set; } = 1048576;
+
+    /// <summary>
+    /// File-transfer reputation: number of provably corrupt blocks (peer was the only source) after
+    /// which the peer is banned as a file source. Independent of P2P node rating.
+    /// </summary>
+    public int PeerBanAfterBadBlocks { get; set; } = 3;
+
+    /// <summary>How long a file-source ban lasts, in hours.</summary>
+    public int PeerBanDurationHours { get; set; } = 24;
 
     /// <summary>
     /// Timeout in seconds before a slice request to a peer is considered lost and re-queued.
@@ -70,6 +107,23 @@ public class FileSharingSettings
     /// Discovery timeout in seconds when searching for "file_tracker" nodes or seeders.
     /// </summary>
     public int SeederDiscoveryTimeoutSeconds { get; set; } = 15;
+
+    /// <summary>
+    /// How often (minutes) this node re-announces its hosted files to known file_tracker peers.
+    /// Staleness follows from it: every announce carries this interval, and the tracker keeps the
+    /// entry for 1.5x the ANNOUNCER's interval (one missed cycle tolerated) - so nodes with
+    /// different settings never expire each other early. Old announcers that don't send it fall
+    /// back to the tracker's own value here.
+    /// </summary>
+    public int TrackerReannounceIntervalMinutes { get; set; } = 10;
+
+    /// <summary>
+    /// When true (default), a completed swarm download is registered in the local archive and
+    /// seeded - and announced to known file_tracker peers like any other visible file - so the
+    /// swarm grows as files spread instead of depending forever on the original uploader. Each
+    /// such file can still be hidden or have downloads switched off individually afterwards.
+    /// </summary>
+    public bool SeedCompletedDownloads { get; set; } = true;
 
     /// <summary>
     /// Maximum number of catalog records we will accept and store per remote host - whether

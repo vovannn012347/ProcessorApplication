@@ -7,7 +7,7 @@
 (function () {
     const SCRIPT_ID = "ftt-exchange";
     const WRAPPER_ID = "file-exchange-wrapper";
-    const CONTROLLER_PATH = "FileTr/FileExchange";
+    const CONTROLLER_PATH = "FileTransfer/FileExchange";
     const POLL_INTERVAL_MS = 3000;
 
     let root = {};
@@ -21,6 +21,8 @@
             if (!root) return;
 
             console.log(`[${SCRIPT_ID}] Initializing File Exchange Telemetry.`);
+            this.lastTraffic = null;
+            this.updateSinceRefresh(root.querySelector('#exchange-telemetry-container'));
             this.bindEvents(root);
             this.startTelemetryPolling(root);
         },
@@ -96,8 +98,59 @@
             if (!container) return;
             fetch(`/${CONTROLLER_PATH}/GetTransfersTelemetry`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(res => res.text())
-                .then(html => { container.innerHTML = html; })
+                .then(html => {
+                    container.innerHTML = html;
+                    this.updateSinceRefresh(container);
+                })
                 .catch(err => console.warn(`[${SCRIPT_ID}] Polling error:`, err));
+        },
+
+        /**
+         * "Since refresh" figures. Every element with data-traffic-key carries running byte totals
+         * (data-dl-total / data-ul-total) from the server snapshot; the difference to the previous
+         * snapshot this page received is written into its [data-since="dl"|"ul"] spans. The server
+         * does no per-viewer bookkeeping - each open page tracks its own previous snapshot.
+         */
+        updateSinceRefresh: function (container) {
+            if (!container) return;
+            const wrap = container.querySelector('[data-telemetry]');
+            if (!wrap) return;
+
+            const at = Number(wrap.dataset.generatedMs) || Date.now();
+            const prev = this.lastTraffic;
+            const next = { at: at, totals: {} };
+
+            wrap.querySelectorAll('[data-traffic-key]').forEach(el => {
+                const key = el.dataset.trafficKey;
+                const totals = {
+                    dl: el.dataset.dlTotal !== undefined ? Number(el.dataset.dlTotal) : null,
+                    ul: el.dataset.ulTotal !== undefined ? Number(el.dataset.ulTotal) : null
+                };
+                next.totals[key] = totals;
+
+                const before = prev && prev.totals[key];
+                if (!before) return; // first sighting - nothing to compare yet
+
+                const seconds = Math.max(1, Math.round((at - prev.at) / 1000));
+                el.querySelectorAll('[data-since]').forEach(span => {
+                    // Only spans that belong to THIS element (not a nested traffic element).
+                    if (span.closest('[data-traffic-key]') !== el) return;
+                    const dir = span.dataset.since;
+                    if (before[dir] == null || totals[dir] == null) return;
+                    const delta = Math.max(0, totals[dir] - before[dir]);
+                    const text = `+${this.formatBytes(delta)} in ${seconds}s`;
+                    span.textContent = span.tagName === 'TD' ? text : `since refresh: ${text}`;
+                });
+            });
+
+            this.lastTraffic = next;
+        },
+
+        formatBytes: function (bytes) {
+            if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(2) + ' GB';
+            if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+            if (bytes >= 1024) return Math.round(bytes / 1024) + ' KB';
+            return bytes + ' B';
         },
 
         executePostAction: function (rootElement, actionName, payload, confirmMsg, callback) {

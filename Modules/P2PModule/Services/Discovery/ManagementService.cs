@@ -14,6 +14,7 @@ using P2PModule.Models.Network;
 using P2PModule.Services.Connection;
 using P2PModule.Services.Maintenance;
 using P2PModule.Services.Persistence;
+using ProcessorApplication.Utils;
 
 namespace P2PModule.Services.Discovery;
 
@@ -79,7 +80,8 @@ public class ManagementService : BackgroundService, IMeshManagementService, IDis
             TimeSpan.FromMilliseconds(periodMs),
             TimeSpan.FromMilliseconds(periodMs));
 
-        _settings.OnChange((settings, _) => UpdateSettings(settings));
+        // Kept in _settingsChangeListener so Dispose actually unsubscribes (it was discarded before).
+        _settingsChangeListener = _settings.OnChangeDebounced(UpdateSettings);
 
         return Task.CompletedTask;
     }

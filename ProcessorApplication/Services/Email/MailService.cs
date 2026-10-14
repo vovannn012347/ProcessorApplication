@@ -7,6 +7,7 @@ using MimeKit;
 
 using ProcessorApplication.Configuration.Settings;
 using ProcessorApplication.Infrastructure;
+using ProcessorApplication.Utils;
 
 namespace ProcessorApplication.Services.Email;
 
@@ -28,7 +29,8 @@ public class EmailService : IEmailService, IDisposable
         _logger = logger;
         _optionsMonitor = optionsMonitor;
 
-        _settingsChangeListener = _optionsMonitor.OnChange((settings, name) =>
+        // Debounced: a single settings save used to re-verify the SMTP connection several times.
+        _settingsChangeListener = _optionsMonitor.OnChangeDebounced(_ =>
         {
             _logger.LogInformation("Email settings updated via IOptionsMonitor. Re-verifying...");
             // Fire and forget (or await properly if context allows, but OnChange is void)

@@ -80,6 +80,7 @@ public class ProcessingService : IProcessingService
                 // Physical execution via standalone executor
                 await sandbox.ExecuteJobAsync(subJob.Id);
 
+
                 // Cleanup artifacts not declared in file_output.json
                 await PurgeUnmappedFilesAsync(subJob, task.PhysicalPathRoot);
 

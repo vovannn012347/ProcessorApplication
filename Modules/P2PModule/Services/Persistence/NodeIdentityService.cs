@@ -32,6 +32,48 @@ public class NodeConfig
     public DateTime SaveTime { get; set; } = DateTime.UtcNow;
 }
 
+
+public interface INodeIdentityService
+{
+    public string NodeId { get; }
+    void LoadOrCreateIdentity();
+    string GetLocalNodeId();
+
+    //i prove who am i
+    byte[] PublicKey { get; } //today
+    byte[] PrivateKey { get; } //today
+    byte[]? GetPublicKey(string day = "");
+    byte[]? GetPrivateKey(string day = "");
+
+    //this proves i signed it
+    byte[] PublicVerifyKey { get; } //today
+    byte[] PrivateSignatureKey { get; } //today
+    byte[]? GetPublicVerificator(string day = "");
+    byte[]? GetPrivateCertificate(string day = "");
+    //byte[] RefreshVerify { get; } //today ONLY
+    //byte[] RefreshCert { get; } //today ONLY
+    //byte[]? GetPublicRefresh(string day = "");
+    //byte[]? GetPrivateRefresh(string day = "");
+    List<string> GetEndpoints();
+    List<string> GetCapablities();
+    bool HasRole(string role);
+    void ResetIdentity();
+    void UpdateDailyKeys(bool forceUpdate = false);
+    //trigger update stuffs
+    void TriggerUpdate();
+
+    /// <summary>
+    /// Gets a list of last n available historical day keys sorted from most recent to least recent (descending order).
+    /// </summary>
+    List<string> GetRecentDayKeys(int n);
+    PeerImmutableData GetImmutableData();
+
+    /// <summary>
+    /// returns old identity day key
+    /// </summary>
+    event Action<string>? OnIdentityUpdated;
+}
+
 /// <summary>
 /// Manages the immutable local Node ID and deterministically rotating daily public/private keys.
 /// Uses the daily cryptographic hash chain stamps from IHashStampService to compute active signing coordinates,
@@ -49,8 +91,6 @@ public class NodeIdentityService : INodeIdentityService, IDisposable
     public byte[] PrivateKey { get { lock (_lock) { return _dailyPrivateKey; } } }
     public byte[] PublicVerifyKey { get { lock (_lock) { return _dailyVerifyKey; } } }
     public byte[] PrivateSignatureKey { get { lock (_lock) { return _dailySignatureKey; } } }
-    //public byte[] RefreshVerify { get { lock (_lock) { return _refreshVerifyKey; } } }
-    //public byte[] RefreshCert { get { lock (_lock) { return _refreshCert; } } }
 
     public List<string> GetEndpoints() => _p2pSettings.CurrentValue.Endpoints;
     public List<string> GetCapablities() => _p2pSettings.CurrentValue.NodeRoles.ToList();
@@ -61,8 +101,6 @@ public class NodeIdentityService : INodeIdentityService, IDisposable
     private byte[] _dailyPublicKey = Array.Empty<byte>();
     private byte[] _dailySignatureKey = Array.Empty<byte>();
     private byte[] _dailyVerifyKey = Array.Empty<byte>();
-    //private byte[] _refreshCert = Array.Empty<byte>();
-    //private byte[] _refreshVerifyKey = Array.Empty<byte>();
     private string _masterKey = string.Empty;
     private DateTime _lastSaveTime;
 
@@ -86,7 +124,6 @@ public class NodeIdentityService : INodeIdentityService, IDisposable
         IServiceScopeFactory scopeFactory,
         IConsensusChannelRegistry channelRegistry)
     {
-        //_hashStampService = hashStampService; 
         _scopeFactory = scopeFactory;
         _p2pSettings = settings;
         _logger = logger;

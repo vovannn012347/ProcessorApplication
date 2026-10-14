@@ -222,6 +222,10 @@ app.UseEndpoints(endpoints =>
 });
 
 
+
+await app.RunAsync();
+
+
 /*
 var logger = app.Services
     .GetRequiredService<ILogger<Program>>();
@@ -263,5 +267,3 @@ foreach (var endpoint in endpointDataSource.Endpoints.OfType<RouteEndpoint>())
 }
 Console.WriteLine("==========================================================");
 */
-
-await app.RunAsync();

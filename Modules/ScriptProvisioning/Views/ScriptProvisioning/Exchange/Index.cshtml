@@ -1,0 +1,122 @@
+﻿@{
+    ViewData["Title"] = "Script Exchange";
+    var isAjax = Context.Request.Headers["X-Requested-With"] == "XMLHttpRequest";
+    if (isAjax)
+    {
+        Layout = null;
+    }
+}
+
+@section Styles {
+    <link rel="stylesheet" href="/ScriptProvisioning/css/spv.min.css" asp-append-version="true" />
+}
+
+<link rel="stylesheet" href="/ScriptProvisioning/css/spv.min.css" asp-append-version="true" />
+
+<div id="script-exchange-wrapper" data-script-id="spv-exchange">
+    @Html.AntiForgeryToken()
+    <div class="spv-container spv-mx-auto spv-py-6 spv-px-4 spv-space-y-6">
+
+        <div class="spv-flex spv-flex-col md:spv-flex-row spv-justify-between spv-items-start md:spv-items-center spv-pb-4 spv-border-b spv-border-gray-200">
+            <div>
+                <h1 class="spv-text-2xl spv-font-extrabold spv-text-slate-900 spv-tracking-tight">Script Exchange</h1>
+                <p class="spv-text-xs spv-text-slate-500 spv-mt-1">
+                    Share installed script builds with other nodes and install builds they offer.
+                    Packages travel through PTorrent; installing uses the same checks as a local upload.
+                </p>
+            </div>
+        </div>
+
+        <div id="spv-status" class="spv-hidden spv-p-3 spv-rounded-lg spv-text-xs spv-font-medium"></div>
+
+        @* -------------------- NETWORK -------------------- *@
+        <section class="spv-bg-white spv-border spv-border-gray-200 spv-rounded-xl spv-shadow-sm spv-overflow-hidden">
+            <div class="spv-px-4 spv-py-3 spv-bg-slate-50 spv-border-b spv-border-gray-100 spv-flex spv-flex-col md:spv-flex-row md:spv-items-center spv-justify-between spv-gap-3">
+                <div>
+                    <h2 class="spv-text-sm spv-font-bold spv-text-slate-800 spv-flex spv-items-center spv-gap-2">
+                        <i class="fa-solid fa-satellite-dish spv-text-indigo-600"></i> Available on the network
+                    </h2>
+                    <p class="spv-text-[11px] spv-text-slate-500">From the file catalogue (learned from other nodes). Ask a node directly if its packages don't show up yet.</p>
+                </div>
+                <div class="spv-flex spv-flex-wrap spv-gap-2 spv-items-center">
+                    <input id="spv-probe-node" type="text" placeholder="Node ID" class="spv-text-xs spv-border spv-border-gray-200 spv-rounded-lg spv-px-3 spv-py-2 spv-w-56" />
+                    <button type="button" id="spv-btn-probe" class="spv-px-3 spv-py-2 spv-bg-slate-700 hover:spv-bg-slate-800 spv-text-white spv-rounded-lg spv-text-xs spv-font-semibold spv-flex spv-items-center spv-gap-1.5">
+                        <i class="fa-solid fa-magnifying-glass"></i> Ask node
+                    </button>
+                    <button type="button" id="spv-btn-refresh-remote" class="spv-px-3 spv-py-2 spv-bg-slate-100 hover:spv-bg-slate-200 spv-text-slate-700 spv-rounded-lg spv-text-xs spv-font-semibold spv-flex spv-items-center spv-gap-1.5">
+                        <i class="fa-solid fa-rotate"></i> Refresh
+                    </button>
+                </div>
+            </div>
+            <div class="spv-overflow-x-auto">
+                <table class="spv-min-w-full spv-text-xs">
+                    <thead class="spv-bg-white spv-text-slate-500 spv-uppercase spv-text-[10px] spv-tracking-wider">
+                        <tr>
+                            <th class="spv-text-left spv-px-4 spv-py-2">Script</th>
+                            <th class="spv-text-left spv-px-4 spv-py-2">Version</th>
+                            <th class="spv-text-left spv-px-4 spv-py-2">Build hash</th>
+                            <th class="spv-text-right spv-px-4 spv-py-2">Size</th>
+                            <th class="spv-text-left spv-px-4 spv-py-2">Offered by</th>
+                            <th class="spv-text-left spv-px-4 spv-py-2">Here</th>
+                            <th class="spv-text-right spv-px-4 spv-py-2"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="spv-remote-body" class="spv-divide-y spv-divide-gray-100"></tbody>
+                </table>
+                <p id="spv-remote-empty" class="spv-hidden spv-px-4 spv-py-6 spv-text-center spv-text-xs spv-text-slate-400">No script packages known yet.</p>
+            </div>
+        </section>
+
+        @* -------------------- TASKS -------------------- *@
+        <section id="spv-tasks-section" class="spv-hidden spv-bg-white spv-border spv-border-gray-200 spv-rounded-xl spv-shadow-sm spv-overflow-hidden">
+            <div class="spv-px-4 spv-py-3 spv-bg-slate-50 spv-border-b spv-border-gray-100">
+                <h2 class="spv-text-sm spv-font-bold spv-text-slate-800 spv-flex spv-items-center spv-gap-2">
+                    <i class="fa-solid fa-list-check spv-text-indigo-600"></i> Installs
+                </h2>
+            </div>
+            <ul id="spv-tasks-list" class="spv-divide-y spv-divide-gray-100"></ul>
+        </section>
+
+        @* -------------------- PUBLISH -------------------- *@
+        <section class="spv-bg-white spv-border spv-border-gray-200 spv-rounded-xl spv-shadow-sm spv-overflow-hidden">
+            <div class="spv-px-4 spv-py-3 spv-bg-slate-50 spv-border-b spv-border-gray-100 spv-flex spv-flex-col md:spv-flex-row md:spv-items-center spv-justify-between spv-gap-3">
+                <div>
+                    <h2 class="spv-text-sm spv-font-bold spv-text-slate-800 spv-flex spv-items-center spv-gap-2">
+                        <i class="fa-solid fa-box-open spv-text-indigo-600"></i> Installed builds
+                    </h2>
+                    <p class="spv-text-[11px] spv-text-slate-500">Publish a build to offer it to other nodes. The package is checked first exactly as the receiving node will check it.</p>
+                </div>
+                <div class="spv-flex spv-gap-2 spv-items-center">
+                    <label class="spv-flex spv-items-center spv-gap-2 spv-text-xs spv-text-slate-600">
+                        <input type="checkbox" id="spv-publish-hidden" class="spv-rounded spv-border-gray-300 spv-h-4 spv-w-4" />
+                        Publish unlisted
+                    </label>
+                    <button type="button" id="spv-btn-refresh-builds" class="spv-px-3 spv-py-2 spv-bg-slate-100 hover:spv-bg-slate-200 spv-text-slate-700 spv-rounded-lg spv-text-xs spv-font-semibold spv-flex spv-items-center spv-gap-1.5">
+                        <i class="fa-solid fa-rotate"></i> Refresh
+                    </button>
+                </div>
+            </div>
+            <div class="spv-overflow-x-auto">
+                <table class="spv-min-w-full spv-text-xs">
+                    <thead class="spv-bg-white spv-text-slate-500 spv-uppercase spv-text-[10px] spv-tracking-wider">
+                        <tr>
+                            <th class="spv-text-left spv-px-4 spv-py-2">Script</th>
+                            <th class="spv-text-left spv-px-4 spv-py-2">Version</th>
+                            <th class="spv-text-left spv-px-4 spv-py-2">Build hash</th>
+                            <th class="spv-text-left spv-px-4 spv-py-2">Origin</th>
+                            <th class="spv-text-left spv-px-4 spv-py-2">Shared</th>
+                            <th class="spv-text-right spv-px-4 spv-py-2"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="spv-builds-body" class="spv-divide-y spv-divide-gray-100"></tbody>
+                </table>
+                <p id="spv-builds-empty" class="spv-hidden spv-px-4 spv-py-6 spv-text-center spv-text-xs spv-text-slate-400">No scripts installed.</p>
+            </div>
+        </section>
+    </div>
+
+</div>
+
+@section Scripts {
+    <script src="~/ScriptProvisioning/js/pages/exchange/index.js" asp-append-version="true"></script>
+}

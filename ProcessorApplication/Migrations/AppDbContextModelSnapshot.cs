@@ -281,10 +281,12 @@ namespace ProcessorApplication.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("MasterKey")
-                        .IsRequired()
+                    b.Property<string>("KeyCheck")
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("KeyMode")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("PreviousHash")
                         .IsRequired()
@@ -292,6 +294,14 @@ namespace ProcessorApplication.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("StampTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StoredKey")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("MasterKey");
+
+                    b.Property<string>("WrappedKey")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");

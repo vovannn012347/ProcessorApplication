@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Newtonsoft.Json;
@@ -8,6 +9,7 @@ using ProcessingModule.Configuration;
 using ProcessingModule.Database;
 using ProcessingModule.Database.Models;
 using ProcessingModule.Infrastructure;
+using ProcessingModule.Infrastructure.Util;
 using ProcessingModule.Models;
 using ProcessingModule.Models.Views;
 
@@ -20,16 +22,23 @@ public class ProcessingService : IProcessingService
     private readonly TaskControlMonitor _monitor;
     private readonly IOptionsMonitor<ProcessorSettings> _settings;
     protected readonly ProcessingQueue _processingQueue; 
+    private readonly IResultChainService _resultChain;
+    private readonly Microsoft.Extensions.Logging.ILogger<ProcessingService> _logger;
     
-    private static bool _isSystemHalted = false;
+    /// <summary>Circuit breaker: set when the executor itself is missing. Cleared by Restart.</summary>
+    public static volatile bool IsSystemHalted = false;
 
     public ProcessingService(
         ProcessorDbContext db,
         ISandboxProvider sandboxProvider,
         TaskControlMonitor monitor,
         ProcessingQueue queue,
-        IOptionsMonitor<ProcessorSettings> settings)
+        IOptionsMonitor<ProcessorSettings> settings,
+        IResultChainService resultChain,
+        Microsoft.Extensions.Logging.ILogger<ProcessingService> logger)
     {
+        _resultChain = resultChain;
+        _logger = logger;
         _db = db;
         _sandboxSelector = sandboxProvider;
         _monitor = monitor;
@@ -46,90 +55,67 @@ public class ProcessingService : IProcessingService
                 .ToListAsync();
     }
 
-    public async Task ProcessTaskSequenceAsync(Guid taskId, CancellationToken ct)
+    /// <summary>
+    /// Runs one step. The scheduler decides when (free slot, dependencies complete) and finalizes
+    /// the job afterwards; this method only executes the script and records the step's own outcome.
+    /// </summary>
+    public async Task ExecuteStepAsync(Guid stepId, CancellationToken ct)
     {
-        if (_isSystemHalted) return;
+        var subJob = await _db.ProcessingJobs.Include(s => s.ParentJob).FirstOrDefaultAsync(s => s.Id == stepId, ct);
+        if (subJob == null) return;
 
-        var task = await _db.Jobs.Include(j => j.SubJobs).FirstOrDefaultAsync(j => j.Id == taskId);
-        if (task == null ||
-            task.Status == TaskStatusKeyword.Stopped ||
-            task.Status == TaskStatusKeyword.Paused) return;
-
-        task.Status = TaskStatusKeyword.Running;
-        await _db.SaveChangesAsync();
+        if (IsSystemHalted)
+        {
+            // Halted between scheduling and start: put it back so it runs after Restart
+            subJob.Status = TaskStatusKeyword.Pending;
+            await _db.SaveChangesAsync(CancellationToken.None);
+            return;
+        }
 
         var sandbox = _sandboxSelector.GetActiveProcessor();
 
-        // 2. Execution Loop
-        foreach (var subJob in task.SubJobs.OrderBy(s => s.Sequence))
+        try
         {
-            // Skip already finished steps (Resume logic)
-            if (subJob.Status == TaskStatusKeyword.Complete) continue;
+            // Physical execution via standalone executor
+            await sandbox.ExecuteJobAsync(subJob.Id);
 
-            // Check for manual user intervention (Stop/Pause)
-            await _db.Entry(task).ReloadAsync();
-            if (ct.IsCancellationRequested ||
-                task.Status == TaskStatusKeyword.Stopped ||
-                task.Status == TaskStatusKeyword.Paused) break;
+            // Cleanup artifacts not declared in file_output.json
+            await PurgeUnmappedFilesAsync(subJob, subJob.ParentJob.PhysicalPathRoot);
 
-            subJob.Status = TaskStatusKeyword.Running;
-            await _db.SaveChangesAsync();
+            subJob.Status = TaskStatusKeyword.Complete;
+            subJob.ResultMessage = null;
+        }
+        catch (FileNotFoundException ex)
+        {
+            // Infrastructure failure (executor missing): stop scheduling anything until a restart
+            IsSystemHalted = true;
+            subJob.Status = TaskStatusKeyword.ServerError;
+            subJob.ResultMessage = $"[SERVER ERROR] {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            // This script failed; other steps of the job are not affected (dependents get skipped by the scheduler)
+            subJob.Status = TaskStatusKeyword.Error;
+            subJob.ResultMessage = ex.Message;
+        }
 
+        subJob.CompletedTime = DateTime.UtcNow;
+        await _db.SaveChangesAsync(CancellationToken.None);
+
+        // Record what this build produced from which inputs in the owner's result chain
+        if (subJob.Status == TaskStatusKeyword.Complete || subJob.Status == TaskStatusKeyword.Error)
+        {
             try
             {
-                // Physical execution via standalone executor
-                await sandbox.ExecuteJobAsync(subJob.Id);
-
-
-                // Cleanup artifacts not declared in file_output.json
-                await PurgeUnmappedFilesAsync(subJob, task.PhysicalPathRoot);
-
-                subJob.Status = TaskStatusKeyword.Complete;
-                subJob.CompletedTime = DateTime.UtcNow;
-            }
-            catch (FileNotFoundException ex)
-            {
-                // Infrastructure Failure: Lock threads and mark as ServerError
-                _isSystemHalted = true;
-                subJob.Status = TaskStatusKeyword.ServerError;
-                subJob.ResultMessage = $"[SERVER ERROR] {ex.Message}";
-                task.Status = TaskStatusKeyword.ServerError;
-                await _db.SaveChangesAsync();
-                return;
+                await _resultChain.AppendAsync(subJob.Id, CancellationToken.None);
             }
             catch (Exception ex)
             {
-                // Execution Failure: Mark as Error and halt the sequence
-                subJob.Status = TaskStatusKeyword.Error;
-                subJob.ResultMessage = ex.Message;
-                task.Status = TaskStatusKeyword.Error;
-                await _db.SaveChangesAsync();
-                return;
+                _logger.LogError(ex, "Could not add step {StepId} to the result chain", subJob.Id);
+                subJob.ResultMessage = ((subJob.ResultMessage ?? "") + " [result chain: not recorded]").Trim();
+                await _db.SaveChangesAsync(CancellationToken.None);
             }
-
-            await _db.SaveChangesAsync();
         }
-
-        // 3. Finalize Logic
-        if (task.Status != TaskStatusKeyword.Stopped && task.Status != TaskStatusKeyword.Paused)
-        {
-            // Set overall status based on whether all steps completed
-            bool allFinished = task.SubJobs.All(s => s.Status == TaskStatusKeyword.Complete);
-            task.Status = allFinished ? TaskStatusKeyword.Complete : TaskStatusKeyword.Error;
-            task.CompletedTime = DateTime.UtcNow;
-
-            // SUCCESS/TERMINAL FAILSAFE: Delete the orchestration journal
-            // This stops the background service from trying to recover this job on next restart.
-            DeleteJournal(taskId);
-
-            // Optional: Perform job-level cleanup of the central 'inputs' folder here 
-            // if your settings require visual preservation only for 'Complete' states.
-        }
-
-        await _db.SaveChangesAsync();
-
-        // 4. Resource Cleanup
-        _monitor.Remove(taskId);
     }
 
     private async Task PurgeUnmappedFilesAsync(OrchestratedTaskSubJob subJob, string rootPath)
@@ -225,7 +211,7 @@ public class ProcessingService : IProcessingService
         string subJobManifestPath = Path.Combine(manifestDir, $"{subJob.Id}.json");
 
         // Load Script Metadata for Localization
-        var scriptIndex = await _db.Scripts.FirstOrDefaultAsync(s => s.ScriptIdentifier == subJob.ScriptId);
+        var scriptIndex = await ScriptBuildResolver.ResolveAsync(_db, subJob);
         var scriptManifest = await LoadScriptManifestAsync(scriptIndex);
         var localization = await LoadLocalizationAsync(scriptIndex, scriptManifest);
 
@@ -398,6 +384,13 @@ public class ProcessingService : IProcessingService
         if (task == null) return false;
 
         task.Status = TaskStatusKeyword.Stopped;
+
+        // Steps that haven't started won't start. A step that is already running finishes on its own.
+        var waiting = await _db.ProcessingJobs
+            .Where(j => j.ParentJobId == taskId && j.Status == TaskStatusKeyword.Pending)
+            .ToListAsync();
+        foreach (var step in waiting) step.Status = TaskStatusKeyword.Stopped;
+
         await _db.SaveChangesAsync();
 
         // Remove journal so failsafe recovery ignores stopped jobs
@@ -424,6 +417,10 @@ public class ProcessingService : IProcessingService
         var task = await _db.Jobs.Include(j => j.SubJobs).FirstOrDefaultAsync(j => j.Id == taskId);
         if (task == null || task.Status == TaskStatusKeyword.Complete) return false;
 
+        // Continue what didn't run; finished steps (complete, failed, skipped) keep their result
+        foreach (var step in task.SubJobs.Where(s => s.Status == TaskStatusKeyword.Stopped))
+            step.Status = TaskStatusKeyword.Pending;
+
         task.Status = TaskStatusKeyword.Pending;
         await _db.SaveChangesAsync();
 
@@ -438,7 +435,7 @@ public class ProcessingService : IProcessingService
         var task = await _db.Jobs.Include(j => j.SubJobs).FirstOrDefaultAsync(j => j.Id == taskId);
         if (task == null) return false;
 
-        _isSystemHalted = false; // Reset circuit breaker
+        IsSystemHalted = false; // Reset circuit breaker
 
         foreach (var sub in task.SubJobs) { sub.Status = TaskStatusKeyword.Pending; }
         task.Status = TaskStatusKeyword.Pending;

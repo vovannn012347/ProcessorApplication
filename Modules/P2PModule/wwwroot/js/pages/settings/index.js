@@ -76,15 +76,15 @@
                     .then(data => {
                         if (!data || !data.endpoint) return;
 
-                        // Split current list while discarding orphan elements
-                        let currentEntries = targetTextArea.value.split(',')
+                        // One endpoint per line (the server splits on newlines)
+                        let currentEntries = targetTextArea.value.split(/\r?\n/)
                             .map(v => v.trim())
                             .filter(v => v.length > 0);
 
                         // Enforce uniqueness constraints locally
                         if (!currentEntries.includes(data.endpoint)) {
                             currentEntries.push(data.endpoint);
-                            targetTextArea.value = currentEntries.join(', ');
+                            targetTextArea.value = currentEntries.join('\n');
                         }
                     })
                     .catch(err => console.error(`[${SCRIPT_ID}] Resolution tracking error:`, err));

@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Mvc.Razor;
+﻿using Microsoft.AspNetCore.Mvc.Razor;
 
 using ProcessingModule.Database.Models;
 using ProcessingModule.Models.Views;
@@ -44,8 +44,10 @@ public interface IProcessingService
 
     // Lazy-loads specific results for a sub-job from the physical disk
     Task<SubJobDetailsViewModel?> GetSubJobDetailsAsync(Guid subJobId);
-    Task ProcessTaskSequenceAsync(Guid taskId, CancellationToken ct);
+    /// <summary>Runs one step (script) of a job and records its outcome. Called by the step scheduler.</summary>
+    Task ExecuteStepAsync(Guid stepId, CancellationToken ct);
     Task CreateJournalAsync(OrchestratedTask task);
+    void DeleteJournal(Guid taskId);
     Task<bool> StopJobAsync(Guid taskId);
     Task<bool> PauseJobAsync(Guid taskId);
     Task<bool> ResumeJobAsync(Guid taskId);

@@ -22,6 +22,7 @@ using ProcessingModule.Database;
 using ProcessingModule.Infrastructure;
 using ProcessingModule.Infrastructure.Web;
 using ProcessingModule.Services;
+using ProcessingModule.Services.Installation;
 using ProcessingModule.Services.Processing;
 using ProcessingModule.Services.Sandboxing;
 using ProcessingModule.Services.Sandboxing.Windows;
@@ -89,6 +90,15 @@ public class ProcessorModuleEntryPoint : IModule
         });
 
 
+        // Script package upload - Strict Admin only
+        menu.Add(new MenuItemViewModel
+        {
+            Name = "Install Script",
+            IconClass = "fa-solid fa-file-zipper",
+            Url = $"/{MODULE_ID}/Admin/InstallScript",
+            Roles = "Admin"
+        });
+
         // Module Settings - Strict Admin only
         menu.Add(new MenuItemViewModel
         {
@@ -140,8 +150,10 @@ public class ProcessorModuleEntryPoint : IModule
         services.AddModuleSettings<DockerSandboxSettings>(config, ModuleId);
 
         services.AddScoped<IScriptIndexer, ScriptIndexer>();
+        services.AddScoped<IScriptInstaller, ScriptInstaller>();
 
         services.AddScoped<IProcessingService, ProcessingService>();
+        services.AddScoped<IResultChainService, ResultChainService>();
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {

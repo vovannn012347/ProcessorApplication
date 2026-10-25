@@ -28,6 +28,8 @@ public class SettingsController : Controller
     private readonly IOptionsMonitor<RegisteringSettings> _registeringSettings;
     private readonly IOptionsSnapshot<List<EmailProviderGuesserRule>> _providerRules;
     private readonly RoleManager<IdentityRole> _roleManager;
+    private readonly ProcessorApplication.Services.HashStamps.IHashStampService _hashStamps;
+    private readonly ProcessorApplication.Services.HashStamps.INodeKeyService _nodeKey;
 
     public SettingsController(
         ILogger<SettingsController> logger,
@@ -36,8 +38,12 @@ public class SettingsController : Controller
         IOptionsMonitor<EmailSettings> emailSettings,
         IOptionsMonitor<RegisteringSettings> registeringSettings,
         IOptionsSnapshot<List<EmailProviderGuesserRule>> providerRules,
-        RoleManager<IdentityRole> roleManager)
+        RoleManager<IdentityRole> roleManager,
+        ProcessorApplication.Services.HashStamps.IHashStampService hashStamps,
+        ProcessorApplication.Services.HashStamps.INodeKeyService nodeKey)
     {
+        _hashStamps = hashStamps;
+        _nodeKey = nodeKey;
         _logger = logger;
         _settings = settingsService;
         _securitySettings = securitySettings; 
@@ -74,6 +80,24 @@ public class SettingsController : Controller
         }
 
         return View(model);
+    }
+
+    /// <summary>Checks the server key chain against the root key and the backups.</summary>
+    [HttpGet]
+    public async Task<IActionResult> VerifyKeyChain()
+    {
+        var problems = await _hashStamps.VerifyChainIntegrityAsync();
+        return Json(new { ok = problems.Count == 0, nodeKeyId = _nodeKey.KeyId, keyFile = _nodeKey.KeyFilePath, problems });
+    }
+
+    /// <summary>Puts stamps that exist only in the backups back into the database (after checking them against the root key).</summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RestoreKeyChain()
+    {
+        int restored = await _hashStamps.RestoreFromBackupAsync();
+        var problems = await _hashStamps.VerifyChainIntegrityAsync();
+        return Json(new { restored, ok = problems.Count == 0, problems });
     }
 
     [HttpPost]

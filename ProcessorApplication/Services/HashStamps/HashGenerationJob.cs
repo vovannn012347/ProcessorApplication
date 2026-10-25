@@ -4,6 +4,11 @@ using ProcessorApplication.Configuration.Settings;
 using ProcessorApplication.Infrastructure;
 
 namespace ProcessorApplication.Services.HashStamps;
+
+/// <summary>
+/// Startup: makes sure the node root key exists, encrypts any old plaintext server keys and rewrites the backups.
+/// Then rotates the server key every <see cref="SecuritySettings.HashStampGenerationPeriod"/> hours.
+/// </summary>
 public class HashGenerationJob : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
@@ -11,7 +16,7 @@ public class HashGenerationJob : BackgroundService
     private readonly IOptionsMonitor<SecuritySettings> _securitySettings;
 
     public HashGenerationJob(
-        IServiceScopeFactory scopeFactory, 
+        IServiceScopeFactory scopeFactory,
         ILogger<HashGenerationJob> logger,
         IOptionsMonitor<SecuritySettings> securitySettings)
     {
@@ -24,58 +29,58 @@ public class HashGenerationJob : BackgroundService
     {
         _logger.LogInformation("Hash Generation Background Job is starting.");
 
-        //generate nitial timestamp
-
-        //todo: tie to midnight
-        DateTime lastStampTime = DateTime.UtcNow;
         using (var scope = _scopeFactory.CreateScope())
         {
             var hashStampService = scope.ServiceProvider.GetRequiredService<IHashStampService>();
-
-            var stamp = await hashStampService.GetLatestHashAsync();
-
-            if(stamp == null || stamp.StampTime.AddHours(_securitySettings.CurrentValue.HashStampGenerationPeriod) < DateTime.UtcNow)
+            try
             {
-                stamp = await hashStampService.GenerateAndSaveNewStampAsync();
-                var hashBackupService = scope.ServiceProvider.GetRequiredService<IHashBackupService>();
-                hashBackupService.BackupServerBlock(stamp);
-                lastStampTime = stamp.StampTime;
+                await hashStampService.ProtectLegacyKeysAsync();
             }
-        } 
+            catch (Exception ex)
+            {
+                // Typically: the root key file is missing while keys depend on it. Nothing below can work.
+                _logger.LogCritical(ex, "Server key chain could not be opened. Key rotation is disabled until this is fixed.");
+                return;
+            }
+        }
 
-
-        //timely stamp generation job
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                DateTime nextRun = lastStampTime.Date.AddHours(_securitySettings.CurrentValue.HashStampGenerationPeriod); // Next midnight UTC
-                TimeSpan delay = nextRun - lastStampTime;
-
-                _logger.LogInformation("Next HashStamp rotation scheduled for {NextRun} UTC. Delaying for {DelayTime}.", nextRun, delay);
-
-                await Task.Delay(delay, stoppingToken);
-
+                TimeSpan delay;
                 using (var scope = _scopeFactory.CreateScope())
                 {
                     var hashStampService = scope.ServiceProvider.GetRequiredService<IHashStampService>();
+                    var latest = await hashStampService.GetLatestHashAsync();
 
-                    var stamp = await hashStampService.GenerateAndSaveNewStampAsync();
+                    var period = TimeSpan.FromHours(Math.Max(0.01, _securitySettings.CurrentValue.HashStampGenerationPeriod));
+                    var due = latest.StampTime + period;
 
-                    var hashBackupService = scope.ServiceProvider.GetRequiredService<IHashBackupService>();
+                    if (due <= DateTime.UtcNow)
+                    {
+                        var stamp = await hashStampService.GenerateAndSaveNewStampAsync();
+                        _logger.LogInformation("Server key rotated (stamp {Id}).", stamp.Id);
+                        due = stamp.StampTime + period;
+                    }
 
-                    hashBackupService.BackupServerBlock(stamp);
+                    delay = due - DateTime.UtcNow;
                 }
+
+                if (delay < TimeSpan.FromSeconds(1)) delay = TimeSpan.FromSeconds(1);
+                // Re-check at least hourly so a shortened period in the settings takes effect
+                if (delay > TimeSpan.FromHours(1)) delay = TimeSpan.FromHours(1);
+
+                await Task.Delay(delay, stoppingToken);
             }
             catch (TaskCanceledException)
             {
-                // The service is stopping.
                 break;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error occurred executing Hash Stamp Generation Job.");
-                await Task.Delay(TimeSpan.FromHours(0.5), stoppingToken);
+                await Task.Delay(TimeSpan.FromMinutes(30), stoppingToken).ContinueWith(_ => { });
             }
         }
 

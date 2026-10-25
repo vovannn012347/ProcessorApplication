@@ -8,6 +8,7 @@ using ProcessingModule.Configuration;
 using ProcessingModule.Database;
 using ProcessingModule.Database.Models;
 using ProcessingModule.Infrastructure;
+using ProcessingModule.Infrastructure.Util;
 using ProcessingModule.Models;
 
 using HttpContent = Microsoft.AspNetCore.Http.HttpContext;
@@ -22,7 +23,8 @@ public interface IScriptIndexer
 {
     Task ContinuousReindexAsync(HttpContext context, Func<string, Task> log, CancellationToken ct);
 
-    Task PreciseReindexAsync(string folderPath,
+    /// <summary>Indexes one script folder. Returns the database entry, or null if the folder has no readable manifest.</summary>
+    Task<ScriptIndex?> PreciseReindexAsync(string folderPath,
         HttpContext context = null,
         Func<string, Task> log = null,
         bool saveDb = false);
@@ -112,36 +114,37 @@ public class ScriptIndexer : IScriptIndexer
                 }
 
                 // Step C: Source Files & Hash Check
-                var manifestedFiles = manifest.Inputs
-                    .Where(m => !string.IsNullOrEmpty(m.DiskPath))
-                    .Select(m => Path.Combine(scriptDir, m.DiskPath))
-                    .ToList();
-
-                // Check if files actually exist on disk before hashing
-                bool filesMissing = false;
-                foreach (var file in manifestedFiles)
+                // The hash covers the entry point, script_file/source_file inputs and source_directory contents.
+                var hashed = ScriptHashing.ResolveHashedFiles(manifest, scriptDir);
+                if (!hashed.IsComplete)
                 {
-                    if (!File.Exists(file))
+                    foreach (var problem in hashed.Problems)
                     {
-                        string relFile = Path.GetRelativePath(root, file);
-                        await log($"{logPrefix} [FAIL]: Source file missing: {relFile}");
-                        filesMissing = true;
+                        await log($"{logPrefix} [FAIL]: {problem}");
                     }
-                }
-
-                if (filesMissing)
-                {
                     script.IsAvailable = false;
                     continue;
                 }
 
-                var currentHash = ComputeTotalHash(manifestedFiles);
+                var currentHash = ScriptHashing.ComputeHash(scriptDir, hashed.Files);
 
                 // Update DB state
                 // Same rule as PreciseReindexAsync: an empty manifest hash means "not pinned",
                 // so compare against the hash recorded when the script was first indexed.
                 string expectedHash = string.IsNullOrEmpty(manifest.ScriptHash) ? script.ArtifactHash : manifest.ScriptHash;
-                script.HashMatch = string.Equals(currentHash, expectedHash, StringComparison.OrdinalIgnoreCase);
+                script.HashMatch = ScriptHashing.HashEquals(currentHash, expectedHash);
+
+                if (!script.HashMatch && UpgradeLegacyHash(manifest, scriptDir, expectedHash))
+                {
+                    // Same files as before; the stored hash was made with the old method (no entry point).
+                    script.HashMatch = true;
+                    script.ArtifactHash = currentHash;
+                    await log($"{logPrefix} [INFO]: Hash upgraded to the current method (now covers the entry point).");
+                    if (!string.IsNullOrEmpty(manifest.ScriptHash))
+                    {
+                        await log($"{logPrefix} [WARN]: artifact_hash in the manifest uses the old method. Replace it with {currentHash}.");
+                    }
+                }
 
                 if (!script.HashMatch && _settings.CurrentValue.UpdateHashOnMismatch)
                 {
@@ -183,6 +186,9 @@ public class ScriptIndexer : IScriptIndexer
             // Skip folders already handled by the DB audit (Match by path)
             if (checkedFolders.Contains(fullPath)) continue;
 
+            // Hidden/internal folders (e.g. ".staging" used by the script installer) are never scripts
+            if (Path.GetFileName(fullPath).StartsWith('.')) continue;
+
             // Load manifest to check ID/Version match
             var manifestPath = Path.Combine(fullPath, "script_manifest.json");
             if (!File.Exists(manifestPath))
@@ -222,7 +228,7 @@ public class ScriptIndexer : IScriptIndexer
         await log("[FINISH] Library reindexing complete.");
     }
 
-    public async Task PreciseReindexAsync(string folderPath,
+    public async Task<ScriptIndex?> PreciseReindexAsync(string folderPath,
         HttpContext context = null,
         Func<string, Task> log = null,
         bool saveDb = false)
@@ -234,7 +240,7 @@ public class ScriptIndexer : IScriptIndexer
         if (!File.Exists(manifestPath))
         {
             if (log != null) await log($"[INDEX] [SKIP] No manifest found at {relativeFolder}");
-            return;
+            return null;
         }
 
         var json = await File.ReadAllTextAsync(manifestPath);
@@ -259,15 +265,24 @@ public class ScriptIndexer : IScriptIndexer
                 ? localizedLabel
                 : manifest.ScriptLabel;
 
-            var manifestedFiles = manifest.Inputs
-                .Where(m => !string.IsNullOrEmpty(m.DiskPath))
-                .Select(m => Path.Combine(folderPath, m.DiskPath))
-                .ToList();
+            var hashed = ScriptHashing.ResolveHashedFiles(manifest, folderPath);
+            if (!hashed.IsComplete)
+            {
+                if (log != null)
+                {
+                    foreach (var problem in hashed.Problems) await log($"[INDEX] [WARN] {problem}");
+                }
+            }
 
-            if (log != null) await log($"[INDEX] Calculating hash for {manifestedFiles.Count} files...");
-            var artifactHash = ComputeTotalHash(manifestedFiles);
+            if (log != null) await log($"[INDEX] Calculating hash for {hashed.Files.Count} files...");
+            var artifactHash = ScriptHashing.ComputeHash(folderPath, hashed.Files);
 
-            bool hashMatch = string.IsNullOrEmpty(manifest.ScriptHash) || manifest.ScriptHash == artifactHash;
+            bool hashMatch = string.IsNullOrEmpty(manifest.ScriptHash) || ScriptHashing.HashEquals(manifest.ScriptHash, artifactHash);
+            if (!hashMatch && UpgradeLegacyHash(manifest, folderPath, manifest.ScriptHash))
+            {
+                hashMatch = true;
+                if (log != null) await log($"[INDEX] [WARN] artifact_hash in the manifest uses the old method (no entry point). Replace it with {artifactHash}.");
+            }
 
             if (string.IsNullOrEmpty(manifest.ScriptHash))
             {
@@ -280,7 +295,7 @@ public class ScriptIndexer : IScriptIndexer
             if (existing == null)
             {
                 if (log != null) await log($"[INDEX] Adding new entry to database: {label}");
-                _db.Scripts.Add(new ScriptIndex
+                existing = new ScriptIndex
                 {
                     ScriptIdentifier = manifest.ScriptId,
                     ScriptLabel = label,
@@ -288,10 +303,11 @@ public class ScriptIndexer : IScriptIndexer
                     ProcessorVersion = manifest.MinProcessorVersion,
                     ArtifactHash = artifactHash,
                     HashMatch = hashMatch,
-                    IsAvailable = true,
+                    IsAvailable = hashed.IsComplete,
                     ManifestDirectoryPath = relativeFolder,
                     CreatedTime = DateTime.UtcNow
-                });
+                };
+                _db.Scripts.Add(existing);
             }
             else
             {
@@ -299,12 +315,14 @@ public class ScriptIndexer : IScriptIndexer
                 existing.ScriptLabel = label;
                 existing.ProcessorVersion = manifest.MinProcessorVersion;
 
-                if(!hashMatch && _settings.CurrentValue.UpdateHashOnMismatch)
+                // hashMatch is always true for an unpinned manifest: the folder being indexed now is the
+                // trusted baseline (e.g. a re-installed package), so its hash is recorded.
+                if (hashMatch || _settings.CurrentValue.UpdateHashOnMismatch)
                 {
                     existing.ArtifactHash = artifactHash;
                 }
                 existing.HashMatch = hashMatch;
-                existing.IsAvailable = true;
+                existing.IsAvailable = hashed.IsComplete;
                 existing.ManifestDirectoryPath = relativeFolder;
             }
 
@@ -313,11 +331,22 @@ public class ScriptIndexer : IScriptIndexer
                 await _db.SaveChangesAsync();
                 if (log != null) await log($"[INDEX] Successfully saved {manifest.ScriptId} to database.");
             }
+
+            return existing;
         }
-        else
-        {
-            if (log != null) await log($"[INDEX] [ERROR] Could not parse manifest at {relativeFolder}");
-        }
+
+        if (log != null) await log($"[INDEX] [ERROR] Could not parse manifest at {relativeFolder}");
+        return null;
+    }
+
+    /// <summary>
+    /// True if <paramref name="expectedHash"/> is the old-method hash of the same files,
+    /// i.e. nothing changed and only the hash method did.
+    /// </summary>
+    private static bool UpgradeLegacyHash(ScriptManifest manifest, string scriptDir, string? expectedHash)
+    {
+        if (string.IsNullOrEmpty(expectedHash)) return false;
+        return ScriptHashing.HashEquals(ScriptHashing.ComputeLegacyHash(manifest, scriptDir), expectedHash);
     }
 
     private string ResolveLocalizationFile(HttpContext httpContext, ScriptManifest manifest, string defaultLocale = "en")
@@ -347,6 +376,8 @@ public class ScriptIndexer : IScriptIndexer
         return localization.TryGetValue(defaultLocale, out var fallback) ? fallback : localization.Values.First();
     }
 
+    /// <summary>Old hash method (content of disk_path inputs only). Kept for reference; use <see cref="ScriptHashing"/>.</summary>
+    [Obsolete("Doesn't cover the entry point. Use ScriptHashing.ResolveHashedFiles + ScriptHashing.ComputeHash.")]
     public static string ComputeTotalHash(IEnumerable<string> filePaths)
     {
         using var sha256 = SHA256.Create();

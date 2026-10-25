@@ -118,6 +118,7 @@ public class MainModule : IModule
         services.AddSingleton<IEmailService, EmailService>();
         services.AddHostedService<EmailHealthMonitor>();
 
+        services.AddSingleton<INodeKeyService, NodeKeyService>(); // node root key file (outside the DB)
         services.AddScoped<IHashBackupService, HashBackupService>();
         services.AddScoped<IHashStampService, HashStampService>();
         services.AddHostedService<HashGenerationJob>();
@@ -128,6 +129,7 @@ public class MainModule : IModule
         services.AddScoped<UserManager<ApplicationUser>, ProcessorApplicationUserManager>();
 
         services.AddScoped<IAuditHashKeyProvider, ServerSecurityHashProvider>();
+        services.AddScoped<IUserSealingKeyProvider, UserSealingKeyProvider>(); // keys for per-user result hash chains
 
         // identity
         services.AddIdentity<ApplicationUser, IdentityRole>(options =>

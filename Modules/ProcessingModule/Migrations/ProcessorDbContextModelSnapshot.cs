@@ -17,7 +17,7 @@ namespace ProcessingModule.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "6.0.35");
 
-            modelBuilder.Entity("ProcessorModule.Database.Models.OrchestratedTask", b =>
+            modelBuilder.Entity("ProcessingModule.Database.Models.OrchestratedTask", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -49,7 +49,7 @@ namespace ProcessingModule.Migrations
                     b.ToTable("Jobs");
                 });
 
-            modelBuilder.Entity("ProcessorModule.Database.Models.OrchestratedTaskSubJob", b =>
+            modelBuilder.Entity("ProcessingModule.Database.Models.OrchestratedTaskSubJob", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -59,6 +59,9 @@ namespace ProcessingModule.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("CreatedTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DependsOn")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("ParentJobId")
@@ -72,6 +75,12 @@ namespace ProcessingModule.Migrations
 
                     b.Property<string>("ScriptId")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ScriptIndexId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ScriptVersion")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("Sequence")
@@ -92,7 +101,75 @@ namespace ProcessingModule.Migrations
                     b.ToTable("ProcessingJobs");
                 });
 
-            modelBuilder.Entity("ProcessorModule.Database.Models.ScriptIndex", b =>
+            modelBuilder.Entity("ProcessingModule.Database.Models.ResultChainEntry", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ArtifactHash")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OwnerId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ScriptBuildId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ScriptId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ScriptVersion")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Seal")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Sequence")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("StampId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("StepId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("UserBound")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StepId");
+
+                    b.HasIndex("OwnerId", "Sequence")
+                        .IsUnique();
+
+                    b.ToTable("ResultChain");
+                });
+
+            modelBuilder.Entity("ProcessingModule.Database.Models.ScriptIndex", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -136,9 +213,9 @@ namespace ProcessingModule.Migrations
                     b.ToTable("Scripts");
                 });
 
-            modelBuilder.Entity("ProcessorModule.Database.Models.OrchestratedTaskSubJob", b =>
+            modelBuilder.Entity("ProcessingModule.Database.Models.OrchestratedTaskSubJob", b =>
                 {
-                    b.HasOne("ProcessorModule.Database.Models.OrchestratedTask", "ParentJob")
+                    b.HasOne("ProcessingModule.Database.Models.OrchestratedTask", "ParentJob")
                         .WithMany("SubJobs")
                         .HasForeignKey("ParentJobId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -147,7 +224,7 @@ namespace ProcessingModule.Migrations
                     b.Navigation("ParentJob");
                 });
 
-            modelBuilder.Entity("ProcessorModule.Database.Models.OrchestratedTask", b =>
+            modelBuilder.Entity("ProcessingModule.Database.Models.OrchestratedTask", b =>
                 {
                     b.Navigation("SubJobs");
                 });

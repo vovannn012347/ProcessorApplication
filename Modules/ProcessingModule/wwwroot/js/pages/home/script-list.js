@@ -11,6 +11,7 @@
 
     window.ModuleRegistry[SCRIPT_ID] = {
         // Internal state (scoped per instance)
+        // Selected build IDs (ScriptIndex.Id), in the order they were picked = run order
         selectedScriptIds: [],
 
         /**
@@ -31,6 +32,7 @@
         },
 
         toggleScriptId: function (id) {
+            id = String(id);
             const index = this.selectedScriptIds.indexOf(id);
             if (index === -1) {
                 this.selectedScriptIds.push(id);
@@ -75,7 +77,7 @@
             }
         },
 
-        toggleDetails: async function (id, scriptIdentifier) {
+        toggleDetails: async function (id) {
             const row = root.querySelector('#details-' + id);
             const content = root.querySelector('#content-' + id);
             const icon = root.querySelector('#icon-' + id);
@@ -87,7 +89,7 @@
                 icon.classList.add('pm-text-indigo-500');
 
                 try {
-                    const response = await fetch(`/processing/Home/GetScriptDetails?scriptIdentifier=${scriptIdentifier}`, {
+                    const response = await fetch(`/processing/Home/GetScriptDetails?buildId=${encodeURIComponent(id)}`, {
                         headers: { 'X-Requested-With': 'XMLHttpRequest' }
                     });
                     if (!response.ok) throw new Error();

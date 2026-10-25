@@ -11,7 +11,7 @@
         <div>
             <h2 class="pm-text-xl pm-font-bold pm-text-slate-800">Configure Processing Task</h2>
             <p class="pm-text-[10px] pm-text-slate-400 pm-uppercase pm-tracking-widest pm-font-bold">
-                Sequence: @string.Join(" → ", Model.SelectedScripts.Select(s => s.ScriptLabel))
+                Sequence: @string.Join(" → ", Model.SelectedScripts.Select(s => $"{s.ScriptLabel} v{s.ScriptVersion}"))
             </p>
         </div>
     </div>

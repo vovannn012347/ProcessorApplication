@@ -20,6 +20,7 @@ using ProcessingModule.Configuration;
 using ProcessingModule.Database;
 using ProcessingModule.Database.Models;
 using ProcessingModule.Infrastructure;
+using ProcessingModule.Infrastructure.Util;
 using ProcessingModule.Models;
 using ProcessingModule.Models.Views;
 using ProcessingModule.Services;
@@ -162,11 +163,17 @@ public class HomeController : Controller
         return View(scripts);
     }
 
+    /// <param name="buildId">Library entry (<see cref="ScriptIndex.Id"/>) to describe.</param>
+    /// <param name="scriptIdentifier">Legacy: script_id only; picks the newest available build.</param>
     [HttpGet]
-    public async Task<IActionResult> GetScriptDetails(string scriptIdentifier)
+    public async Task<IActionResult> GetScriptDetails(int? buildId, string? scriptIdentifier)
     {
-        var scriptIndex = await _db.Scripts
-            .FirstOrDefaultAsync(s => s.ScriptIdentifier == scriptIdentifier);
+        ScriptIndex? scriptIndex = buildId.HasValue
+            ? await _db.Scripts.FirstOrDefaultAsync(s => s.Id == buildId.Value)
+            : await _db.Scripts
+                .Where(s => s.ScriptIdentifier == scriptIdentifier)
+                .OrderByDescending(s => s.IsAvailable).ThenByDescending(s => s.CreatedTime)
+                .FirstOrDefaultAsync();
 
         if (scriptIndex == null) return NotFound();
 
@@ -250,17 +257,25 @@ public class HomeController : Controller
     /// prepares a page with be script inputs
     /// inputs may be merged if their type and label is equal 
     /// </summary>
-    /// <param name="selectedScripts">comma-delimited list of script ids to launch</param>
+    /// <param name="selectedScripts">comma-delimited list of build IDs (<see cref="ScriptIndex.Id"/>) in run order</param>
     /// <returns></returns>
     [HttpPost]
     public async Task<IActionResult> PrepareJob(string selectedScripts)
     {
-        if (string.IsNullOrEmpty(selectedScripts)) return RedirectToAction("Queue");
+        var buildIds = ScriptBuildResolver.ParseBuildIds(selectedScripts);
+        if (buildIds.Count == 0) return RedirectToAction("ScriptList");
 
-        var ids = selectedScripts.Split(',');
-        var scripts = await _db.Scripts
-            .Where(s => ids.Contains(s.ScriptIdentifier))
+        // Exact builds, in the order they were selected; disabled/missing builds can't be run.
+        var found = await _db.Scripts
+            .Where(s => buildIds.Contains(s.Id) && s.IsAvailable)
             .ToListAsync();
+        var scripts = buildIds
+            .Select(id => found.FirstOrDefault(s => s.Id == id))
+            .Where(s => s != null)
+            .Select(s => s!)
+            .ToList();
+
+        if (scripts.Count == 0) return RedirectToAction("ScriptList");
 
         var inputGroups = new Dictionary<string, GroupedInputViewModel>();
 
@@ -328,7 +343,7 @@ public class HomeController : Controller
 
         return View(new PrepareJobViewModel
         {
-            ScriptIds = selectedScripts,
+            ScriptIds = string.Join(",", scripts.Select(s => s.Id)),
             SelectedScripts = scripts,
             GroupedInputs = inputGroups.Values.ToList()
         });
@@ -341,7 +356,7 @@ public class HomeController : Controller
     /// downloads and places files correctly
     /// tehre is no full orchestration stuff... yet
     /// </summary>
-    /// <param name="scriptIds">comma-delimited list of script ids to launch</param>
+    /// <param name="scriptIds">comma-delimited list of build IDs (<see cref="ScriptIndex.Id"/>) in run order</param>
     /// <param name="values">entered values</param>
     /// <returns></returns>
     [HttpPost]
@@ -375,15 +390,17 @@ public class HomeController : Controller
             Status = TaskStatusKeyword.Pending
         };
 
-        var ids = scriptIds.Split(',');
+        var ids = ScriptBuildResolver.ParseBuildIds(scriptIds);
+        if (ids.Count == 0) return BadRequest("No scripts selected.");
 
         //files ARE shared
         var sharedFilesDIrectories = new Dictionary<string, string>();
         // 2. Loop through Scripts
-        for (int i = 0; i < ids.Length; i++)
+        for (int i = 0; i < ids.Count; i++)
         {
-            var scriptIndex = await _db.Scripts.FirstOrDefaultAsync(s => s.ScriptIdentifier == ids[i]);
-            if (scriptIndex == null) continue;
+            var buildId = ids[i];
+            var scriptIndex = await _db.Scripts.FirstOrDefaultAsync(s => s.Id == buildId);
+            if (scriptIndex == null || !scriptIndex.IsAvailable) continue;
 
             ScriptManifest? scriptManifest = await LoadManifestAsync(scriptIndex);
             if (scriptManifest == null) continue;
@@ -397,7 +414,9 @@ public class HomeController : Controller
             {
                 Id = subJobId,
                 ParentJobId = jobId,
-                ScriptId = ids[i],
+                ScriptId = scriptIndex.ScriptIdentifier,
+                ScriptVersion = scriptIndex.ScriptVersion,
+                ScriptIndexId = scriptIndex.Id,
                 Sequence = i + 1,
                 Status = TaskStatusKeyword.Pending,
                 StepDirectoryName = stepDirName
@@ -520,6 +539,8 @@ public class HomeController : Controller
             var subJobManifest = new ProcessingManifest
             {
                 RunScript = subJob.ScriptId,
+                ScriptVersion = subJob.ScriptVersion,
+                ScriptBuildId = subJob.ScriptIndexId,
                 Status = TaskStatusKeyword.Pending,
                 FolderBase = $"./{subJob.StepDirectoryName}",
                 InputsFoldersBase = inputsBase,
@@ -536,11 +557,20 @@ public class HomeController : Controller
                 Sequence = subJob.Sequence,
                 ProcessingId = subJobId,
                 ScriptId = subJob.ScriptId,
+                ScriptVersion = subJob.ScriptVersion,
+                ScriptBuildId = subJob.ScriptIndexId,
                 Inputs = stepInputs,
                 Outputs = stepOutputs // Contains overrides if any
             });
 
             task.SubJobs.Add(subJob);
+        }
+
+        // Every selected build was removed or disabled since the form was opened
+        if (task.SubJobs.Count == 0)
+        {
+            try { Directory.Delete(jobRoot, recursive: true); } catch (IOException) { }
+            return BadRequest("The selected script builds are no longer available. Go back to the library and select again.");
         }
 
         // 6. Save Orchestration Manifest to processing_manifests/

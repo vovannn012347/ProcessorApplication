@@ -4,8 +4,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ProcessingModule.Database.Models;
 
+/// <summary>
+/// One installed build of a script: a script_id + version in its own folder.
+/// <see cref="Id"/> is the build ID used everywhere a specific build is selected or run.
+/// </summary>
 public class ScriptIndex
 {
+    /// <summary>Build ID: identifies this exact build (script_id + version + folder) on this node.</summary>
     [Key]
     public int Id { get; set; }
 

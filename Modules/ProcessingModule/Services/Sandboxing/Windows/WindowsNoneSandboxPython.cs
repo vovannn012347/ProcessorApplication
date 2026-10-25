@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using ProcessingModule.Configuration;
 using ProcessingModule.Database;
 using ProcessingModule.Infrastructure;
+using ProcessingModule.Infrastructure.Util;
 using ProcessingModule.Services.Runtime;
 using ProcessingModule.Database.Models;
 
@@ -59,10 +60,14 @@ public class WindowsNoneSandboxPython : ISandboxProcessing
         // the executor contract defines it as relative to --processing-dir.
         string jobRoot = Path.GetFullPath(subJob.ParentJob.PhysicalPathRoot);
 
-        var scriptIndex = await db.Scripts.FirstOrDefaultAsync(s => s.ScriptIdentifier == subJob.ScriptId);
+        // The exact build chosen when the job was created (older steps: best match by script_id/version)
+        var scriptIndex = await ScriptBuildResolver.ResolveAsync(db, subJob);
 
         if (scriptIndex == null)
-            throw new Exception($"Execution Error: Script metadata for {subJob.ScriptId} not found.");
+            throw new Exception($"Execution Error: Script build for {subJob.ScriptId} v{subJob.ScriptVersion} (build {subJob.ScriptIndexId}) not found.");
+
+        if (!scriptIndex.IsAvailable)
+            throw new Exception($"Execution Error: Script build {ScriptBuildResolver.Describe(scriptIndex)} is disabled or its files are missing.");
 
         string scriptSourceDir = Path.GetFullPath(Path.Combine(_settings.CurrentValue.ScriptSourcePath, scriptIndex.ManifestDirectoryPath));
         string manifestRelPath = $"{MicsConstants.OrchestrationDirectory}/{subJob.Id}.json";

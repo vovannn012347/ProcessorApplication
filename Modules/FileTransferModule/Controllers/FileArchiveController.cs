@@ -55,15 +55,25 @@ public class FileArchiveController : Controller
             return Json(new { success = false, message = "No file selected or file is empty." });
         }
 
-        string tempFilePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}_{uploadFile.FileName}");
+        // The temp copy keeps the original name (it becomes the manifest's FileName) and is copied into the
+        // repository before being tracked: tracking it in place would seed a file deleted a moment later.
+        string fileName = Path.GetFileName(uploadFile.FileName);
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return Json(new { success = false, message = "The uploaded file has no name." });
+        }
+
+        string tempDir = Path.Combine(Path.GetTempPath(), $"ftt_upload_{Guid.NewGuid():N}");
+        string tempFilePath = Path.Combine(tempDir, fileName);
         try
         {
+            Directory.CreateDirectory(tempDir);
             using (var stream = new FileStream(tempFilePath, FileMode.Create))
             {
                 await uploadFile.CopyToAsync(stream);
             }
 
-            var record = await _archiveService.IngestAndTrackFileAsync(tempFilePath, isHidden);
+            var record = await _archiveService.IngestAndTrackFileAsync(tempFilePath, isHidden, copyToRepository: true);
             return Json(new { success = true, contentHash = record.Manifest.ContentHash, fileName = record.Manifest.FileName });
         }
         catch (Exception ex)
@@ -72,10 +82,7 @@ public class FileArchiveController : Controller
         }
         finally
         {
-            if (System.IO.File.Exists(tempFilePath))
-            {
-                try { System.IO.File.Delete(tempFilePath); } catch { }
-            }
+            try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true); } catch { }
         }
     }
 

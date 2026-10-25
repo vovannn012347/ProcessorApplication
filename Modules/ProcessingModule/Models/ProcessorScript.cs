@@ -1,4 +1,4 @@
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 
 namespace ProcessingModule.Models;
 #pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
@@ -112,6 +112,12 @@ public class ProcessingManifest
     [JsonProperty("run-script")]
     public string RunScript { get; set; } // ScriptId
 
+    [JsonProperty("script_version")]
+    public string? ScriptVersion { get; set; }
+
+    [JsonProperty("script_build_id")]
+    public int? ScriptBuildId { get; set; }
+
     [JsonProperty("status")]
     public string Status { get; set; }
 
@@ -152,6 +158,12 @@ public class OrchestrationStep
 
     [JsonProperty("script_id")]
     public string ScriptId { get; set; }
+
+    [JsonProperty("script_version")]
+    public string? ScriptVersion { get; set; }
+
+    [JsonProperty("script_build_id")]
+    public int? ScriptBuildId { get; set; }
 
     [JsonProperty("inputs")]
     public Dictionary<string, string> Inputs { get; set; } = new();

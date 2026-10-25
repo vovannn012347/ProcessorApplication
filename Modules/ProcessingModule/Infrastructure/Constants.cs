@@ -1,4 +1,4 @@
-namespace ProcessingModule.Infrastructure;
+﻿namespace ProcessingModule.Infrastructure;
 
 public static class InOutType
 {
@@ -28,6 +28,11 @@ public static class TaskStatusKeyword
     public const string ServerError = "ServerError";
     public const string Paused = "Paused";
     public const string Stopped = "Stopped";
+    /// <summary>Not run because a step it depends on did not complete.</summary>
+    public const string Skipped = "Skipped";
+
+    /// <summary>Statuses a step never leaves on its own.</summary>
+    public static readonly string[] StepFinished = { Complete, Warning, Error, ServerError, Stopped, Skipped };
 }
 
 public static class FileExtensions

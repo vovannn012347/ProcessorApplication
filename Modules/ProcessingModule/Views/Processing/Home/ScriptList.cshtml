@@ -37,6 +37,11 @@
                     <i class="fa-solid fa-arrows-rotate" id="reindexIcon"></i>
                     Reindex Library
                 </button>
+                <a href="/Processing/Admin/InstallScript"
+                   class="pm-mt-2 pm-bg-white pm-border pm-border-slate-200 hover:pm-border-indigo-300 pm-text-slate-500 pm-px-6 pm-py-2.5 pm-rounded-lg pm-text-[10px] pm-font-black pm-transition-all pm-flex pm-items-center pm-gap-2 pm-uppercase pm-tracking-widest pm-shadow-sm">
+                    <i class="fa-solid fa-file-zipper"></i>
+                    Install Script
+                </a>
             }
         </div>
     </div>
@@ -63,10 +68,10 @@
                     var hashMatch = script.HashMatch;
 
                     <tr class="pm-group hover:pm-bg-slate-50/50 pm-transition-colors pm-cursor-pointer @(!isAvailable ? "pm-opacity-60" : "")"
-                        onclick="ProcessorLibrary.toggleSelectionRow('@script.ScriptIdentifier')">
+                        onclick="ProcessorLibrary.toggleSelectionRow('@script.Id')">
                         <td class="pm-px-2 pm-py-3 pm-text-center" onclick="event.stopPropagation()">
-                            <input type="checkbox" id="chk-@script.ScriptIdentifier"
-                                   onchange="ProcessorLibrary.toggleScriptId('@script.ScriptIdentifier')"
+                            <input type="checkbox" id="chk-@script.Id" data-build-id="@script.Id"
+                                   onchange="ProcessorLibrary.toggleScriptId('@script.Id')"
                                    @(isAvailable ? "" : "disabled")
                                    class="pm-h-4 pm-w-4 pm-text-indigo-600 pm-border-slate-300 pm-rounded focus:pm-ring-indigo-500 pm-cursor-pointer disabled:pm-cursor-not-allowed" />
                         </td>
@@ -111,7 +116,7 @@
                             }
                         </td>
                         <td class="pm-px-2 pm-py-3 pm-text-right" onclick="event.stopPropagation()">
-                            <button onclick="ProcessorLibrary.toggleDetails('@script.Id', '@script.ScriptIdentifier')" class="pm-text-slate-300 hover:pm-text-indigo-500 pm-p-1">
+                            <button onclick="ProcessorLibrary.toggleDetails('@script.Id')" class="pm-text-slate-300 hover:pm-text-indigo-500 pm-p-1">
                                 <i class="fa-solid fa-circle-info pm-text-[11px]" id="icon-@script.Id"></i>
                             </button>
                         </td>

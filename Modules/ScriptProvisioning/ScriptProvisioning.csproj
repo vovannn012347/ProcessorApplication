@@ -1,0 +1,52 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <Private>False</Private>
+    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <Configurations>Debug;Release;TrackerDebug;ClientDebug;NodeTracker1Debug;NodeTracker2Debug;NodeClient1Debug;NodeClient2Debug</Configurations>
+
+    <!--for appsettings hook in build.props-->
+    <ModuleKey>ScriptProvisioning</ModuleKey>
+    <Version>1.0.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Script packages travel over FileTransferModule; installing them is ProcessingModule's job (IScriptInstaller).
+       Both are referenced like FileTransferModule references P2PModule: not copied, shared at runtime by the module loader. -->
+  <ItemGroup>
+    <ProjectReference Include="..\FileTransferModule\FileTransferModule.csproj">
+      <CopyLocalSatelliteAssemblies>True</CopyLocalSatelliteAssemblies>
+      <Private>False</Private>
+      <IncludeAssets>all</IncludeAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\ProcessingModule\ProcessingModule.csproj">
+      <CopyLocalSatelliteAssemblies>True</CopyLocalSatelliteAssemblies>
+      <Private>False</Private>
+      <IncludeAssets>all</IncludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ModuleManifestDependency Include="FileTransfer">
+      <MinVersion>1.0.0.0</MinVersion>
+    </ModuleManifestDependency>
+    <ModuleManifestDependency Include="Processing">
+      <MinVersion>1.0.0.0</MinVersion>
+    </ModuleManifestDependency>
+  </ItemGroup>
+
+  <Import Project="$(MSBuildThisFileDirectory)..\..\Build\ModuleManifest.targets" />
+
+</Project>

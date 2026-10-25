@@ -1,0 +1,125 @@
+﻿@{
+    ViewData["Title"] = "Install Script";
+    int maxUploadMb = ViewBag.MaxUploadMb ?? 2048;
+    int maxExtractedMb = ViewBag.MaxExtractedMb ?? 4096;
+}
+@section Styles {
+    <link rel="stylesheet" href="/Processing/css/processor.min.css" asp-append-version="true" />
+}
+
+<div id="install-script-wrapper" data-script-id="processor-install-script"
+     data-max-upload-mb="@maxUploadMb"
+     class="pm-container pm-mx-auto pm-mt-8 pm-px-2 pm-max-w-3xl">
+
+    @Html.AntiForgeryToken()
+
+    <div class="pm-flex pm-justify-between pm-items-end pm-mb-6">
+        <div>
+            <h2 class="pm-text-2xl pm-font-black pm-text-slate-800 pm-tracking-tight">Install Script</h2>
+            <p class="pm-text-[10px] pm-text-slate-400 pm-uppercase pm-font-bold pm-tracking-widest">Upload a script package (.zip)</p>
+        </div>
+        <a href="/Processing/Home/ScriptList" class="pm-text-[10px] pm-font-bold pm-uppercase pm-tracking-widest pm-text-slate-400 hover:pm-text-slate-600 pm-transition-colors">
+            <i class="fa-solid fa-arrow-left pm-mr-1"></i> Return to Library
+        </a>
+    </div>
+
+    @* --- Pick a file --- *@
+    <div id="pickPanel" class="pm-bg-white pm-border pm-border-slate-200 pm-rounded-2xl pm-shadow-sm pm-p-6">
+        <label id="dropZone" for="packageInput"
+               class="pm-flex pm-flex-col pm-items-center pm-justify-center pm-gap-2 pm-h-40 pm-border pm-border-dashed pm-border-slate-300 pm-rounded-xl pm-bg-slate-50 hover:pm-border-indigo-400 pm-transition-colors pm-cursor-pointer">
+            <i class="fa-solid fa-file-zipper pm-text-3xl pm-text-slate-300"></i>
+            <span class="pm-text-xs pm-font-bold pm-text-slate-600">Drop a .zip here or click to choose</span>
+            <span class="pm-text-[10px] pm-text-slate-400">
+                Up to @maxUploadMb MB, extracting to at most @maxExtractedMb MB.
+                <code>script_manifest.json</code> must be at the top of the archive or in one top-level folder.
+            </span>
+            <span id="selectedFile" class="pm-text-[11px] pm-font-mono pm-text-indigo-600"></span>
+        </label>
+        <input type="file" id="packageInput" accept=".zip,application/zip" class="pm-hidden" />
+
+        <div class="pm-flex pm-justify-between pm-items-center pm-mt-4">
+            <p class="pm-text-[10px] pm-text-slate-400 pm-leading-relaxed">
+                The package is checked before anything is installed. Each version goes into its own folder.
+            </p>
+            <button id="uploadBtn" type="button" disabled
+                    class="pm-bg-indigo-600 hover:pm-bg-indigo-700 pm-text-white pm-px-6 pm-py-2.5 pm-rounded-lg pm-text-[10px] pm-font-black pm-shadow-md pm-transition-all pm-flex pm-items-center pm-gap-2 pm-uppercase pm-tracking-widest disabled:pm-cursor-not-allowed pm-opacity-50">
+                <i class="fa-solid fa-upload pm-text-[8px]"></i>
+                Upload &amp; Check
+            </button>
+        </div>
+    </div>
+
+    @* --- Progress --- *@
+    <div id="progressPanel" class="pm-hidden pm-bg-white pm-border pm-border-slate-200 pm-rounded-2xl pm-shadow-sm pm-p-6 pm-mt-4">
+        <div class="pm-flex pm-justify-between pm-items-center pm-mb-2">
+            <span id="progressLabel" class="pm-text-xs pm-font-bold pm-text-slate-700">Uploading…</span>
+            <span id="progressValue" class="pm-text-[10px] pm-font-mono pm-text-slate-500"></span>
+        </div>
+        <div class="pm-w-full pm-h-2 pm-bg-slate-100 pm-rounded-full pm-overflow-hidden">
+            <div id="progressBar" class="pm-h-2 pm-bg-indigo-500 pm-rounded-full pm-transition-all" style="width:0%"></div>
+        </div>
+        <div class="pm-flex pm-justify-between pm-items-center pm-mt-2">
+            <span id="progressHint" class="pm-text-[10px] pm-text-slate-400">You can keep using the app in another tab while this runs.</span>
+            <button id="cancelBtn" type="button"
+                    class="pm-text-[10px] pm-font-bold pm-uppercase pm-tracking-widest pm-text-slate-400 hover:pm-text-red-600 pm-transition-colors">
+                Cancel
+            </button>
+        </div>
+    </div>
+
+    @* --- Result --- *@
+    <div id="resultPanel" class="pm-hidden pm-bg-white pm-border pm-border-slate-200 pm-rounded-2xl pm-shadow-sm pm-mt-4 pm-overflow-hidden">
+        <div id="resultHeader" class="pm-p-5 pm-border-b pm-border-slate-100">
+            <div class="pm-flex pm-items-center pm-gap-3">
+                <i id="resultIcon" class="fa-solid fa-circle-check pm-text-xl"></i>
+                <div class="pm-flex-1">
+                    <p id="resultMessage" class="pm-text-sm pm-font-bold pm-text-slate-800"></p>
+                    <p id="resultSubline" class="pm-text-[10px] pm-font-mono pm-text-slate-400 pm-mt-1 pm-break-all"></p>
+                </div>
+            </div>
+
+            <div id="confirmBox" class="pm-hidden pm-mt-4 pm-p-4 pm-bg-amber-50 pm-border pm-border-amber-200 pm-rounded-lg">
+                <p class="pm-text-xs pm-text-amber-700 pm-mb-3">
+                    Replacing deletes the installed files of this version and indexes the new ones. Jobs that are queued or running with this script block the replacement.
+                </p>
+                <div class="pm-flex pm-gap-2">
+                    <button id="overwriteBtn" type="button"
+                            class="pm-bg-amber-500 hover:pm-bg-indigo-700 pm-text-white pm-px-4 pm-py-2 pm-rounded-lg pm-text-[10px] pm-font-black pm-uppercase pm-tracking-widest">
+                        Replace installed version
+                    </button>
+                    <button id="discardBtn" type="button"
+                            class="pm-bg-white pm-border pm-border-slate-200 hover:pm-border-indigo-300 pm-text-slate-500 pm-px-4 pm-py-2 pm-rounded-lg pm-text-[10px] pm-font-black pm-uppercase pm-tracking-widest">
+                        Keep installed version
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <dl id="resultFacts" class="pm-grid pm-grid-cols-2 md:pm-grid-cols-4 pm-gap-4 pm-p-5 pm-border-b pm-border-slate-100"></dl>
+
+        <div class="pm-p-5">
+            <p class="pm-text-[10px] pm-font-black pm-text-slate-400 pm-uppercase pm-tracking-widest pm-mb-3">Validation report</p>
+            <ul id="reportList" class="pm-list-none pm-p-0 pm-m-0 pm-space-y-1.5"></ul>
+
+            <details id="indexLogBox" class="pm-hidden pm-mt-4">
+                <summary class="pm-text-[10px] pm-font-bold pm-text-slate-400 pm-uppercase pm-tracking-widest pm-cursor-pointer">Indexing log</summary>
+                <pre id="indexLog" class="pm-mt-2 pm-p-3 pm-bg-slate-900 pm-text-indigo-300 pm-font-mono pm-text-[10px] pm-rounded-lg pm-overflow-x-auto pm-max-h-64 pm-overflow-y-auto"></pre>
+            </details>
+        </div>
+
+        <div class="pm-flex pm-justify-between pm-items-center pm-p-5 pm-bg-slate-50 pm-border-t pm-border-slate-100">
+            <button id="againBtn" type="button"
+                    class="pm-bg-white pm-border pm-border-slate-200 hover:pm-border-indigo-300 pm-text-slate-500 pm-px-4 pm-py-2 pm-rounded-lg pm-text-[10px] pm-font-black pm-uppercase pm-tracking-widest">
+                Upload another
+            </button>
+            <a id="libraryLink" href="/Processing/Home/ScriptList"
+               class="pm-hidden pm-bg-indigo-600 hover:pm-bg-indigo-700 pm-text-white pm-px-4 pm-py-2 pm-rounded-lg pm-text-[10px] pm-font-black pm-uppercase pm-tracking-widest">
+                Open library
+            </a>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/processing/js/pages/admin/install-script.js" asp-append-version="true"></script>
+}

@@ -16,9 +16,14 @@ public class ProcessorSettings
     // Where result files will be written
     public string ResultsOutputPath { get; set; } = "./Module_Data/Processor/processing";
 
-    [Display(Name = "Concurrent Worker Limit")]
+    /// <summary>
+    /// How many scripts may run at the same time on this node, across all jobs.
+    /// Each running script is one executor process; keep this low on weak machines.
+    /// (Name kept for saved settings compatibility.)
+    /// </summary>
+    [Display(Name = "Scripts Running At Once")]
     [Range(1, 64)]
-    public int MaxConcurrentJobs { get; set; } = 4;
+    public int MaxConcurrentJobs { get; set; } = 1;
 
     [Display(Name = "Job Timeout (Minutes)")]
     // Timeout if job is processing above this time
@@ -57,4 +62,38 @@ public class ProcessorSettings
     /// </summary>
     [Display(Name = "Update Script Hash On Mismatch")]
     public bool UpdateHashOnMismatch { get; set; } = true;
+
+    // ---- Script package upload (admin) ----
+
+    /// <summary>Largest .zip the admin upload accepts.</summary>
+    [Display(Name = "Max Script Upload (MB)")]
+    [Range(1, 65536)]
+    public int MaxScriptUploadMb { get; set; } = 2048;
+
+    /// <summary>Total size a package may extract to (bytes actually written are counted).</summary>
+    [Display(Name = "Max Extracted Package Size (MB)")]
+    [Range(1, 131072)]
+    public int MaxScriptExtractedMb { get; set; } = 4096;
+
+    /// <summary>Largest single file inside a package.</summary>
+    [Display(Name = "Max Single File In Package (MB)")]
+    [Range(1, 131072)]
+    public int MaxScriptEntryMb { get; set; } = 2048;
+
+    /// <summary>Most files and folders a package may contain.</summary>
+    [Display(Name = "Max Files In Package")]
+    [Range(1, 1000000)]
+    public int MaxScriptArchiveEntries { get; set; } = 20000;
+
+    /// <summary>
+    /// Folder for the result chain head backups (last sequence per user). Empty = Module_Data/Processor/result_chain
+    /// next to the application. Put it somewhere the database copy doesn't go, so a truncated chain can be noticed.
+    /// </summary>
+    [Display(Name = "Result Chain Head Backup Directory")]
+    public string ResultChainBackupPath { get; set; } = "";
+
+    /// <summary>Largest allowed expansion of one file (extracted / compressed). Normal code compresses 3-10x.</summary>
+    [Display(Name = "Max Compression Ratio")]
+    [Range(2, 10000)]
+    public int MaxScriptCompressionRatio { get; set; } = 100;
 }

@@ -18,6 +18,9 @@
         "Error" => "pm-bg-red-50 pm-text-red-700 pm-border-red-200",
         "Paused" => "pm-bg-amber-50 pm-text-amber-700 pm-border-amber-200",
         "Stopped" => "pm-bg-slate-50 pm-text-slate-500 pm-border-slate-200",
+        "Warning" => "pm-bg-amber-50 pm-text-amber-700 pm-border-amber-200",
+        "ServerError" => "pm-bg-red-100 pm-text-red-900 pm-border-red-200",
+        "Skipped" => "pm-bg-slate-100 pm-text-slate-400 pm-border-slate-200",
         _ => "pm-bg-slate-50 pm-text-slate-500 pm-border-slate-200"
     };
 }
@@ -100,6 +103,10 @@
                                         <div class="pm-flex pm-items-center pm-gap-4">
                                             <span class="pm-text-[10px] pm-font-black pm-text-slate-300 pm-font-mono">#@sub.Sequence.ToString("D2")</span>
                                             <span class="pm-text-xs pm-font-bold pm-text-slate-700">@sub.ScriptId</span>
+                                            @if (!string.IsNullOrEmpty(sub.ScriptVersion))
+                                            {
+                                                <span class="pm-text-[9px] pm-font-mono pm-text-slate-400" title="Build @sub.ScriptIndexId">v@(sub.ScriptVersion)</span>
+                                            }
                                         </div>
                                         <div class="pm-flex pm-items-center pm-gap-6">
                                             <span class="pm-text-[8px] pm-font-black pm-uppercase pm-px-2 pm-py-0.5 pm-border pm-rounded @GetStatusClass(sub.Status)">@sub.Status</span>

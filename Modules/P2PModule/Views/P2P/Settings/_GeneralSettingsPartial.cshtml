@@ -5,7 +5,7 @@
     <div class="p2p-grid p2p-grid-cols-1 md:p2p-grid-cols-2 p2p-gap-4">
         <div>
             <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Data Storage Path</label>
-            <input type="text" name="General.DataStoragepath" value="@Model.General.DataStoragePath" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
+            <input type="text" name="General.DataStoragePath" value="@Model.General.DataStoragePath" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
         </div>
         <div>
             <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Target Outbound Connections</label>
@@ -126,9 +126,9 @@
 
     <div>
         <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Seed Trackers List (One per line)</label>
-        <textarea name="General.SeedTrackers"
+        <textarea name="General.SeedEndpoints"
                   rows="3"
-                  placeholder="e.g., https://tracker1.domain.xyz, https://tracker2.domain.xyz"
+                  placeholder="One per line, e.g. https://tracker1.domain.xyz"
                   class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm p2p-resize-y focus:p2p-border-blue-500">@(Model.General.SeedEndpoints != null ? string.Join("\n", Model.General.SeedEndpoints) : "")</textarea>
     </div>
 

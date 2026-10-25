@@ -1,5 +1,6 @@
 ﻿// [full-implementation]
 using System;
+using Common.Code;
 using System.Linq;
 using System.Net.Http.Json;
 using System.Threading;
@@ -278,10 +279,13 @@ public class MeshOrchestratorService : BackgroundService
         {
             if (string.IsNullOrWhiteSpace(trackerEndpointUrl)) continue;
 
-            string normalizedBase = trackerEndpointUrl.TrimEnd('/');
+            string normalizedBase = trackerEndpointUrl.Trim().TrimEnd('/');
 
-            // DEDUPLICATION CHECK 1: Skip if we are already tracking this specific base URL string
-            bool isAlreadyRegistered = existingPeers.Any(p => p.Identity.SignalingEndpoints.Contains(trackerEndpointUrl));
+            // DEDUPLICATION CHECK 1: Skip if we are already tracking this endpoint. Advertised endpoints are
+            // stored without a scheme ("host:port"), seeds may have one ("http://host:port"), so compare without it.
+            string seedAuthority = StripScheme(normalizedBase);
+            bool isAlreadyRegistered = existingPeers.Any(p => p.Identity.SignalingEndpoints
+                .Any(e => string.Equals(StripScheme(e.Trim().TrimEnd('/')), seedAuthority, StringComparison.OrdinalIgnoreCase)));
 
             if (isAlreadyRegistered)
             {
@@ -294,13 +298,17 @@ public class MeshOrchestratorService : BackgroundService
 
             try
             {
-                var response = await client.GetAsync(discoveryUrl, ct);
-                if (!response.IsSuccessStatusCode)
+                // GetHttpAsync accepts seeds with or without a scheme (tries https, then http), like the
+                // endpoint pings do. A plain GetAsync threw "invalid request URI" for scheme-less seeds such as
+                // a tunnel hostname copied from the endpoints list.
+                using var response = await client.GetHttpAsync(discoveryUrl, ct: ct);
+                if (response == null)
                 {
-                    _logger.LogWarning("[P2P Bootstrap] Seed tracker {Url} responded with error status: {Status}",
-                        discoveryUrl, response.StatusCode);
+                    _logger.LogWarning("[P2P Bootstrap] Seed tracker {Url} not reachable over https or http (or returned an error status).",
+                        discoveryUrl);
                     continue;
                 }
+                normalizedBase = response.RequestMessage?.RequestUri?.GetLeftPart(UriPartial.Authority) ?? normalizedBase;
 
                 var identityData = await response.Content.ReadFromJsonAsync<PeerImmutableData>(cancellationToken: ct);
                 if (identityData == null || string.IsNullOrEmpty(identityData.NodeId))
@@ -318,6 +326,12 @@ public class MeshOrchestratorService : BackgroundService
             }
         }
     }
+    private static string StripScheme(string endpoint)
+    {
+        int index = endpoint.IndexOf("://", StringComparison.Ordinal);
+        return index >= 0 ? endpoint.Substring(index + 3) : endpoint;
+    }
+
     private async Task IngestIdentitySafelyAsync(PeerImmutableData incomingData, string sourceUrl)
     {
         if (incomingData == null || string.IsNullOrEmpty(incomingData.NodeId)) return;

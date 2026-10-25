@@ -1,0 +1,140 @@
+@model ProcessorApplication.Controllers.SettingsIngestViewModel
+@using ProcessorApplication.Configuration.SettingsIngest
+@{
+    ViewData["Title"] = "Settings Files";
+    var preview = Model.Preview;
+    var byArea = preview.Differences.GroupBy(d => d.Area).OrderBy(g => g.Key).ToList();
+    string StatusText(SettingsIngestStatus s) => s switch
+    {
+        SettingsIngestStatus.ChangedInFile => "Changed in file",
+        SettingsIngestStatus.ChangedInApp => "Changed in app",
+        _ => "Not tracked yet"
+    };
+    string StatusClass(SettingsIngestStatus s) => s switch
+    {
+        SettingsIngestStatus.ChangedInFile => "mm-text-indigo-600",
+        SettingsIngestStatus.ChangedInApp => "mm-text-amber-700",
+        _ => "mm-text-gray-500"
+    };
+}
+
+<div id="settings-ingest-wrapper" data-script-id="main-settings-ingest">
+
+    <h1 class="mm-text-3xl mm-font-bold mm-text-gray-900 mm-mb-2">Settings Files</h1>
+    <p class="mm-text-sm mm-text-gray-500 mm-mb-6">
+        Compares the module settings files (<span class="mm-font-mono">appsettings.*.json</span>) with the stored settings and re-applies them.
+        Startup mode: <span class="mm-font-mono mm-font-semibold">@(Model.StartupMode?.ToString() ?? "?")</span>
+        (<span class="mm-font-mono">SettingsIngest:Mode</span> in appsettings.json, or <span class="mm-font-mono">--SettingsIngest:Mode=Overwrite</span> on the command line).
+    </p>
+
+    @if (Model.LastApply != null)
+    {
+        var ok = Model.LastApply.Errors.Count == 0;
+        <div class="mm-rounded-md @(ok ? "mm-bg-green-50" : "mm-bg-yellow-50") mm-p-4 mm-mb-6">
+            <p class="mm-text-sm @(ok ? "mm-text-green-700" : "mm-text-yellow-800")">
+                <i class="fa-solid @(ok ? "fa-check-circle" : "fa-triangle-exclamation") mm-mr-2"></i>
+                @(Model.LastApply.AppliedCount) setting(s) applied from files (@(Model.LastApply.Mode + (Model.LastApply.AreaFilter != null ? ", " + Model.LastApply.AreaFilter : ""))).
+            </p>
+            @foreach (var e in Model.LastApply.Errors)
+            {
+                <p class="mm-mt-2 mm-text-sm mm-text-yellow-800">@e</p>
+            }
+        </div>
+    }
+
+    @foreach (var e in preview.Errors)
+    {
+        <div class="mm-rounded-md mm-bg-red-50 mm-p-4 mm-mb-4"><p class="mm-text-sm mm-text-red-700">@e</p></div>
+    }
+
+    <div class="mm-rounded-md mm-bg-gray-50 mm-p-4 mm-mb-6 mm-text-sm mm-text-gray-700 mm-space-y-1">
+        <p><span class="mm-font-semibold mm-text-indigo-600">Changed in file</span>: the file value changed since the last run. <b>Apply file changes</b> takes these.</p>
+        <p><span class="mm-font-semibold mm-text-amber-700">Changed in app</span>: changed on a settings page, the file still has the old value. Only <b>Overwrite from files</b> replaces these.</p>
+        <p><span class="mm-font-semibold mm-text-gray-500">Not tracked yet</span>: no earlier run recorded the file value (first run). Only <b>Overwrite from files</b> replaces these.</p>
+        <p>Empty values in files are never applied. A list in a file replaces the whole stored list. Hidden values are passwords, tokens and secrets.</p>
+    </div>
+
+    <div class="mm-flex mm-flex-wrap mm-gap-3 mm-mb-6">
+        <form class="ingest-form" method="post" asp-area="Main" asp-controller="SettingsIngest" asp-action="Apply">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="mode" value="@SettingsIngestMode.Changed" />
+            <button type="submit" class="mm-rounded-md mm-bg-indigo-600 mm-py-2 mm-px-4 mm-text-sm mm-font-medium mm-text-white mm-shadow-md hover:mm-bg-indigo-700">
+                <i class="fa-solid fa-file-import mm-mr-2"></i> Apply file changes (all modules)
+            </button>
+        </form>
+        <form class="ingest-form" method="post" asp-area="Main" asp-controller="SettingsIngest" asp-action="Apply" data-confirm="Replace every stored value that differs from the settings files, in all modules? Values changed on settings pages are lost.">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="mode" value="@SettingsIngestMode.Overwrite" />
+            <button type="submit" class="mm-rounded-md mm-border mm-border-gray-200 mm-bg-white mm-py-2 mm-px-4 mm-text-sm mm-font-medium mm-text-gray-700 mm-shadow-sm">
+                <i class="fa-solid fa-arrows-rotate mm-mr-2"></i> Overwrite from files (all modules)
+            </button>
+        </form>
+    </div>
+
+    @if (!byArea.Any())
+    {
+        <div class="mm-rounded-md mm-bg-green-50 mm-p-4 mm-mb-6">
+            <p class="mm-text-sm mm-text-green-700"><i class="fa-solid fa-check-circle mm-mr-2"></i> The stored settings match the settings files.</p>
+        </div>
+    }
+
+    @foreach (var group in byArea)
+    {
+        <div class="mm-bg-white mm-shadow mm-rounded-lg mm-p-4 mm-mb-6">
+            <div class="mm-flex mm-flex-wrap mm-items-center mm-justify-between mm-gap-2 mm-border-b mm-pb-2 mm-mb-2">
+                <h2 class="mm-text-xl mm-font-semibold mm-text-gray-900">@group.Key <span class="mm-text-sm mm-text-gray-500">(@group.Count())</span></h2>
+                <div class="mm-flex mm-gap-2">
+                    <form class="ingest-form" method="post" asp-area="Main" asp-controller="SettingsIngest" asp-action="Apply">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="mode" value="@SettingsIngestMode.Changed" />
+                        <input type="hidden" name="area" value="@group.Key" />
+                        <button type="submit" class="mm-rounded mm-bg-indigo-600 mm-py-1 mm-px-2 mm-text-xs mm-text-white hover:mm-bg-indigo-700">Apply file changes</button>
+                    </form>
+                    <form class="ingest-form" method="post" asp-area="Main" asp-controller="SettingsIngest" asp-action="Apply" data-confirm="Replace every stored @group.Key value that differs from its settings files?">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="mode" value="@SettingsIngestMode.Overwrite" />
+                        <input type="hidden" name="area" value="@group.Key" />
+                        <button type="submit" class="mm-rounded mm-border mm-border-gray-200 mm-bg-white mm-py-1 mm-px-2 mm-text-xs mm-text-gray-700">Overwrite from files</button>
+                    </form>
+                </div>
+            </div>
+            <div class="mm-overflow-x-auto">
+                <table class="mm-w-full mm-text-sm mm-text-left">
+                    <thead class="mm-bg-gray-50 mm-text-gray-500 mm-text-xs">
+                        <tr>
+                            <th class="mm-px-3 mm-py-2">Setting</th>
+                            <th class="mm-px-3 mm-py-2">Status</th>
+                            <th class="mm-px-3 mm-py-2">Stored</th>
+                            <th class="mm-px-3 mm-py-2">File</th>
+                        </tr>
+                    </thead>
+                    <tbody class="mm-divide-y mm-divide-gray-200">
+                        @foreach (var d in group.OrderBy(x => x.Key))
+                        {
+                            <tr>
+                                <td class="mm-px-3 mm-py-2 mm-font-mono mm-text-xs mm-text-gray-900" style="word-break: break-all;">@(d.Key + (d.IsList ? " []" : ""))</td>
+                                <td class="mm-px-3 mm-py-2 mm-text-xs mm-font-semibold mm-whitespace-nowrap @StatusClass(d.Status)">@StatusText(d.Status)</td>
+                                <td class="mm-px-3 mm-py-2 mm-font-mono mm-text-xs mm-text-gray-700" style="word-break: break-all; white-space: pre-wrap;">@(d.StoredValue ?? "(not set)")</td>
+                                <td class="mm-px-3 mm-py-2 mm-font-mono mm-text-xs mm-text-gray-700" style="word-break: break-all; white-space: pre-wrap;">@(d.FileValue ?? "(empty)")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    <details class="mm-text-xs mm-text-gray-500">
+        <summary>Files read (@preview.Files.Count)</summary>
+        <ul class="mm-mt-2 mm-font-mono">
+            @foreach (var f in preview.Files)
+            {
+                <li>@f</li>
+            }
+        </ul>
+    </details>
+</div>
+
+@section Scripts {
+    <script src="~/js/pages/settings-ingest/index.js" asp-append-version="true"></script>
+}

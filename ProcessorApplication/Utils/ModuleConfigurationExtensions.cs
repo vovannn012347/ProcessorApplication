@@ -41,10 +41,28 @@ public static class ModuleConfigurationExtensions
         string contentRootPath,
         string environment)
     {
-        // --- 1. Handle Main Module ---
-        string mainArea = "Main";
+        // Files come back in load order: per area the base file first, then its environment override,
+        // so later files override earlier ones for the same keys.
+        foreach (var (areaName, filePath) in GetModuleJsonFiles(contentRootPath, environment))
+        {
+            LoadAndPrefixJson(builder, areaName, filePath);
+        }
 
-        LoadModuleConfig(builder, contentRootPath, mainArea, "appsettings.main", environment);
+        return builder;
+    }
+
+    /// <summary>
+    /// The module settings files that exist for this environment, in load order (per area: base file, then the
+    /// environment override). Shared by the configuration loader and the settings re-ingest service, so both
+    /// always read exactly the same files.
+    /// Main: appsettings.main.json / appsettings.main.{env}.json in the content root.
+    /// Modules: Modules/{Name}Module/appsettings.{name}.json / appsettings.{name}.{env}.json, area = folder name without "Module".
+    /// </summary>
+    public static IEnumerable<(string Area, string FilePath)> GetModuleJsonFiles(string contentRootPath, string environment)
+    {
+        // --- 1. Handle Main Module ---
+        foreach (var file in GetAreaFiles(contentRootPath, "appsettings.main", environment))
+            yield return ("Main", file);
 
         // --- 2. Handle Sub-Modules ---
         string modulesPath = Path.Combine(contentRootPath, "Modules");
@@ -61,40 +79,44 @@ public static class ModuleConfigurationExtensions
 
                 var baseFileName = $"appsettings.{areaName.ToLower()}";
 
-                LoadModuleConfig(builder, dir, areaName, baseFileName, environment);
+                foreach (var file in GetAreaFiles(dir, baseFileName, environment))
+                    yield return (areaName, file);
             }
         }
-
-        return builder;
     }
 
-    private static void LoadModuleConfig(
-        IConfigurationBuilder builder,
-        string basePath,
-        string areaName,
-        string baseFileName,
-        string environment)
+    private static IEnumerable<string> GetAreaFiles(string basePath, string baseFileName, string environment)
     {
-        // 1. Load Base configuration (Lowest priority - Load FIRST)
-        // Example: appsettings.main.json
-        var defaultFile = Path.Combine(basePath, $"{baseFileName}.json");
-        if (File.Exists(defaultFile))
-        {
-            LoadAndPrefixJson(builder, areaName, defaultFile);
-        }
+        // 1. Base configuration (lowest priority, loaded FIRST). Example: appsettings.main.json
+        var defaultFile = FindFileIgnoreCase(basePath, $"{baseFileName}.json");
+        if (defaultFile != null)
+            yield return defaultFile;
 
-        // 2. Load Environment override (Higher priority - Load SECOND)
-        // Example: appsettings.main.Development.json
+        // 2. Environment override (higher priority, loaded SECOND). Example: appsettings.main.Development.json
         if (!string.IsNullOrEmpty(environment))
         {
-            var envFile = Path.Combine(basePath, $"{baseFileName}.{environment}.json");
-            if (File.Exists(envFile))
-            {
-                // Because this is added to the builder AFTER the default file,
-                // its values will override the default values for the same keys.
-                LoadAndPrefixJson(builder, areaName, envFile);
-            }
+            var envFile = FindFileIgnoreCase(basePath, $"{baseFileName}.{environment}.json");
+            if (envFile != null)
+                yield return envFile;
         }
+    }
+
+    /// <summary>
+    /// The file names are built in lower case ("appsettings.p2p.json") while the files on disk are
+    /// "appsettings.P2P.json". Windows doesn't care; on Linux (headless nodes) an exact-case lookup
+    /// would silently skip every module settings file, so match the name case-insensitively.
+    /// </summary>
+    private static string? FindFileIgnoreCase(string directory, string fileName)
+    {
+        var exact = Path.Combine(directory, fileName);
+        if (File.Exists(exact))
+            return exact;
+
+        if (!Directory.Exists(directory))
+            return null;
+
+        return Directory.EnumerateFiles(directory, "*.json")
+            .FirstOrDefault(f => string.Equals(Path.GetFileName(f), fileName, StringComparison.OrdinalIgnoreCase));
     }
 
     private static void LoadAndPrefixJson(IConfigurationBuilder builder, string areaName, string filePath)

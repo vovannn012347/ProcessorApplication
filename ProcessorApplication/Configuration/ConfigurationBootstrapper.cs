@@ -30,6 +30,11 @@ public static class ConfigurationBootstrapper
 
         bool inserted = false;
 
+        // Lists are owned by the DB as a whole once any part of them is stored there. Without this, a list
+        // shortened in the UI got the missing indexes re-added from appsettings on the next start
+        // (UI [a] + file [x, y] -> [a, y]), and a list emptied in the UI came back completely.
+        var dbArrayPaths = CollectArrayPaths(existing.Keys);
+
         var moduleIds = modules
             .Select(m => m.ModuleId)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -55,6 +60,10 @@ public static class ConfigurationBootstrapper
             if (existing.ContainsKey(kv.Key))
                 continue;
 
+            // Part of a list the DB already holds (or holds as an empty list)? Leave the whole list alone.
+            if (GetArrayPaths(kv.Key).Any(dbArrayPaths.Contains))
+                continue;
+
             db.Settings.Add(new Setting
             {
                 Area = area,
@@ -76,5 +85,36 @@ public static class ConfigurationBootstrapper
         {
             settings.SetAutoUpdate(true);
         }
+    }
+
+    /// <summary>
+    /// Every list path a key sits in: "P2P:P2PSettings:Endpoints:0" -> "P2P:P2PSettings:Endpoints";
+    /// "A:Rules:2:Domains:0" -> "A:Rules" and "A:Rules:2:Domains".
+    /// </summary>
+    internal static IEnumerable<string> GetArrayPaths(string key)
+    {
+        var parts = key.Split(':');
+        for (int i = 1; i < parts.Length; i++)
+        {
+            if (parts[i].Length > 0 && parts[i].All(char.IsDigit))
+                yield return string.Join(':', parts, 0, i);
+        }
+    }
+
+    /// <summary>
+    /// List paths the DB already owns: every list a stored key sits in, plus every stored key itself, because
+    /// SettingService stores a value-less marker row at the list's own path when it saves a list (that is how an
+    /// emptied list is remembered).
+    /// </summary>
+    private static HashSet<string> CollectArrayPaths(IEnumerable<string> dbKeys)
+    {
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in dbKeys)
+        {
+            paths.Add(key);
+            foreach (var path in GetArrayPaths(key))
+                paths.Add(path);
+        }
+        return paths;
     }
 }

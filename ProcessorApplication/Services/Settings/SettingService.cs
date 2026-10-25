@@ -230,6 +230,14 @@ public class SettingService : ISettingService
         {
             // Recursively shred arrays or complex classes using your exact colon-separated flattening rules
             FlattenJsonElement(doc.RootElement, key, incomingFlattenedMap);
+
+            // A list also gets a value-less marker row at its own path. The DB configuration provider skips
+            // null values, so binding is unaffected; ConfigurationBootstrapper uses it to know the list is
+            // owned by the DB, so an emptied list stays empty instead of being re-seeded from appsettings.
+            if (doc.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                incomingFlattenedMap[key] = null;
+            }
         }
 
         // 2. FETCH CURRENT DATABASE TRACKING CONTEXT STATE:

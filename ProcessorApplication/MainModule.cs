@@ -65,6 +65,12 @@ public class MainModule : IModule
                 Url = "/Main/Settings/Index",
                 Roles = "Admin"
             },
+            new MenuItemViewModel {
+                Name = "Settings Files",
+                IconClass = "fa-solid fa-file-import",
+                Url = "/Main/SettingsIngest/Index",
+                Roles = "Admin"
+            },
             new MenuItemViewModel { 
                 Name = "Users", 
                 IconClass = "fa-solid fa-address-book", 

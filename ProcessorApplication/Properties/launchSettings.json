@@ -28,7 +28,7 @@
         "ASPNETCORE_ENVIRONMENT": "NodeClient2Debug"
       },
       "dotnetRunMessages": true,
-      "applicationUrl": "https://localhost:7106;http://localhost:5043"
+      "applicationUrl": "https://localhost:7110;http://localhost:5047"
     },
     "µProcessorTracker1": {
       "commandName": "Project",

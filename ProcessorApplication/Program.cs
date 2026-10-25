@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation;
 using ProcessorApplication;
 using ProcessorApplication.Attributes;
 using ProcessorApplication.Configuration;
+using ProcessorApplication.Configuration.SettingsIngest;
 using ProcessorApplication.Infrastructure;
 using ProcessorApplication.Infrastructure.Web;
 using ProcessorApplication.Services;
@@ -23,7 +24,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Configuration
     .SetBasePath(AppContext.BaseDirectory)
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true);
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
+    // Re-add these after the JSON files above, so environment variables and command-line arguments override
+    // appsettings.json again (CreateBuilder loads them before, and the re-added files would win otherwise).
+    // Needed e.g. for "--SettingsIngest:Mode=Overwrite" and for headless nodes configured by environment.
+    .AddEnvironmentVariables()
+    .AddCommandLine(args);
 
 // 2. Load Module JSON Files (Prefixed with Area)
 // This adds "Main:SecuritySettings:..." from the file to the config
@@ -95,6 +101,7 @@ builder.Services.Configure<MvcRazorRuntimeCompilationOptions>(options =>
 });
 
 builder.Services.AddSingleton<IModuleService, ModuleService>();
+builder.Services.AddScoped<ISettingsIngestService, SettingsIngestService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSession(options =>
 {
@@ -156,6 +163,9 @@ foreach (var m in moduleInstances)
     m.PrestartInit(app);
 
 await ConfigurationBootstrapper.SeedAsync(app, moduleInstances);
+
+// Re-ingest edited settings files (SettingsIngest:Mode, default "Changed"); see SettingsIngestService.
+await SettingsIngestStartup.RunAsync(app);
 
 // hot reload
 if (app.Environment.IsDevelopment())

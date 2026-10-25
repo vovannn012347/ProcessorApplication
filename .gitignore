@@ -437,3 +437,14 @@ Modules/ProviderlessModule/domains.txt
 /Modules/P2PModule/appsettings.P2P.NodeTracker2Debug.json
 
 *.db
+
+# Never commit: databases with settings/secrets, node keys, packed copies of the repo
+*.db-wal
+*.db-shm
+/*.zip
+**/Module_Data/**/identity/
+**/Module_Data/**/keys/
+**/node.key
+**/hash_backups/
+**/hashstamps/
+**/result_chain/

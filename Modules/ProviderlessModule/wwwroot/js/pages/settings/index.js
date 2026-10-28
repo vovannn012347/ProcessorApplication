@@ -40,7 +40,7 @@
         /**
          * AJAX Save Handling
          */
-        handleSave: function (form) {
+        handleSave: function (root, form) {
             const btn = root.querySelector('#saveProviderlessSettingsButton');
             const url = form.action;
             const formData = new FormData(form);

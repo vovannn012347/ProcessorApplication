@@ -87,7 +87,7 @@
                         @foreach (var entry in Model.RegistrySettings)
                         {
                             var settings = (IProviderSettings)entry.Value;
-                            var isActive = Model.General.ActiveRegistry == settings.ProviderKey;
+                            var isActive = string.Equals(Model.General.ActiveRegistry, settings.ProviderKey, StringComparison.OrdinalIgnoreCase);
 
                             <div class="plss-p-5 plss-bg-slate-50 plss-rounded-xl plss-border @(isActive ? "plss-border-blue-500" : "plss-border-slate-200")">
                                 <div class="plss-flex plss-items-center plss-gap-3 plss-mb-4">
@@ -110,7 +110,7 @@
                         @foreach (var entry in Model.TunnelSettings)
                         {
                             var settings = (IProviderSettings)entry.Value;
-                            var isActive = Model.General.SelectedTunnel == settings.ProviderKey;
+                            var isActive = string.Equals(Model.General.SelectedTunnel, settings.ProviderKey, StringComparison.OrdinalIgnoreCase);
 
                             <div class="plss-p-5 plss-bg-slate-50 plss-rounded-xl plss-border @(isActive ? "plss-border-indigo-500" : "plss-border-slate-200")">
                                 <div class="plss-flex plss-items-center plss-gap-3 plss-mb-4">

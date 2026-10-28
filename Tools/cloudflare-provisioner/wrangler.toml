@@ -1,0 +1,24 @@
+name = "processor-provisioner"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+# Non-secret settings. Secrets (CF_API_TOKEN, JOIN_KEY, ADMIN_KEY) are set with
+# `npx wrangler secret put <NAME>` and never go into this file.
+[vars]
+ACCOUNT_ID = ""
+ZONE_ID = ""
+ZONE_NAME = "processor-app.pp.ua"
+TUNNEL_PREFIX = "pnode"
+REQUIRE_ALLOWLIST = "false"
+
+# Recommended: replay protection + deny list / allowlist.
+# Create it with `npx wrangler kv namespace create NODES`, paste the id, uncomment.
+# [[kv_namespaces]]
+# binding = "NODES"
+# id = ""
+
+# Optional: serve the Worker on your own zone instead of *.workers.dev.
+# [[routes]]
+# pattern = "provision.processor-app.pp.ua"
+# custom_domain = true

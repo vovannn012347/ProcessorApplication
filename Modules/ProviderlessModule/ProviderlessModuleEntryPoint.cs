@@ -30,6 +30,7 @@ using ProviderlessModule.Services.Registry;
 using ProviderlessModule.Services.Registry.Methods;
 using ProviderlessModule.Services.Tunnel;
 using ProviderlessModule.Services.Tunnel.Methods;
+using ProviderlessModule.Services.Tunnel.Provisioning;
 
 namespace ProviderlessModule;
 public class ProviderlessModuleEntryPoint : IModule
@@ -96,6 +97,10 @@ public class ProviderlessModuleEntryPoint : IModule
 
         //services.AddModuleSettings<NgrokSettings>(config, ModuleId);
         services.AddModuleSettings<CloudflareSettings>(config, ModuleId);
+
+        // Service-mode provisioning: node key + signed client for the provisioning Worker
+        services.AddSingleton<INodeProvisioningIdentity, NodeProvisioningIdentity>();
+        services.AddSingleton<CloudflareProvisioningClient>();
 
         services.AddSingleton<ITunnelProvider, StaticProvider>();
 

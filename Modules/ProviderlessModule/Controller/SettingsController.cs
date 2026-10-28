@@ -119,20 +119,20 @@ public class SettingsController : Controller
             _settingsService.SetAutoUpdate(false);
 
             // 1. Save Core Settings (Partitioned by ModuleId)
-            await SaveGenericObject(model.General, nameof(PortalAccessSettings));
+            await SaveGenericObject(model.General, nameof(PortalAccessSettings), nameof(model.General));
 
             // 2. Save Active Registry
             var activeReg = model.General.ActiveRegistry?.ToLower();
             if (!string.IsNullOrEmpty(activeReg) && model.RegistrySettings.TryGetValue(activeReg, out var regObj))
             {
-                await SaveGenericObject(regObj, nameof(PortalAccessSettings));
+                await SaveGenericObject(regObj, regObj.GetType().Name, $"{nameof(model.RegistrySettings)}[{activeReg}]");
             }
 
             // 3. Save Selected Tunnel
             var activeTun = model.General.SelectedTunnel?.ToLower();
             if (!string.IsNullOrEmpty(activeTun) && model.TunnelSettings.TryGetValue(activeTun, out var tunObj))
             {
-                await SaveGenericObject(tunObj, nameof(PortalAccessSettings));
+                await SaveGenericObject(tunObj, tunObj.GetType().Name, $"{nameof(model.TunnelSettings)}[{activeTun}]");
             }
 
             _settingsService.SetAutoUpdate(true);
@@ -153,16 +153,25 @@ public class SettingsController : Controller
     /// Maps object properties to ISettingService keys automatically.
     /// </summary>
     /// <param name="obj">The settings object (e.g., CloudflareSettings instance).</param>
-    /// <param name="sectionName">The root configuration section (e.g., "PortalAccessSettings").</param>
-
-    private async Task SaveGenericObject(object obj, string sectionName)
+    /// <param name="sectionName">The settings class name, which is the section AddModuleSettings binds (e.g., "CloudflareSettings").</param>
+    /// <param name="formPrefix">Form field prefix of this object (e.g., "TunnelSettings[cloudflare]"). Only posted fields are saved,
+    /// so settings the page doesn't show (GitHubUrl, ResolverSiteUrl...) keep their stored values.</param>
+    private async Task SaveGenericObject(object obj, string sectionName, string formPrefix)
     {
         if (obj == null) return;
         var properties = obj.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        var postedFields = new HashSet<string>(
+            Request.HasFormContentType ? Request.Form.Keys : Enumerable.Empty<string>(),
+            StringComparer.OrdinalIgnoreCase);
 
         foreach (var prop in properties)
         {
-            if (!prop.CanRead) continue;
+            // Skip computed properties (ProviderKey, SettingsViewPath...) and nested objects (Windows/Linux binary paths):
+            // the form doesn't edit them, and ToString() of an object is not a setting value.
+            if (!prop.CanRead || !prop.CanWrite) continue;
+            var type = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
+            if (!type.IsPrimitive && !type.IsEnum && type != typeof(string) && type != typeof(decimal)) continue;
+            if (!postedFields.Contains($"{formPrefix}.{prop.Name}")) continue;
             var value = prop.GetValue(obj)?.ToString() ?? string.Empty;
             string settingKey = $"{sectionName}:{prop.Name}";
 

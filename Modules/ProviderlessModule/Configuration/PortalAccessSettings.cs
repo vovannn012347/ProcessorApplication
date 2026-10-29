@@ -42,6 +42,7 @@ public class TunnelProviderType
 {
     public const string Static = "static";
     public const string Cloudflare = "cloudflare";
+    public const string CloudflareWorker = "cloudflareworker";
     public const string Ngrok = "ngrok";
 }
 

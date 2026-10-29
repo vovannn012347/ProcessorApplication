@@ -1,0 +1,66 @@
+﻿@model ProviderlessSettingsViewModel
+@using ProviderlessModule.Configuration
+@using ProviderlessModule.Configuration.Tunnel
+@using ProviderlessModule.Services.Tunnel.Provisioning
+@inject INodeProvisioningIdentity ProvisioningIdentity
+
+@{
+    var key = TunnelProviderType.CloudflareWorker;
+    var settings = Model.TunnelSettings.ContainsKey(key)
+                   ? (CloudflareWorkerSettings)Model.TunnelSettings[key]
+                   : new CloudflareWorkerSettings();
+
+    string nodeLabel;
+    try { nodeLabel = ProvisioningIdentity.Label; }
+    catch (Exception ex) { nodeLabel = $"(key unavailable: {ex.Message})"; }
+    var provisioningState = ProvisioningIdentity.LoadState();
+}
+
+<div class="plss-space-y-4">
+    <div>
+        <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Provisioning Service URL</label>
+        <input name="TunnelSettings[@key].ServiceUrl" value="@settings.ServiceUrl"
+               placeholder="https://processor-provisioner.example.workers.dev"
+               class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-rounded-lg plss-text-sm plss-font-mono" />
+    </div>
+
+    <div class="plss-grid plss-grid-cols-2 plss-gap-4">
+        <div>
+            <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Join Key</label>
+            <input name="TunnelSettings[@key].JoinKey" value="@settings.JoinKey" type="password"
+                   placeholder="If the Worker requires one"
+                   class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-rounded-lg plss-text-sm" />
+        </div>
+        <div>
+            <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Rotate Tunnel (Days)</label>
+            <input name="TunnelSettings[@key].TunnelRotationDays" value="@settings.TunnelRotationDays" type="number" min="0" max="3650"
+                   title="Replace the tunnel (and its token) after this many days. 0 = never."
+                   class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-rounded-lg plss-text-sm" />
+        </div>
+    </div>
+
+    <div class="plss-bg-gray-50 plss-p-4 plss-rounded-xl plss-border plss-border-dashed plss-space-y-1 plss-text-[11px] plss-text-gray-500">
+        <div>Node label: <span class="plss-font-mono plss-text-gray-700">@nodeLabel</span></div>
+        @if (provisioningState != null && !string.IsNullOrEmpty(provisioningState.Hostname))
+        {
+            <div>Assigned: <span class="plss-font-mono plss-text-gray-700">@provisioningState.Hostname</span>,
+                tunnel created @provisioningState.TunnelCreatedUtc.ToString("yyyy-MM-dd HH:mm") UTC</div>
+        }
+        <div>The tunnel token is requested from the Worker automatically. The label comes from this node's key
+            (Module_Data/Portal/keys): back that folder up, a new key means a new subdomain.</div>
+    </div>
+
+    <div class="plss-grid plss-grid-cols-2 plss-gap-4">
+        <div>
+            <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Extra Arguments</label>
+            <input name="TunnelSettings[@key].ExtraArgs" value="@settings.ExtraArgs"
+                   placeholder="--protocol http2"
+                   class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-rounded-lg plss-text-sm plss-font-mono" />
+        </div>
+        <div>
+            <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Timeout (Sec)</label>
+            <input name="TunnelSettings[@key].WaitTimeoutSeconds" value="@settings.WaitTimeoutSeconds" type="number"
+                   class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-rounded-lg plss-text-sm" />
+        </div>
+    </div>
+</div>

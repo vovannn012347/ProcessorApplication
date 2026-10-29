@@ -55,24 +55,30 @@ To serve it from your own zone instead, add a custom domain (Worker → Settings
 
 ## 3. Point the nodes at it
 
-App → **Qr Access → Settings → Cloudflare**:
+The Worker mode is its own tunnel provider, **Cloudflare (Worker)** (`cloudflareworker`), with its own settings class
+`CloudflareWorkerSettings` and its own section. The old token-based **Cloudflare** provider (`CloudflareSettings`) is unchanged.
 
-- **Provisioning:** "Provisioning service"
+App → **Qr Access → Settings → Tunneling Infrastructure**: select **CloudflareWorkerSettings_key** and fill in
+
 - **Provisioning Service URL:** the Worker URL (only scheme + host are used)
-- **Join key:** if you set `JOIN_KEY`
-- **Rotate tunnel after N days:** optional, e.g. 30
-- Clear **AccountId / ZoneId / Provision Token** on the node; they aren't used in this mode.
+- **Join Key:** if you set `JOIN_KEY`
+- **Rotate Tunnel (Days):** optional, e.g. 30
 
 Or in `appsettings.Providerless*.json`:
 
 ```json
-"CloudflareSettings": {
-  "ProvisioningMode": "service",
-  "ProvisioningServiceUrl": "https://processor-provisioner.example.workers.dev",
-  "ProvisioningJoinKey": "",
+"PortalAccessSettings": {
+  "SelectedTunnel": "cloudflareworker"
+},
+"CloudflareWorkerSettings": {
+  "ServiceUrl": "https://processor-provisioner.example.workers.dev",
+  "JoinKey": "",
   "TunnelRotationDays": 30
 }
 ```
+
+`CloudflareWorkerSettings:TunnelToken` is written by the node itself; leave it empty.
+The node doesn't need anything from `CloudflareSettings` (AccountId / ZoneId / ProvisionToken) in this mode.
 
 On start the node calls `/v1/provision`, stores the returned tunnel token and runs `cloudflared` with it.
 If the Worker is unreachable, the node starts with the stored token (the ingress port stays as last provisioned).
@@ -85,7 +91,7 @@ The node's label is shown on the settings page. **Back up `Module_Data/Portal/ke
 | What | How |
 |---|---|
 | Cloudflare API token | Roll/create a new one, `npx wrangler secret put CF_API_TOKEN` (or edit the secret in the dashboard). Nodes don't change. |
-| A node's tunnel token | Set **Rotate tunnel after N days** on the node. When the tunnel is older, the next start asks for `rotate: true`; the Worker deletes the old tunnel (old token stops working) and creates a new one under the same hostname. |
+| A node's tunnel token | Set **Rotate Tunnel (Days)** on the node. When the tunnel is older, the next start asks for `rotate: true`; the Worker deletes the old tunnel (old token stops working) and creates a new one under the same hostname. |
 | Join key | Change `JOIN_KEY`, then update the nodes. Only affects new provisioning, running tunnels keep working. |
 
 No "token distribution" service is needed: nodes never hold the API token, and each node fetches its own new tunnel token.

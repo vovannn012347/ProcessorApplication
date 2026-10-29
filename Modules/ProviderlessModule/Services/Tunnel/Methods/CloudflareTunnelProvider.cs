@@ -15,7 +15,6 @@ using ProviderlessModule.Code;
 using ProviderlessModule.Configuration;
 using ProviderlessModule.Configuration.Tunnel;
 using ProviderlessModule.Infrastructure.Interfaces;
-using ProviderlessModule.Services.Tunnel.Provisioning;
 
 namespace ProviderlessModule.Services.Tunnel.Methods;
 public class CloudflareTunnelProvider : ITunnelProvider, IDisposable
@@ -26,8 +25,6 @@ public class CloudflareTunnelProvider : ITunnelProvider, IDisposable
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IProcessCaretaker _processCaretaker;
     private readonly ILocalDataProvider _localDataProvider;
-    private readonly CloudflareProvisioningClient _provisioningClient;
-    private readonly INodeProvisioningIdentity _provisioningIdentity;
     private Process? _tunnelProcess;
 
     public CloudflareTunnelProvider(
@@ -36,17 +33,13 @@ public class CloudflareTunnelProvider : ITunnelProvider, IDisposable
         IHttpClientFactory http,
         IServiceScopeFactory scopeFactory,
         IProcessCaretaker processCaretaker,
-        ILocalDataProvider localDataProvider,
-        CloudflareProvisioningClient provisioningClient,
-        INodeProvisioningIdentity provisioningIdentity)
+        ILocalDataProvider localDataProvider)
     {
         _settings = settings;
         _logger = logger;
         _scopeFactory = scopeFactory;
         _processCaretaker = processCaretaker;
         _localDataProvider = localDataProvider;
-        _provisioningClient = provisioningClient;
-        _provisioningIdentity = provisioningIdentity;
 
         _http = http.CreateClient();
         _http.BaseAddress = new Uri("https://api.cloudflare.com/client/v4/");
@@ -65,12 +58,6 @@ public class CloudflareTunnelProvider : ITunnelProvider, IDisposable
 
         var cfg = _settings.CurrentValue;
         string machineHash = _localDataProvider.GetEncryptedMachineHash();
-
-        if (CloudflareProvisioningMode.IsService(cfg.ProvisioningMode))
-        {
-            return await StartViaProvisioningServiceAsync(cfg, localPort, scheme, machineHash, ct);
-        }
-
         string? executionToken = cfg.TunnelToken;
         string? targetUrl = cfg.CustomPublicUrl;
 
@@ -131,87 +118,11 @@ public class CloudflareTunnelProvider : ITunnelProvider, IDisposable
         }
 
         // STEP 4: Launch
-        return await LaunchProcessInternalAsync(BuildRunArgs(cfg, localPort, scheme), executionToken!, targetUrl, machineHash, ct);
-    }
-
-    /// <summary>
-    /// Service mode: the provisioning Worker holds the Cloudflare API token. This node signs its request with its own key
-    /// and gets back the tunnel token for its own subdomain only.
-    /// </summary>
-    private async Task<string> StartViaProvisioningServiceAsync(
-        CloudflareSettings cfg, int localPort, string scheme, string machineHash, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(cfg.ProvisioningServiceUrl))
-        {
-            throw new Exception("Cloudflare provisioning mode is 'service' but Provisioning Service URL is empty.");
-        }
-
-        var state = _provisioningIdentity.LoadState();
-        string serviceOrigin = CloudflareProvisioningClient.GetServiceOrigin(cfg.ProvisioningServiceUrl).ToString();
-        bool sameService = state != null && string.Equals(state.ServiceUrl, serviceOrigin, StringComparison.OrdinalIgnoreCase);
-
-        bool rotate = cfg.TunnelRotationDays > 0
-                      && sameService
-                      && state!.TunnelCreatedUtc != default
-                      && DateTime.UtcNow - state.TunnelCreatedUtc >= TimeSpan.FromDays(cfg.TunnelRotationDays);
-
-        string token;
-        string publicUrl;
-        try
-        {
-            if (rotate) _logger.LogInformation("Tunnel is older than {Days} days, asking the provisioning service for a new one.", cfg.TunnelRotationDays);
-
-            var result = await _provisioningClient.ProvisionAsync(
-                cfg.ProvisioningServiceUrl, cfg.ProvisioningJoinKey, scheme, localPort, rotate, ct);
-
-            if (string.IsNullOrEmpty(result.TunnelToken) || TryGetIdFromToken(result.TunnelToken) == null)
-            {
-                throw new Exception("Provisioning service returned no usable tunnel token.");
-            }
-
-            bool newTunnel = !sameService || state!.TunnelId != result.TunnelId || result.Rotated;
-            _provisioningIdentity.SaveState(new ProvisioningState
-            {
-                ServiceUrl = serviceOrigin,
-                Label = result.Label,
-                Hostname = result.Hostname,
-                Url = result.Url,
-                TunnelId = result.TunnelId,
-                TunnelCreatedUtc = newTunnel ? DateTime.UtcNow : state!.TunnelCreatedUtc,
-                LastProvisionedUtc = DateTime.UtcNow
-            });
-
-            if (!string.Equals(result.TunnelToken, cfg.TunnelToken, StringComparison.Ordinal))
-            {
-                await SaveTokenToRegistry(result.TunnelToken);
-            }
-
-            _logger.LogInformation("Provisioning service assigned {Host} (tunnel {TunnelId}{Rotated}).",
-                result.Hostname, result.TunnelId, result.Rotated ? ", rotated" : "");
-
-            token = result.TunnelToken;
-            publicUrl = result.Url;
-        }
-        catch (ProvisioningServiceException ex) when (ex.IsTransient
-                                                       && sameService
-                                                       && !string.IsNullOrEmpty(state!.Url)
-                                                       && TryGetIdFromToken(cfg.TunnelToken) == state.TunnelId)
-        {
-            // Worker down: the stored token still runs the tunnel. Ingress keeps the port it had when last provisioned.
-            _logger.LogWarning("{Msg} Starting with the stored tunnel token for {Url}.", ex.Message, state.Url);
-            token = cfg.TunnelToken;
-            publicUrl = state.Url;
-        }
-
-        return await LaunchProcessInternalAsync(BuildRunArgs(cfg, localPort, scheme), token, publicUrl, machineHash, ct);
-    }
-
-    private static string BuildRunArgs(CloudflareSettings cfg, int localPort, string scheme)
-    {
         // The token goes to cloudflared through TUNNEL_TOKEN, not the command line (visible in process lists).
         string args = $"tunnel --no-autoupdate run --url {scheme}://localhost:{localPort} --protocol http2";
         if (!string.IsNullOrEmpty(cfg.ExtraArgs)) args += $" {cfg.ExtraArgs}";
-        return args;
+
+        return await LaunchProcessInternalAsync(args, executionToken!, targetUrl, machineHash, ct);
     }
 
     private string? TryGetIdFromToken(string? token)

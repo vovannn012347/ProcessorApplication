@@ -97,14 +97,16 @@ public class ProviderlessModuleEntryPoint : IModule
 
         //services.AddModuleSettings<NgrokSettings>(config, ModuleId);
         services.AddModuleSettings<CloudflareSettings>(config, ModuleId);
+        services.AddModuleSettings<CloudflareWorkerSettings>(config, ModuleId);
 
-        // Service-mode provisioning: node key + signed client for the provisioning Worker
+        // Cloudflare (Worker) tunnel: node key + signed client for the provisioning Worker
         services.AddSingleton<INodeProvisioningIdentity, NodeProvisioningIdentity>();
         services.AddSingleton<CloudflareProvisioningClient>();
 
         services.AddSingleton<ITunnelProvider, StaticProvider>();
 
         services.AddSingleton<ITunnelProvider, CloudflareTunnelProvider>();
+        services.AddSingleton<ITunnelProvider, CloudflareWorkerTunnelProvider>();
         //services.AddHttpClient<ITunnelProvider, CloudflareTunnelProvider>();
 
         //services.AddSingleton<ITunnelProvider, NgrokTunnelProvider>();

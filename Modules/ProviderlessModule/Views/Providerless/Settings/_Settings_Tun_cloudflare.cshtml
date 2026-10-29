@@ -1,88 +1,46 @@
 ﻿@model ProviderlessSettingsViewModel
 @using ProviderlessModule.Configuration.Tunnel
-@using ProviderlessModule.Services.Tunnel.Provisioning
-@inject INodeProvisioningIdentity ProvisioningIdentity
 
 @{
     var key = "cloudflare";
-    var settings = Model.TunnelSettings.ContainsKey(key)
-                   ? (CloudflareSettings)Model.TunnelSettings[key]
+    var settings = Model.TunnelSettings.ContainsKey(key) 
+                   ? (CloudflareSettings)Model.TunnelSettings[key] 
                    : new CloudflareSettings();
-    bool serviceMode = CloudflareProvisioningMode.IsService(settings.ProvisioningMode);
-
-    string nodeLabel;
-    try { nodeLabel = ProvisioningIdentity.Label; }
-    catch (Exception ex) { nodeLabel = $"(key unavailable: {ex.Message})"; }
-    var provisioningState = ProvisioningIdentity.LoadState();
 }
 
 <div class="plss-space-y-4">
     <div>
         <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Tunnel Token</label>
-        <input name="TunnelSettings[@key].TunnelToken" value="@settings.TunnelToken" type="password"
-               placeholder="Filled in automatically after provisioning"
+        <input name="TunnelSettings[@key].TunnelToken" value="@settings.TunnelToken" type="password" 
+               placeholder="Enter token for existing tunnel"
                class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-rounded-lg plss-font-mono plss-text-sm" />
     </div>
 
-    <div>
-        <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Provisioning (used when the tunnel token is empty or stale)</label>
-        <select name="TunnelSettings[@key].ProvisioningMode"
-                class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-rounded-lg plss-text-sm">
-            <option value="@CloudflareProvisioningMode.Service" selected="@serviceMode">Provisioning service (Worker holds the Cloudflare API token)</option>
-            <option value="@CloudflareProvisioningMode.Token" selected="@(!serviceMode)">API token on this node</option>
-        </select>
-    </div>
-
-    <div class="plss-bg-gray-50 plss-p-4 plss-rounded-xl plss-border plss-border-dashed plss-space-y-3 @(serviceMode ? "plss-border-indigo-400" : "")">
-        <p class="plss-text-[10px] plss-font-bold plss-text-gray-500 plss-uppercase">Provisioning service mode</p>
-        <input name="TunnelSettings[@key].ProvisioningServiceUrl" value="@settings.ProvisioningServiceUrl"
-               placeholder="https://processor-provisioner.example.workers.dev"
-               class="plss-w-full plss-p-2 plss-text-xs plss-border plss-rounded plss-font-mono" />
-        <div class="plss-grid plss-grid-cols-2 plss-gap-3">
-            <input name="TunnelSettings[@key].ProvisioningJoinKey" value="@settings.ProvisioningJoinKey" type="password"
-                   placeholder="Join key (if the Worker requires one)"
-                   class="plss-p-2 plss-text-xs plss-border plss-rounded" />
-            <input name="TunnelSettings[@key].TunnelRotationDays" value="@settings.TunnelRotationDays" type="number" min="0" max="3650"
-                   title="Replace the tunnel (and its token) after this many days. 0 = never."
-                   placeholder="Rotate tunnel after N days (0 = never)"
-                   class="plss-p-2 plss-text-xs plss-border plss-rounded" />
-        </div>
-        <div class="plss-text-[11px] plss-text-gray-500 plss-space-y-1">
-            <div>Node label: <span class="plss-font-mono plss-text-gray-700">@nodeLabel</span></div>
-            @if (provisioningState != null && !string.IsNullOrEmpty(provisioningState.Hostname))
-            {
-                <div>Assigned: <span class="plss-font-mono plss-text-gray-700">@provisioningState.Hostname</span>,
-                    tunnel created @provisioningState.TunnelCreatedUtc.ToString("yyyy-MM-dd HH:mm") UTC</div>
-            }
-            <div>The label comes from this node's key (Module_Data/Portal/keys). Back up that folder: a new key means a new subdomain.</div>
-        </div>
-    </div>
-
-    <div class="plss-bg-gray-50 plss-p-4 plss-rounded-xl plss-border plss-border-dashed plss-space-y-3 @(!serviceMode ? "plss-border-indigo-400" : "")">
-        <p class="plss-text-[10px] plss-font-bold plss-text-gray-500 plss-uppercase">API token mode</p>
+    <div class="plss-bg-gray-50 plss-p-4 plss-rounded-xl plss-border plss-border-dashed plss-space-y-3">
+        <p class="plss-text-[10px] plss-font-bold plss-text-gray-500 plss-uppercase">Provisioning (Only if token is empty)</p>
         <div class="plss-grid plss-grid-cols-2 plss-gap-3">
             <input name="TunnelSettings[@key].AccountId" value="@settings.AccountId" placeholder="Account ID" class="plss-p-2 plss-text-xs plss-border plss-rounded" />
             <input name="TunnelSettings[@key].ZoneId" value="@settings.ZoneId" placeholder="Zone ID" class="plss-p-2 plss-text-xs plss-border plss-rounded" />
         </div>
-        <input name="TunnelSettings[@key].ProvisionToken" value="@settings.ProvisionToken" type="password" placeholder="Provisioning Token" class="plss-w-full plss-p-2 plss-text-xs plss-border plss-rounded" />
+        <input name="TunnelSettings[@key].ProvisionToken" value="@settings.ProvisionToken" placeholder="Provisioning Token" class="plss-w-full plss-p-2 plss-text-xs plss-border plss-rounded" />
     </div>
 
     <div class="plss-grid plss-grid-cols-2 plss-gap-4">
         <div>
             <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Custom URL</label>
-            <input name="TunnelSettings[@key].CustomPublicUrl" value="@settings.CustomPublicUrl"
+            <input name="TunnelSettings[@key].CustomPublicUrl" value="@settings.CustomPublicUrl" 
                    class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-rounded-lg plss-text-sm" />
         </div>
         <div>
             <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Timeout (Sec)</label>
-            <input name="TunnelSettings[@key].WaitTimeoutSeconds" value="@settings.WaitTimeoutSeconds" type="number"
+            <input name="TunnelSettings[@key].WaitTimeoutSeconds" value="@settings.WaitTimeoutSeconds" type="number" 
                    class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-rounded-lg plss-text-sm" />
         </div>
     </div>
 
     <div>
         <label class="plss-text-[10px] plss-font-black plss-text-gray-400 plss-uppercase">Extra Arguments</label>
-        <input name="TunnelSettings[@key].ExtraArgs" value="@settings.ExtraArgs"
+        <input name="TunnelSettings[@key].ExtraArgs" value="@settings.ExtraArgs" 
                placeholder="--protocol http2"
                class="plss-w-full plss-mt-1 plss-p-2.5 plss-bg-white plss-border plss-rounded-lg plss-text-sm plss-font-mono" />
     </div>

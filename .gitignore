@@ -445,6 +445,9 @@ Modules/ProviderlessModule/domains.txt
 **/Module_Data/**/identity/
 **/Module_Data/**/keys/
 **/node.key
+# Cloudflare Worker local secrets (wrangler dev) and wrangler state
+**/.dev.vars
+**/.wrangler/
 **/hash_backups/
 **/hashstamps/
 **/result_chain/

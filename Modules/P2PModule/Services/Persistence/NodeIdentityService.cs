@@ -33,6 +33,16 @@ public class NodeConfig
 }
 
 
+/// <summary>
+/// One consistent set of the node's current day keys (see <see cref="INodeIdentityService.GetDayKeys"/>).
+/// </summary>
+public sealed record DayKeySnapshot(
+    string NodeId,
+    byte[] PublicKey,
+    byte[] PrivateKey,
+    byte[] PublicVerifyKey,
+    byte[] PrivateSignatureKey);
+
 public interface INodeIdentityService
 {
     public string NodeId { get; }
@@ -66,6 +76,12 @@ public interface INodeIdentityService
     /// Gets a list of last n available historical day keys sorted from most recent to least recent (descending order).
     /// </summary>
     List<string> GetRecentDayKeys(int n);
+
+    /// <summary>
+    /// Today's keys taken as ONE snapshot under the identity lock, so a caller never mixes keys from before and after a rotation.
+    /// </summary>
+    DayKeySnapshot GetDayKeys();
+
     PeerImmutableData GetImmutableData();
 
     /// <summary>
@@ -545,6 +561,14 @@ public class NodeIdentityService : INodeIdentityService, IDisposable
     //}
 
 
+
+    public DayKeySnapshot GetDayKeys()
+    {
+        lock (_lock)
+        {
+            return new DayKeySnapshot(_nodeId, _dailyPublicKey, _dailyPrivateKey, _dailyVerifyKey, _dailySignatureKey);
+        }
+    }
 
     public List<string> GetRecentDayKeys(int n)
     {

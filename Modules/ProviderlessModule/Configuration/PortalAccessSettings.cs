@@ -7,6 +7,9 @@ public class PortalAccessSettings
     public const string SectionName = "PortalSecuritySettings";
 
     public bool Enabled { get; set; }
+    /// <summary>
+    /// Cloud Discovery: publish the tunnel URL to the active registry (GitHub...). Off = the tunnel still runs, nothing is registered.
+    /// </summary>
     public bool RegistryEnabled { get; set; }
 
     /// <summary>

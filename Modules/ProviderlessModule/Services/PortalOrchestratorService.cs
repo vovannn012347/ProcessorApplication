@@ -123,13 +123,20 @@ public class PortalOrchestratorService : BackgroundService
                         _state.IsActive = true;
                         _state.TunnelStartedAt = DateTime.UtcNow;
 
-                        var registry = _registrySelector.GetActiveRegistry();
-                        string clinicId = _localData.GetRegistryAlias();
+                        // 5. Cloud Discovery: publish the URL to the registry only when enabled
+                        if (settings.RegistryEnabled)
+                        {
+                            var registry = _registrySelector.GetActiveRegistry();
 
-                        _logger.LogInformation("Registering discovery via {RegistryProvider}...", registry.Provider);
-                        await registry.RegisterAccessAsync(publicUrl, ct);
+                            _logger.LogInformation("Registering discovery via {RegistryProvider}...", registry.Provider);
+                            await registry.RegisterAccessAsync(publicUrl, ct);
 
-                        _logger.LogInformation("SUCCESS: Portal accessible and registered at {Url}", publicUrl);
+                            _logger.LogInformation("SUCCESS: Portal accessible and registered at {Url}", publicUrl);
+                        }
+                        else
+                        {
+                            _logger.LogInformation("SUCCESS: Portal accessible at {Url} (Cloud Discovery is off, not registered)", publicUrl);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -145,10 +152,13 @@ public class PortalOrchestratorService : BackgroundService
                     // The GitHubRegistry implementation handles the interval-based update (idempotency).
                     try
                     {
-                        var registry = _registrySelector.GetActiveRegistry();
-                        await registry.RegisterAccessAsync(
-                            _state.CurrentTunnelUrl!, 
-                            ct);
+                        if (settings.RegistryEnabled)
+                        {
+                            var registry = _registrySelector.GetActiveRegistry();
+                            await registry.RegisterAccessAsync(
+                                _state.CurrentTunnelUrl!,
+                                ct);
+                        }
                     }
                     catch (Exception ex)
                     {

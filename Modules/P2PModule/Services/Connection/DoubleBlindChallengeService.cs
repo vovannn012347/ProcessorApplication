@@ -51,6 +51,13 @@ public class HandshakeSession
     public int FailedChallenges { get; set; }
     public int UnknownChallenges { get; set; }
     public double Confidence { get; set; }
+
+    /// <summary>
+    /// UTC day this handshake was started on. Today's keys are always challenged (the peer's identity carries them),
+    /// so a peer without shared history can still prove it holds the keys of the identity it presents.
+    /// Today's checks are a gate only; they don't count towards Confidence/reputation.
+    /// </summary>
+    public string TodayKey { get; set; } = DateTime.UtcNow.ToString("yyyy-MM-dd");
 }
 
 
@@ -179,15 +186,38 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
 
     private (List<ChallengeEnvelope>, Dictionary<string, byte[]>) GenerateChallengeEnvelopes(
         string proverNodeId, //node we need to make explicit challenge for
-        Random rng)
+        Random rng,
+        string todayKey,
+        byte[]? proverCurrentEncryptionKey = null) // from the identity the prover just sent us: today's envelope
     {
         var envelopes = new List<ChallengeEnvelope>();
         Dictionary<string, byte[]> expectedResults = new();
 
+        // Today: always possible, the prover's identity carries its current key
+        if (proverCurrentEncryptionKey != null && proverCurrentEncryptionKey.Length > 0)
+        {
+            byte[] todayNonce = new byte[32];
+            RandomNumberGenerator.Fill(todayNonce);
+            // Expected either way: if the key is unusable no envelope goes out, so the prover can't answer and fails today's check
+            expectedResults[todayKey] = todayNonce;
+            try
+            {
+                envelopes.Add(new ChallengeEnvelope
+                {
+                    DayKey = todayKey,
+                    EncryptedData = P2PCrypto.Encrypt(todayNonce, proverCurrentEncryptionKey)
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("[Challenge Engine] {NodeId} presented an unusable encryption key: {Msg}", proverNodeId, ex.Message);
+            }
+        }
+
         //get days that that node was ON
         var inDays = _peerTracker.GetRecordedEpochsForNode(proverNodeId)
             .OrderBy(_ => rng.Next()).Take(16).ToList();
-        inDays.Remove(DateTime.UtcNow.ToString("yyyy-MM-dd"));
+        inDays.Remove(todayKey);
 
         int sinceresNeeded = rng.Next(2, 6);
         int fakesNeeded = rng.Next(2, 6);
@@ -247,9 +277,11 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
     {
         var decryptedMap = new Dictionary<string, byte[]>();
 
+        string todayKey = DateTime.UtcNow.ToString("yyyy-MM-dd");
         foreach (var env in envelopes)
         {
-            var privateKey = _identity.GetPrivateKey(env.DayKey);
+            // Today = the current key, the one our identity advertises (a history entry for today could hold an older one)
+            var privateKey = env.DayKey == todayKey ? _identity.PrivateKey : _identity.GetPrivateKey(env.DayKey);
 
             if (privateKey != null)
             {
@@ -281,8 +313,11 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
         Buffer.BlockCopy(nonce, 0, nonceSigned, 0, nonce.Length);
         Buffer.BlockCopy(incomingHash, 0, nonceSigned, 32, incomingHash.Length);
 
-        // Fetch private signature certificate for the historical day
-        byte[]? privateKey = _identity.GetPrivateCertificate(day);
+        // Fetch private signature certificate for the historical day.
+        // Today = the current key, the one our identity advertises (a history entry for today could hold an older one).
+        byte[]? privateKey = day == DateTime.UtcNow.ToString("yyyy-MM-dd")
+            ? _identity.PrivateSignatureKey
+            : _identity.GetPrivateCertificate(day);
 
         // Fallback to active static private signature key if requested day is current or missing
         if (privateKey == null || privateKey.Length == 0)
@@ -363,7 +398,8 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
             HandshakeId = Guid.NewGuid(),
             PeerNodeId = proverNodeId,
             HandshakeDirection = HandshakeSession.HandshakeType.Outgoing,
-            Request = request
+            Request = request,
+            TodayKey = todayKey
         };
         var rng = new Random();
 
@@ -371,8 +407,10 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
         request.RequestedDays = _peerTracker.GetRecordedEpochsForNode(proverNodeId)
             .OrderBy(_ => rng.Next()).Take(requests).ToList();
         request.RequestedDays.Remove(todayKey);
+        request.RequestedDays.Add(todayKey); // today's signature: checked against the identity in the response
 
-        var (challengeEnvelopes, expectations) = GenerateChallengeEnvelopes(proverNodeId, rng);
+        // No today envelope here: we don't have the prover's current identity yet (only a possibly stale one)
+        var (challengeEnvelopes, expectations) = GenerateChallengeEnvelopes(proverNodeId, rng, todayKey);
         // Shuffle envelopes to obscure order
         request.Envelopes = challengeEnvelopes.OrderBy(_ => rng.Next()).ToList();
         challengeSession.ResponseExpectation = expectations;
@@ -414,11 +452,13 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
         //response.Identity.Signature = P2PCrypto.SignData(response.Identity.GetNodeDataHash(), _identity.PrivateSignatureKey);
 
         // Initialize inbound session tracking
+        string todayKey = DateTime.UtcNow.ToString("yyyy-MM-dd");
         var inboundSession = new HandshakeSession
         {
             HandshakeId = request.HandShakeId,
             PeerNodeId = request.Identity.NodeId,
             HandshakeDirection = HandshakeSession.HandshakeType.Inbound,
+            TodayKey = todayKey
         };
         inboundSession.Response = response;
         inboundSession.Request = request;
@@ -436,9 +476,12 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
 
         int requests = rng.Next(4, 8);
         response.RequestedDays = _peerTracker.GetRecordedEpochsForNode(request.Identity.NodeId).OrderBy(_ => rng.Next()).Take(requests).ToList();
-        response.RequestedDays.Remove(DateTime.UtcNow.ToString("yyyy-MM-dd"));
+        response.RequestedDays.Remove(todayKey);
+        response.RequestedDays.Add(todayKey); // today's signature: checked against the identity in the request
 
-        var (challengeEnvelopes, expectations) = GenerateChallengeEnvelopes(request.Identity.NodeId, rng);
+        // The initiator's identity is fresh, so also challenge its current encryption key
+        var (challengeEnvelopes, expectations) = GenerateChallengeEnvelopes(
+            request.Identity.NodeId, rng, todayKey, request.Identity.PublicEncryptionKey);
         // Shuffle envelopes to obscure order
         response.Envelopes = challengeEnvelopes.OrderBy(_ => rng.Next()).ToList();
         inboundSession.ConfirmationExpectation = expectations;
@@ -478,83 +521,40 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
         session.Response = response;
         session.Confirmation = confirmation;
 
+        // 0 today's gate: the identity is the one we asked for and correctly self-signed
+        bool todayOk = IsIdentityGenuine(response.Identity, session.PeerNodeId);
+
         // 1 check decoding
-        //int failedEnvelopes = 0;
         foreach (var expectation in session.ResponseExpectation)
         {
-            string encryptedDataKey = expectation.Key;
-            var expectedRecord = expectation.Value; // string expectedPlaintextB64
-
-            if (response.EvaluationResults.TryGetValue(encryptedDataKey, out var actualDecryptedB64))
-            {
-                if (!actualDecryptedB64.SequenceEqual(expectedRecord))
-                {
-                    //++failedEnvelopes;
-                    ++session.FailedChallenges;
-                }
-                else
-                {
-                    ++session.PassedChallenges;
-                }
-            }
-            else
-            {
-                //all envelopes should be processed
-                _logger.LogWarning("[Challenge Engine] Responder omitted expected envelope result. Data: {Key}", encryptedDataKey);
-                ++session.UnknownChallenges;
-            }
+            bool isToday = expectation.Key == session.TodayKey;
+            bool? matched = response.EvaluationResults.TryGetValue(expectation.Key, out var actualDecrypted)
+                ? actualDecrypted.SequenceEqual(expectation.Value)
+                : null;
+            if (matched == null)
+                _logger.LogWarning("[Challenge Engine] Responder omitted expected envelope result. Day: {Key}", expectation.Key);
+            CountCheck(session, isToday, matched, ref todayOk);
         }
 
         // 2 verify signatures
         byte[] nodeIdentityHash = session.Response.Identity.GetNodeDataHash();
-        byte[] nonceTarget = new byte[32 + nodeIdentityHash.Length];
-        Buffer.BlockCopy(nodeIdentityHash, 0, nonceTarget, 32, nodeIdentityHash.Length);
-
         foreach (var signatureDay in session.Request.RequestedDays)
         {
-            if (response.RequestedSignatures.TryGetValue(signatureDay, out var signatureEnvelope))
+            bool isToday = signatureDay == session.TodayKey;
+            bool? valid = VerifyDaySignature(signatureDay, isToday, response.Identity, session.PeerNodeId,
+                response.RequestedSignatures, nodeIdentityHash);
+            if (valid == null && !isToday && _archiveStore.GetHistoricalPeer(signatureDay, session.PeerNodeId) == null)
             {
-                var peerNodeKey = _archiveStore.GetHistoricalPeer(signatureDay, session.PeerNodeId);
-                if(peerNodeKey != null)
-                {
-                    Buffer.BlockCopy(signatureEnvelope.Nonce, 0, nonceTarget, 0, 32);
-                    if (!P2PCrypto.TestSignature(
-                        nonceTarget, 
-                        peerNodeKey.Identity.PublicVerifyKey, 
-                        signatureEnvelope.Signature))
-                    {
-                        //++failedEnvelopes;
-                        ++session.FailedChallenges;
-                    }
-                    else
-                    {
-                        ++session.PassedChallenges;
-                    }
-                }
-                else
-                {
-                    //we got some trash in our database, omit this
-                    _logger.LogWarning("[Handshake Security] Responder {nodeId} is not found on {day}.", session.PeerNodeId, signatureDay);
-                }
+                //we got some trash in our database, omit this
+                _logger.LogWarning("[Handshake Security] Responder {nodeId} is not found on {day}.", session.PeerNodeId, signatureDay);
+                continue;
             }
-            else
-            {
-                ++session.UnknownChallenges;
+            if (valid == null)
                 _logger.LogWarning("[Handshake Security] Responder {nodeId} omited signature day {day}.", session.PeerNodeId, signatureDay);
-            }
+            CountCheck(session, isToday, valid, ref todayOk);
         }
 
-        session.Confidence =
-            (double)(session.PassedChallenges - session.FailedChallenges) /
-            (session.PassedChallenges +
-             session.FailedChallenges +
-             session.UnknownChallenges);
-
-        session.Mismatch = true;
-        if (session.Confidence > 0)
-        {
-            session.Mismatch = false;
-        }
+        EvaluateSession(session, todayOk);
 
         // 3. Mark completion Date if verification audits succeeded
         if (!session.Mismatch)
@@ -564,8 +564,11 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
 
             _logger.LogInformation("[Challenge Engine] Outgoing handshake successfully verified. CompletionDate set.");
 
-            _ = _ratingService.ApplyLocalReputationUpdateAsync(session.PeerNodeId,
-                baseAmount: _settingsRating.CurrentValue.HandshakeRepDelta * session.Confidence);
+            if (session.Confidence > 0)
+            {
+                _ = _ratingService.ApplyLocalReputationUpdateAsync(session.PeerNodeId,
+                    baseAmount: _settingsRating.CurrentValue.HandshakeRepDelta * session.Confidence);
+            }
         }
         else
         {
@@ -604,92 +607,49 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
         }
         session.Confirmation = confirmation;
 
-        //int failedEnvelopes = 0;
+        // 0 today's gate: the initiator's identity is correctly self-signed
+        bool todayOk = IsIdentityGenuine(session.Request.Identity, session.PeerNodeId);
+
         foreach (var expectation in session.ConfirmationExpectation)
         {
-            string encryptedDataKey = expectation.Key;
-            var expectedRecord = expectation.Value; // string expectedPlaintextB64
-
-            if (confirmation.EvaluationResults.TryGetValue(encryptedDataKey, out var actualDecryptedB64))
-            {
-                if (!actualDecryptedB64.SequenceEqual(expectedRecord))
-                {
-                    //++failedEnvelopes;
-                    ++session.FailedChallenges;
-                }
-                else
-                {
-                    ++session.PassedChallenges;
-                }
-            }
-            else
-            {
-                //all envelopes should be processed
-                _logger.LogWarning("[Challenge Engine] Responder omitted expected envelope result. Data: {Key}", encryptedDataKey);
-                //++failedEnvelopes;
-                ++session.UnknownChallenges;
-            }
+            bool isToday = expectation.Key == session.TodayKey;
+            bool? matched = confirmation.EvaluationResults.TryGetValue(expectation.Key, out var actualDecrypted)
+                ? actualDecrypted.SequenceEqual(expectation.Value)
+                : null;
+            if (matched == null)
+                _logger.LogWarning("[Challenge Engine] Initiator omitted expected envelope result. Day: {Key}", expectation.Key);
+            CountCheck(session, isToday, matched, ref todayOk);
         }
 
         // 2 verify signatures
         byte[] nodeIdentityHash = session.Request.Identity.GetNodeDataHash();
-        byte[] nonceTarget = new byte[32 + nodeIdentityHash.Length];
-        Buffer.BlockCopy(nodeIdentityHash, 0, nonceTarget, 32, nodeIdentityHash.Length);
-
         foreach (var signatureDay in session.Response.RequestedDays)
         {
-            if (confirmation.RequestedSignatures.TryGetValue(signatureDay, out var signatureEnvelope))
+            bool isToday = signatureDay == session.TodayKey;
+            bool? valid = VerifyDaySignature(signatureDay, isToday, session.Request.Identity, session.PeerNodeId,
+                confirmation.RequestedSignatures, nodeIdentityHash);
+            if (valid == null && !isToday && _archiveStore.GetHistoricalPeer(signatureDay, session.PeerNodeId) == null)
             {
-                var peerNodeKey = _archiveStore.GetHistoricalPeer(signatureDay, session.PeerNodeId);
-                if (peerNodeKey != null)
-                {
-                    Buffer.BlockCopy(signatureEnvelope.Nonce, 0, nonceTarget, 0, 32);
-                    if (!P2PCrypto.TestSignature(
-                        nonceTarget,
-                        peerNodeKey.Identity.PublicVerifyKey,
-                        signatureEnvelope.Signature))
-                    {
-                        //++failedEnvelopes;
-                        ++session.FailedChallenges;
-                    }
-                    else
-                    {
-                        ++session.PassedChallenges;
-                    }
-                }
-                else
-                {
-                    //we got some trash in our database, omit this
-                    _logger.LogWarning("[Handshake Security] Responder {nodeId} is not found on {day}.", session.PeerNodeId, signatureDay);
-                }
+                //we got some trash in our database, omit this
+                _logger.LogWarning("[Handshake Security] Initiator {nodeId} is not found on {day}.", session.PeerNodeId, signatureDay);
+                continue;
             }
-            else
-            {
-                //++failedEnvelopes;
-                _logger.LogWarning("[Handshake Security] Responder {nodeId} omited signature day {day}.", session.PeerNodeId, signatureDay);
-                ++session.UnknownChallenges;
-            }
+            if (valid == null)
+                _logger.LogWarning("[Handshake Security] Initiator {nodeId} omited signature day {day}.", session.PeerNodeId, signatureDay);
+            CountCheck(session, isToday, valid, ref todayOk);
         }
 
-        session.Confidence =
-            (double)(session.PassedChallenges - session.FailedChallenges) /
-            (session.PassedChallenges +
-             session.FailedChallenges +
-             session.UnknownChallenges);
-
-        session.Mismatch = true;
-        if (session.Confidence > 0)
-        {
-            session.Mismatch = false;
-        }
-
+        EvaluateSession(session, todayOk);
 
         if (!session.Mismatch)
         {
             session.Handshaked = true;
             session.CompletedAt = DateTime.UtcNow;
             _logger.LogInformation("[Challenge Engine] Step 4: Handshake successfully handshaked on both sides.");
-            _ = _ratingService.ApplyLocalReputationUpdateAsync(confirmation.NodeId, baseAmount: _settingsRating.CurrentValue.HandshakeRepDelta * session.Confidence);
+            if (session.Confidence > 0)
+            {
+                _ = _ratingService.ApplyLocalReputationUpdateAsync(confirmation.NodeId, baseAmount: _settingsRating.CurrentValue.HandshakeRepDelta * session.Confidence);
+            }
 
             _todayRequestedDays.UnionWith(session.Request.RequestedDays);
 
@@ -702,6 +662,91 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
         return false;
     }
 
+
+    /// <summary>The identity is for the node we expect and is signed with its own verify key.</summary>
+    private bool IsIdentityGenuine(PeerImmutableData? identity, string expectedNodeId)
+    {
+        if (identity == null || !string.Equals(identity.NodeId, expectedNodeId, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("[Handshake Security] Peer presented an identity for {Got} instead of {Expected}.", identity?.NodeId, expectedNodeId);
+            return false;
+        }
+        if (identity.PublicVerifyKey == null || identity.PublicVerifyKey.Length == 0 ||
+            identity.Signature == null || identity.Signature.Length == 0 ||
+            !SafeTestSignature(identity.GetNodeDataHash(), identity.PublicVerifyKey, identity.Signature))
+        {
+            _logger.LogWarning("[Handshake Security] Identity of {NodeId} is not correctly self-signed.", expectedNodeId);
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Checks one day's signature over (nonce | identity hash). Today: against the verify key in the identity the peer just sent.
+    /// Past days: against the key recorded in our consensus history. Null = signature missing or no key to check with.
+    /// </summary>
+    private bool? VerifyDaySignature(string day, bool isToday, PeerImmutableData identity, string peerNodeId,
+        Dictionary<string, SignatureEnvelope> signatures, byte[] identityHash)
+    {
+        if (signatures == null || !signatures.TryGetValue(day, out var envelope) || envelope?.Nonce == null || envelope.Nonce.Length != 32)
+            return null;
+
+        byte[]? verifyKey = isToday
+            ? identity.PublicVerifyKey
+            : _archiveStore.GetHistoricalPeer(day, peerNodeId)?.Identity?.PublicVerifyKey;
+        if (verifyKey == null || verifyKey.Length == 0) return null;
+
+        byte[] signed = new byte[32 + identityHash.Length];
+        Buffer.BlockCopy(envelope.Nonce, 0, signed, 0, 32);
+        Buffer.BlockCopy(identityHash, 0, signed, 32, identityHash.Length);
+        return SafeTestSignature(signed, verifyKey, envelope.Signature);
+    }
+
+    // A malformed key or signature from a peer counts as a failed check, not an exception
+    private static bool SafeTestSignature(byte[] data, byte[] publicKey, byte[]? signature)
+    {
+        if (signature == null || signature.Length == 0) return false;
+        try { return P2PCrypto.TestSignature(data, publicKey, signature); }
+        catch { return false; }
+    }
+
+    /// <summary>Today's checks feed the gate (any failure or omission fails it); past days feed the counters.</summary>
+    private static void CountCheck(HandshakeSession session, bool isToday, bool? passed, ref bool todayOk)
+    {
+        if (isToday)
+        {
+            if (passed != true) todayOk = false;
+            return;
+        }
+
+        if (passed == true) ++session.PassedChallenges;
+        else if (passed == false) ++session.FailedChallenges;
+        else ++session.UnknownChallenges;
+    }
+
+    /// <summary>
+    /// Today's keys must pass. Confidence comes from past days only; with no shared history it's 0:
+    /// the handshake is accepted (the peer proved today's keys) but brings no reputation.
+    /// </summary>
+    private void EvaluateSession(HandshakeSession session, bool todayOk)
+    {
+        int historicalChecks = session.PassedChallenges + session.FailedChallenges + session.UnknownChallenges;
+
+        session.Confidence = historicalChecks > 0
+            ? (double)(session.PassedChallenges - session.FailedChallenges) / historicalChecks
+            : 0;
+
+        session.Mismatch = !todayOk || (historicalChecks > 0 && session.Confidence <= 0);
+
+        if (todayOk && historicalChecks == 0)
+        {
+            _logger.LogInformation("[Challenge Engine] No shared history with {NodeId}: accepted on today's keys (no reputation change).", session.PeerNodeId);
+        }
+        else if (!todayOk)
+        {
+            _logger.LogWarning("[Challenge Engine] {NodeId} failed today's key checks.", session.PeerNodeId);
+        }
+    }
 
     #endregion
     private void SendMessageRaw(string payload, RTCDataChannel channel)

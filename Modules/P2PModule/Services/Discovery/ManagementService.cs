@@ -40,6 +40,14 @@ public class ManagementService : BackgroundService, IMeshManagementService, IDis
     private Timer? _heartbeatTimer;
     private IDisposable? _settingsChangeListener;
 
+    // Wake-up consensus bookkeeping (DiscoverNewConsensus). Each connection is asked at most once per day:
+    // key = node id + when that connection was opened, so a peer that reconnects counts as new.
+    // With nobody new to ask, DiscoverNewConsensus does nothing (no staging files) until a new peer connects.
+    private readonly object _wakeUpLock = new();
+    private string _wakeUpDay = string.Empty;
+    private readonly HashSet<string> _wakeUpTriedConnections = new(StringComparer.OrdinalIgnoreCase);
+    private bool _wakeUpWaitingLogged;
+
     public ManagementService(
        ILogger<ManagementService> logger,
        IOptionsMonitor<P2PSettings> settings,
@@ -243,24 +251,61 @@ public class ManagementService : BackgroundService, IMeshManagementService, IDis
 
     public async Task<bool> DiscoverNewConsensus()
     {
-        _logger.LogInformation("[P2P Mesh Management] Launching progressive chunk-based consensus sync folder sync...");
         string syncDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
 
-        // Initialize disk staging via ConsensusMergeEngine
+        var activeConnections = _connectionManager.GetActiveConnections().ToList();
+
+        // Only connections we haven't asked yet today. Settles when there is nobody new: no staging, no files.
+        List<ActivePeerConnection> targets;
+        lock (_wakeUpLock)
+        {
+            if (!string.Equals(_wakeUpDay, syncDate, StringComparison.Ordinal))
+            {
+                _wakeUpDay = syncDate;
+                _wakeUpTriedConnections.Clear();
+                _wakeUpWaitingLogged = false;
+            }
+
+            var untried = activeConnections.Where(c => !_wakeUpTriedConnections.Contains(WakeUpKey(c))).ToList();
+
+            // Trackers first; other peers (best trust first) once no untried tracker is left
+            var untriedTrackers = untried.Where(c =>
+                _peerTracker.GetPeer(c.NodeId)?.Identity.Roles.Contains("tracker") == true).ToList();
+
+            targets = untriedTrackers.Any() ? untriedTrackers :
+                untried.OrderByDescending(c => _peerTracker.GetPeer(c.NodeId)?.TrustScore ?? 0).ToList();
+
+            if (targets.Count == 0)
+            {
+                if (!_wakeUpWaitingLogged)
+                {
+                    _wakeUpWaitingLogged = true;
+                    _logger.LogInformation(
+                        "[P2P Mesh Management] No new peer to take today's consensus from ({Count} connection(s) already asked). Waiting until a new peer connects.",
+                        activeConnections.Count);
+                }
+                return false;
+            }
+
+            _wakeUpWaitingLogged = false;
+        }
+
+        _logger.LogInformation("[P2P Mesh Management] Launching progressive chunk-based consensus sync from {Count} new peer(s)...", targets.Count);
+
+        // Initialize disk staging via ConsensusMergeEngine (only now that there is someone to sync with)
         ConsensusMergeOperation stagingOp = await _mergeEngine.CreateStagingOperationAsync(syncDate);
 
-        var activeConnections = _connectionManager.GetActiveConnections().ToList();
-        var trackers = activeConnections.Where(c =>
-            _peerTracker.GetPeer(c.NodeId)?.Identity.Roles.Contains("tracker") == true).ToList();
-
-        var targets = trackers.Any() ? trackers :
-            activeConnections.OrderByDescending(c => _peerTracker.GetPeer(c.NodeId)?.TrustScore ?? 0).ToList();
-
-        int consensusSyncedAny = 0;
+        bool synced = false;
 
         foreach (var target in targets)
         {
+            lock (_wakeUpLock)
+            {
+                _wakeUpTriedConnections.Add(WakeUpKey(target));
+            }
+
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            int receivedNodes = 0;
 
             int configuredTimeout = _settings.CurrentValue.DefaultRequestTimeoutSeconds > 0 ? _settings.CurrentValue.DefaultRequestTimeoutSeconds : 10;
             var interChunkTimeout = TimeSpan.FromSeconds(configuredTimeout / 2 > 0 ? configuredTimeout / 2 : 5);
@@ -284,10 +329,10 @@ public class ManagementService : BackgroundService, IMeshManagementService, IDis
                         if (!string.IsNullOrEmpty(chunkJson))
                         {
                             var docSegment = JsonSerializer.Deserialize<NodesTransferContainer>(chunkJson);
-                            if (docSegment != null && docSegment.Nodes != null)
+                            if (docSegment != null && docSegment.Nodes != null && docSegment.Nodes.Count > 0)
                             {
                                 await _mergeEngine.StageIncomingNodeSetAsync(stagingOp, target.NodeId, docSegment.Nodes);
-                                Interlocked.Increment(ref consensusSyncedAny);
+                                Interlocked.Add(ref receivedNodes, docSegment.Nodes.Count);
                             }
                         }
 
@@ -301,19 +346,28 @@ public class ManagementService : BackgroundService, IMeshManagementService, IDis
 
                 await tcs.Task;
                 cts.Cancel();
+
+                if (Volatile.Read(ref receivedNodes) == 0)
+                {
+                    _logger.LogInformation("[P2P Mesh Management] Peer {Id} had no consensus nodes to share. Trying the next one.", target.NodeId);
+                    await _mergeEngine.ResetIterationMergeAsync(stagingOp);
+                    continue;
+                }
+
                 await _mergeEngine.FinalizeIterationAsync(stagingOp);
-                Interlocked.Increment(ref consensusSyncedAny);
+                synced = true;
                 break; // Synced successfully from this peer
             }
             catch (Exception ex)
             {
                 _logger.LogWarning("[P2P Mesh Management] Progressive sync failed targeting node {Id}: {Msg}. Iterating to fallback.", target.NodeId, ex.Message);
                 cts.Cancel();
-                await _mergeEngine.AbortMergeOperationAsync(stagingOp);
+                // Drop only this peer's partial data; the workspace stays usable for the next peer.
+                await _mergeEngine.ResetIterationMergeAsync(stagingOp);
             }
         }
 
-        if (consensusSyncedAny > 0)
+        if (synced)
         {
             await _mergeEngine.FinalizeTotalMergeAsync(stagingOp);
             return true;
@@ -322,6 +376,9 @@ public class ManagementService : BackgroundService, IMeshManagementService, IDis
         await _mergeEngine.AbortMergeOperationAsync(stagingOp);
         return false;
     }
+
+    private static string WakeUpKey(ActivePeerConnection connection) =>
+        $"{connection.NodeId}@{connection.ConnectedAt.Ticks}";
 
     private async Task<string> RequestConsensusWakeUpSegmented_Handler(string senderNodeId, P2PPacketEnvelope envelope, CancellationToken cancelToken)
     {

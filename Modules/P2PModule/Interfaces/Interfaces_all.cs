@@ -30,6 +30,9 @@ public interface IConsensusStore
     void UpdateHistoricalPeer(string dayKey, string nodeId, PeerNodeHistoric peer);
     Task PruneHistoryAsync(); //prune history according to settings
 
+    /// <summary>Marks a day's consensus as committed (writes its manifest), so IsOutdated() is false for that day.</summary>
+    void MarkDayCompleted(string dayKey);
+
     // Watchdog and Persistence Compatibility
     bool IsOutdated();
 }

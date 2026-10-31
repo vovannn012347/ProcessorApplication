@@ -117,6 +117,31 @@ public class ConsensusStore : IConsensusStore, IDisposable
     }
 
 
+    /// <summary>
+    /// Marks a day's consensus as committed: writes history/&lt;day&gt;/manifest.txt and makes it the latest day,
+    /// so IsOutdated() stops asking for a new consensus until the date changes.
+    /// </summary>
+    public void MarkDayCompleted(string dayKey)
+    {
+        if (string.IsNullOrEmpty(dayKey)) return;
+
+        try
+        {
+            string dayDir = Path.Combine(_historyDir, dayKey);
+            Directory.CreateDirectory(dayDir);
+            File.WriteAllText(Path.Combine(dayDir, "manifest.txt"), $"completed {DateTime.UtcNow:O}");
+
+            if (string.CompareOrdinal(dayKey, _latestConsensusDirName) >= 0)
+            {
+                _latestConsensusDirName = dayKey;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Consensus Store] Failed to mark consensus day {Day} as completed.", dayKey);
+        }
+    }
+
     public bool IsOutdated()
     {
         string todayDirName = DateTime.UtcNow.ToString("yyyy-MM-dd");

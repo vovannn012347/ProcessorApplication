@@ -406,6 +406,9 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
                 }
             }
 
+            // The day is committed: IsOutdated() is false for it from now on
+            _consensusStore.MarkDayCompleted(operation.TargetDate);
+
             // Purge staging workspaces (IterDir & MergeDir)
             if (Directory.Exists(operation.BasePath))
             {

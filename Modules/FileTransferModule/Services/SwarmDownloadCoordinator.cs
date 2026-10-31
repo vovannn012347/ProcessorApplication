@@ -893,8 +893,9 @@ public class SwarmDownloadCoordinator : ISwarmDownloadCoordinator, IDisposable
             if (channelResult.IsError || channelResult.Channel == null)
             {
                 var c = _connectionManager.GetConnection(seeder.NodeId);
-                _logger.LogInformation("[DownloadCoordinator] Task {TaskId}: could not open file channel to {Peer}: {Error} (connection {State}).",
-                    session.TaskId, seeder.NodeId, channelResult.Error ?? "no channel",
+                _logger.LogInformation("[DownloadCoordinator] Task {TaskId}: could not open file channel to {Peer}: error='{Error}', isError={IsError}, channel={HasChannel} (connection {State}).",
+                    session.TaskId, seeder.NodeId, channelResult.Error, channelResult.IsError,
+                    channelResult.Channel == null ? "null" : channelResult.Channel.readyState.ToString(),
                     c?.PeerConnection?.connectionState.ToString() ?? "none");
                 session.CooldownUntil[seeder.NodeId] = DateTime.UtcNow + PeerCooldown;
                 return false;

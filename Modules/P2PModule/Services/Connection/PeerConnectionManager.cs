@@ -177,8 +177,10 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
                     // Reuse existing open channel if already present under this clean label
                     if (conn.DataChannels.TryGetValue(cleanLabel, out var existingChannel) &&
+                        existingChannel != null &&
                         existingChannel.readyState == RTCDataChannelState.open)
                     {
+                        _logger.LogInformation("[PeerConnectionManager] Reusing open channel '{Label}' to {NodeId}.", cleanLabel, nodeId);
                         return new CreateChannelResult
                         {
                             Channel = existingChannel
@@ -190,7 +192,15 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                         : channelLabel;
 
                     var dc = await conn.PeerConnection.createDataChannel(wireLabel);
+                    if (dc == null)
+                    {
+                        return new CreateChannelResult { Error = $"createDataChannel('{wireLabel}') returned no channel" };
+                    }
                     RegisterAndBindDataChannel(nodeId, dc, isUnmanaged: isUnmanaged);
+                    if (isUnmanaged)
+                    {
+                        _logger.LogInformation("[PeerConnectionManager] Created channel '{Label}' to {NodeId} ({State}).", wireLabel, nodeId, dc.readyState);
+                    }
 
                     return new CreateChannelResult
                     {

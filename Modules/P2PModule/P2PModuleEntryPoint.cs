@@ -112,6 +112,7 @@ public class P2PModuleEntryPoint : IModule
         services.TryAddHttpClient();
 
         // 2. Core Security & Identity Services
+        services.AddSingleton<IDynamicEndpointStore, DynamicEndpointStore>();
         services.AddSingleton<INodeIdentityService, NodeIdentityService>();
         services.AddSingleton<IPeerRatingOverrideService, PeerRatingOverrideService>();
         services.AddSingleton<IRatingService, RatingService>();
@@ -134,6 +135,8 @@ public class P2PModuleEntryPoint : IModule
         // 6. Gossip Network Event Handlers
         services.AddSingleton<IP2PGossipService, P2PGossipService>();
         services.AddHostedService<GossipSelfIdentityUpdatedHandler>();
+        // Advertises module-provided endpoints (tunnel URL...) and re-announces the identity when they change
+        services.AddHostedService<EndpointAdvertiserService>();
         services.AddHostedService<GossipNodeUpdatesHandler>();
 
         // 7. Decoupled Modular Consensus Stack

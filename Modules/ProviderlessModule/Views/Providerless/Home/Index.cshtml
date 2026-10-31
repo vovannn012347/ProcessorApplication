@@ -85,7 +85,7 @@
             <div class="plss-space-y-6">
                 <div class="plss-bg-gray-50 plss-p-5 plss-rounded-lg plss-border plss-border-gray-100">
                     <h3 class="plss-text-xs plss-font-bold plss-text-gray-400 plss-uppercase plss-tracking-widest plss-mb-4">Connection Details</h3>
-                    <dl class="plss-grid plss-grid-cols-2 plss-gap-x-4 plss-gap-y-4">
+                    <dl class="plss-grid plss-grid-cols-[auto_1fr] plss-gap-x-4 plss-gap-y-4">
                         <dt class="plss-text-sm plss-text-gray-500">Provider</dt>
                         <dd id="stat-provider" class="plss-text-sm plss-font-semibold plss-text-gray-900">--</dd>
 
@@ -97,6 +97,18 @@
 
                         <dt class="plss-text-sm plss-text-gray-500">Registry</dt>
                         <dd id="stat-registry" class="plss-text-sm plss-font-bold">--</dd>
+
+                        <dt class="plss-text-sm plss-text-gray-500">Tunnel URL</dt>
+                        <dd class="plss-text-sm plss-font-mono plss-break-all"><a id="url-tunnel" target="_blank" rel="noopener" class="plss-text-blue-600 hover:plss-underline"></a></dd>
+
+                        <dt class="plss-text-sm plss-text-gray-500">Public URL</dt>
+                        <dd class="plss-text-sm plss-font-mono plss-break-all"><a id="url-public" target="_blank" rel="noopener" class="plss-text-blue-600 hover:plss-underline"></a></dd>
+
+                        <dt class="plss-text-sm plss-text-gray-500">In registry</dt>
+                        <dd class="plss-text-sm plss-font-mono plss-break-all"><a id="url-registered" target="_blank" rel="noopener" class="plss-text-blue-600 hover:plss-underline"></a></dd>
+
+                        <dt class="plss-text-sm plss-text-gray-500">Registry entry</dt>
+                        <dd class="plss-text-sm plss-font-mono plss-break-all"><a id="url-registry-entry" target="_blank" rel="noopener" class="plss-text-blue-600 hover:plss-underline"></a></dd>
                     </dl>
                 </div>
 
@@ -118,10 +130,7 @@
                 <div class="plss-p-4 plss-bg-white plss-rounded-xl plss-shadow-inner plss-border-2 plss-border-gray-100">
                     <div id="qrcode" class="plss-mx-auto"></div>
                 </div>
-                <div class="plss-mt-4 plss-text-center">
-                    <p class="plss-text-xs plss-font-bold plss-text-gray-400 plss-uppercase plss-mb-2">Secure Link</p>
-                    <a id="tunnel-link" href="#" target="_blank" class="plss-text-blue-600 plss-font-mono plss-text-sm plss-break-all hover:plss-underline"></a>
-                </div>
+                <p id="qr-caption" class="plss-mt-3 plss-text-xs plss-font-bold plss-text-gray-400 plss-uppercase"></p>
                 <div class="plss-flex plss-space-x-2 plss-mt-6">
                     <button onclick="Providerless.printPatientHandout()" class="plss-bg-blue-600 plss-text-white plss-px-6 plss-py-2 plss-rounded-lg hover:plss-bg-blue-700 plss-transition">
                         <i class="fa-solid fa-print"></i>
@@ -139,7 +148,7 @@
                 <svg class="plss-w-12 plss-h-12 plss-text-gray-300 plss-mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
-                <p class="plss-text-gray-500 plss-font-medium">Waiting for Registry & Tunnel synchronization...</p>
+                <p class="plss-text-gray-500 plss-font-medium">Waiting for the tunnel...</p>
             </div>
         </div>
 

@@ -34,4 +34,8 @@ public class NoneRegistry : IUrlRegistry
         // just hand back the direct link as-is.
         return _portalState.CurrentTunnelUrl ?? string.Empty;
     }
+
+    public string? RegisteredUrl => null;
+
+    public string? GetRegistryEntryUrl() => null;
 }

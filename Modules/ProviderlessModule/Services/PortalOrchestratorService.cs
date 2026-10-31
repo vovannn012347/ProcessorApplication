@@ -121,6 +121,7 @@ public class PortalOrchestratorService : BackgroundService
                         // 4. Update State
                         _state.CurrentTunnelUrl = publicUrl;
                         _state.IsActive = true;
+                        _state.LastError = null;
                         _state.TunnelStartedAt = DateTime.UtcNow;
 
                         // 5. Cloud Discovery: publish the URL to the registry only when enabled

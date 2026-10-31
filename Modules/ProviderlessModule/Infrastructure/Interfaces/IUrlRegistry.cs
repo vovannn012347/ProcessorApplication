@@ -23,4 +23,14 @@ public interface IUrlRegistry
     /// for this specific registry entry.
     /// </summary>
     string GetQrDiscoveryUrl();
+
+    /// <summary>
+    /// The URL the registry currently holds for this node (decrypted), as last read or written. Null if unknown.
+    /// </summary>
+    string? RegisteredUrl { get; }
+
+    /// <summary>
+    /// Link to this node's entry in the registry (e.g. the file on GitHub). Null if the registry has none.
+    /// </summary>
+    string? GetRegistryEntryUrl();
 }

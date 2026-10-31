@@ -51,18 +51,33 @@ public class HomeController : Controller
     {
         var provider = _selector.GetActiveProvider();
         var registry = _registrySelector.GetActiveRegistry();
-        var stuff = _general.CurrentValue;
+        var general = _general.CurrentValue;
+
+        // Only real addresses (the token tunnel reports a placeholder when it has no public hostname)
+        string? tunnelUrl = provider.IsRunning && IsHttpUrl(provider.CurrentUrl) ? provider.CurrentUrl : null;
+
+        bool registryUsed = general.RegistryEnabled && registry.Provider != RegistryProviderType.None;
+        string? publicUrl = registryUsed && registry.IsActive && tunnelUrl != null ? registry.GetQrDiscoveryUrl() : null;
+        if (string.IsNullOrEmpty(publicUrl)) publicUrl = null;
 
         return Json(new QrStatusResult
         {
             TunnelActive = provider.IsRunning,
-            RegistyActive = registry.IsActive,
-            Url = registry.IsActive ? registry.GetQrDiscoveryUrl() : provider.CurrentUrl ?? string.Empty,
+            RegistyActive = registryUsed && registry.IsActive,
+            RegistryEnabled = registryUsed,
+            Url = publicUrl ?? tunnelUrl ?? string.Empty,
+            TunnelUrl = tunnelUrl,
+            PublicUrl = publicUrl,
+            RegisteredUrl = registryUsed ? registry.RegisteredUrl : null,
+            RegistryEntryUrl = registryUsed ? registry.GetRegistryEntryUrl() : null,
             StartTime = provider.LastStartTime?.ToString("HH:mm:ss") ?? "--:--",
             ProviderName = provider.Provider.ToString(),
-            LastError = _state.LastError + stuff.ActiveRegistry
+            LastError = _state.LastError ?? string.Empty
         });
     }
+
+    private static bool IsHttpUrl(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp);
 
     [HttpPost]
     [Authorize(Policy = "AdminLocalPolicy")]

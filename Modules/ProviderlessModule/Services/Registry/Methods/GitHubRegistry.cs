@@ -22,6 +22,9 @@ public class GitHubRegistry : IUrlRegistry
     private readonly IOptionsMonitor<GithubSettings> _gitSettings;
     private readonly ILogger<GitHubRegistry> _logger;
     protected bool _active = false;
+    private volatile string? _registeredUrl;
+
+    public string? RegisteredUrl => _registeredUrl;
 
     public GitHubRegistry(
         HttpClient http,
@@ -69,6 +72,7 @@ public class GitHubRegistry : IUrlRegistry
                 var remoteData = JsonSerializer.Deserialize<RegistryData>(Encoding.UTF8.GetString(jsonBytes));
 
                 string decryptedRemoteUrl = SimpleCrypto.Decrypt(remoteData?.Url ?? "", secret);
+                _registeredUrl = string.IsNullOrEmpty(decryptedRemoteUrl) ? null : decryptedRemoteUrl;
 
                 // Logic: Only update if URL changed OR heartbeat is stale
                 bool urlMatches = decryptedRemoteUrl == tunnelUrl;
@@ -110,6 +114,7 @@ public class GitHubRegistry : IUrlRegistry
         }
 
         this.IsActive = true;
+        _registeredUrl = tunnelUrl;
 
         _logger.LogInformation("Successfully updated registry for Clinic {Id}", clinicId);
     }
@@ -125,6 +130,16 @@ public class GitHubRegistry : IUrlRegistry
         string baseUrl = git.ResolverSiteUrl.EndsWith("/") ? git.ResolverSiteUrl : git.ResolverSiteUrl + "/";
 
         return $"{baseUrl}#{clinicId}:{secret}";
+    }
+
+    public string? GetRegistryEntryUrl()
+    {
+        var git = _gitSettings.CurrentValue;
+        if (string.IsNullOrWhiteSpace(git.RepositoryName)) return null;
+
+        string path = string.IsNullOrWhiteSpace(git.RegistryPath) ? "" : git.RegistryPath.Trim('/') + "/";
+        string branch = string.IsNullOrWhiteSpace(git.Branch) ? "main" : git.Branch;
+        return $"https://github.com/{git.RepositoryName.Trim('/')}/blob/{branch}/{path}{_localData.GetRegistryAlias()}.json";
     }
 
     private record GithubContentDto(

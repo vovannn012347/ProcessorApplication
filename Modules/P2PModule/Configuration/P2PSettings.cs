@@ -14,6 +14,12 @@ public class P2PSettings
     /// endpoints
     /// </summary>
     public List<string> Endpoints { get; set; } = new();
+
+    /// <summary>
+    /// Also advertise the endpoints other modules provide at runtime (IEndpointProvider, e.g. the QR Access tunnel URL),
+    /// after the static Endpoints above. The identity is re-announced whenever the list changes.
+    /// </summary>
+    public bool AutoAdvertiseEndpoints { get; set; } = true;
     /// <summary>
     /// "Tracker", possibly other roles
     /// </summary>

@@ -88,19 +88,43 @@
                 updateText('stat-start', data.startTime);
                 updateText('stat-tunnel', data.tunnelActive ? "RUNNING" : "STOPPED",
                     data.tunnelActive ? "plss-text-green-600" : "plss-text-red-600");
-                updateText('stat-registry', data.registyActive ? "SYNCED" : "PENDING",
-                    data.registyActive ? "plss-text-green-600" : "plss-text-amber-600");
+                if (!data.registryEnabled) {
+                    updateText('stat-registry', "OFF", "plss-text-gray-500");
+                } else {
+                    updateText('stat-registry', data.registyActive ? "SYNCED" : "PENDING",
+                        data.registyActive ? "plss-text-green-600" : "plss-text-amber-600");
+                }
 
-                // 3. Visibility Logic
+                // URLs: tunnel, resolver link, what the registry holds, the registry entry itself
+                const setLink = (id, url) => {
+                    const a = root.querySelector(`#${id}`);
+                    if (!a) return;
+                    if (url) { a.innerText = url; a.href = url; }
+                    else { a.innerText = "--"; a.removeAttribute('href'); }
+                };
+                setLink('url-tunnel', data.tunnelUrl);
+                setLink('url-public', data.publicUrl);
+                setLink('url-registered', data.registeredUrl);
+                setLink('url-registry-entry', data.registryEntryUrl);
+
+                // Error from the last start attempt
+                const errBox = root.querySelector('#error-container');
+                const errText = root.querySelector('#error-text');
+                if (errBox && errText) {
+                    errText.innerText = data.lastError || "";
+                    errBox.classList.toggle('plss-hidden', !data.lastError);
+                }
+
+                // 3. Visibility Logic: QR = public URL once registered, the tunnel URL until then
                 const activeSec = root.querySelector('#active-section');
                 const inactiveSec = root.querySelector('#inactive-section');
 
-                if (data.tunnelActive && data.registyActive) {
+                if (data.tunnelActive && data.url) {
                     activeSec?.classList.remove('plss-hidden');
                     inactiveSec?.classList.add('plss-hidden');
 
-                    const link = root.querySelector('#tunnel-link');
-                    if (link) { link.innerText = data.url; link.href = data.url; }
+                    const caption = root.querySelector('#qr-caption');
+                    if (caption) caption.innerText = data.publicUrl ? "QR: Public URL" : "QR: Tunnel URL (no public URL yet)";
 
                     if (this.qrcode && data.url && data.url !== this.lastUrl) {
                         this.lastUrl = data.url;

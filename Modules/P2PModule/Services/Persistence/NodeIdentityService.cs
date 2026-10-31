@@ -108,7 +108,23 @@ public class NodeIdentityService : INodeIdentityService, IDisposable
     public byte[] PublicVerifyKey { get { lock (_lock) { return _dailyVerifyKey; } } }
     public byte[] PrivateSignatureKey { get { lock (_lock) { return _dailySignatureKey; } } }
 
-    public List<string> GetEndpoints() => _p2pSettings.CurrentValue.Endpoints;
+    /// <summary>
+    /// Advertised endpoints: the static ones from P2PSettings.Endpoints first (e.g. a public IP the admin set),
+    /// then the ones modules provide at runtime (IEndpointProvider, e.g. the live tunnel URL), without duplicates.
+    /// </summary>
+    public List<string> GetEndpoints()
+    {
+        var result = new List<string>();
+        foreach (var endpoint in (_p2pSettings.CurrentValue.Endpoints ?? new List<string>()).Concat(_dynamicEndpoints.Current))
+        {
+            string normalized = EndpointText.Normalize(endpoint);
+            if (normalized.Length > 0 && !result.Any(e => EndpointText.SameAuthority(e, normalized)))
+            {
+                result.Add(normalized);
+            }
+        }
+        return result;
+    }
     public List<string> GetCapablities() => _p2pSettings.CurrentValue.NodeRoles.ToList();
     public bool HasRole(string role) => _p2pSettings.CurrentValue.NodeRoles.Contains(role, StringComparer.OrdinalIgnoreCase);
 
@@ -127,6 +143,7 @@ public class NodeIdentityService : INodeIdentityService, IDisposable
     private readonly IOptionsMonitor<P2PSettings> _p2pSettings;
     private readonly ILogger<NodeIdentityService> _logger;
     private readonly IConsensusChannelRegistry _channelRegistry;
+    private readonly IDynamicEndpointStore _dynamicEndpoints;
 
     private readonly object _lock = new();
     private readonly IDisposable _settingsChangeListener;
@@ -138,9 +155,11 @@ public class NodeIdentityService : INodeIdentityService, IDisposable
         ILogger<NodeIdentityService> logger,
         IOptionsMonitor<P2PSettings> settings,
         IServiceScopeFactory scopeFactory,
-        IConsensusChannelRegistry channelRegistry)
+        IConsensusChannelRegistry channelRegistry,
+        IDynamicEndpointStore dynamicEndpoints)
     {
         _scopeFactory = scopeFactory;
+        _dynamicEndpoints = dynamicEndpoints;
         _p2pSettings = settings;
         _logger = logger;
         _channelRegistry = channelRegistry;

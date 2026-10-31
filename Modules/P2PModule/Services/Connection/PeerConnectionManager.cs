@@ -59,7 +59,8 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
     {
         public RTCDataChannel? Channel { get; set; } = null;
 
-        public bool IsError => string.IsNullOrEmpty(Error);
+        // Was inverted (IsNullOrEmpty): every successfully created channel reported an error.
+        public bool IsError => !string.IsNullOrEmpty(Error);
         public string Error { get; set; } = string.Empty;
     }
 

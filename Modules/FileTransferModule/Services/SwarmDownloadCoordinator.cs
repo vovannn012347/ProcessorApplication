@@ -822,14 +822,16 @@ public class SwarmDownloadCoordinator : ISwarmDownloadCoordinator, IDisposable
         session.State.ConnectedPeerIds = open; // replaced, not mutated, so UI readers never see a list mid-change
     }
 
-    private bool IsEligibleSeeder(DownloadSession session, TorrentPeerDescriptor seeder)
+    /// <summary>Null when the seeder may be connected, otherwise why not (for the log).</summary>
+    private string? GetIneligibleReason(DownloadSession session, TorrentPeerDescriptor seeder, bool ignoreCooldown)
     {
-        if (string.IsNullOrEmpty(seeder.NodeId)) return false;
-        if (string.Equals(seeder.NodeId, _identity.NodeId, StringComparison.OrdinalIgnoreCase)) return false;
-        if (session.Excluded.ContainsKey(seeder.NodeId)) return false;
-        if (session.CooldownUntil.TryGetValue(seeder.NodeId, out var until) && until > DateTime.UtcNow) return false;
-        if (_reputation.IsBanned(seeder.NodeId)) return false;
-        return true;
+        if (string.IsNullOrEmpty(seeder.NodeId)) return "no node id";
+        if (string.Equals(seeder.NodeId, _identity.NodeId, StringComparison.OrdinalIgnoreCase)) return "self";
+        if (session.Excluded.ContainsKey(seeder.NodeId)) return "excluded for this task (sent corrupt data)";
+        if (!ignoreCooldown && session.CooldownUntil.TryGetValue(seeder.NodeId, out var until) && until > DateTime.UtcNow)
+            return $"cooling down for {(int)(until - DateTime.UtcNow).TotalSeconds} s";
+        if (_reputation.IsBanned(seeder.NodeId)) return "banned by file reputation";
+        return null;
     }
 
     /// <summary>
@@ -837,14 +839,20 @@ public class SwarmDownloadCoordinator : ISwarmDownloadCoordinator, IDisposable
     /// MaxPeerConnectionsPerFile usable links. Connection attempts run in parallel batches so one
     /// unreachable seeder doesn't serialize the rest. Returns how many new links were opened.
     /// </summary>
-    private async Task<int> ConnectToSeedersAsync(DownloadSession session, IEnumerable<TorrentPeerDescriptor> seeders, CancellationToken token)
+    private async Task<int> ConnectToSeedersAsync(DownloadSession session, IEnumerable<TorrentPeerDescriptor> seeders, CancellationToken token, bool ignoreCooldown = false)
     {
         int maxLinks = Math.Max(1, _settings.CurrentValue.MaxPeerConnectionsPerFile);
 
-        var queue = new Queue<TorrentPeerDescriptor>(seeders
-            .Where(s => IsEligibleSeeder(session, s))
-            .Where(s => !(session.Links.TryGetValue(s.NodeId, out var l) && l.IsAlive))
-            .OrderByDescending(s => _reputation.GetScore(s.NodeId)));
+        var eligible = new List<TorrentPeerDescriptor>();
+        foreach (var s in seeders)
+        {
+            if (session.Links.TryGetValue(s.NodeId, out var l) && l.IsAlive) continue;
+            string? reason = GetIneligibleReason(session, s, ignoreCooldown);
+            if (reason == null) eligible.Add(s);
+            else _logger.LogInformation("[DownloadCoordinator] Task {TaskId}: skipping seeder {Peer} ({Reason}).", session.TaskId, s.NodeId, reason);
+        }
+
+        var queue = new Queue<TorrentPeerDescriptor>(eligible.OrderByDescending(s => _reputation.GetScore(s.NodeId)));
 
         int newlyConnected = 0;
         while (queue.Count > 0 && !token.IsCancellationRequested)
@@ -884,9 +892,16 @@ public class SwarmDownloadCoordinator : ISwarmDownloadCoordinator, IDisposable
             var channelResult = await _connectionManager.CreateUnmanagedDataChannelAsync(seeder.NodeId, channelLabel);
             if (channelResult.IsError || channelResult.Channel == null)
             {
+                var c = _connectionManager.GetConnection(seeder.NodeId);
+                _logger.LogInformation("[DownloadCoordinator] Task {TaskId}: could not open file channel to {Peer}: {Error} (connection {State}).",
+                    session.TaskId, seeder.NodeId, channelResult.Error ?? "no channel",
+                    c?.PeerConnection?.connectionState.ToString() ?? "none");
                 session.CooldownUntil[seeder.NodeId] = DateTime.UtcNow + PeerCooldown;
                 return false;
             }
+
+            _logger.LogInformation("[DownloadCoordinator] Task {TaskId}: file channel to {Peer} created ({State}).",
+                session.TaskId, seeder.NodeId, channelResult.Channel.readyState);
 
             var link = new PeerLink { NodeId = seeder.NodeId, Channel = channelResult.Channel };
             AttachChannelEvents(session, link);
@@ -895,7 +910,7 @@ public class SwarmDownloadCoordinator : ISwarmDownloadCoordinator, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "[DownloadCoordinator] Task {TaskId}: could not open link to {Peer}.", session.TaskId, seeder.NodeId);
+            _logger.LogInformation(ex, "[DownloadCoordinator] Task {TaskId}: could not open link to {Peer}: {Msg}", session.TaskId, seeder.NodeId, ex.Message);
             session.CooldownUntil[seeder.NodeId] = DateTime.UtcNow + PeerCooldown;
             return false;
         }
@@ -911,6 +926,14 @@ public class SwarmDownloadCoordinator : ISwarmDownloadCoordinator, IDisposable
         _logger.LogWarning("[DownloadCoordinator] Task {TaskId}: no usable connected seeders - rediscovering.", session.TaskId);
         var freshSeeders = await DiscoverSeedersAsync(session.Manifest);
         int newlyConnected = await ConnectToSeedersAsync(session, freshSeeders, token);
+
+        // The cooldown exists to prefer other seeders over one that just failed. With nothing
+        // connected and nobody else to prefer it only blocks the task: 10 waits of 10 s run out
+        // before a 2 min cooldown does, so one hiccup failed the download for good. Retry anyway.
+        if (newlyConnected == 0 && !session.Links.Values.Any(l => l.IsAlive))
+        {
+            newlyConnected = await ConnectToSeedersAsync(session, freshSeeders, token, ignoreCooldown: true);
+        }
         _logger.LogInformation("[DownloadCoordinator] Task {TaskId}: rediscovery connected {Count} new seeder(s).", session.TaskId, newlyConnected);
         return newlyConnected;
     }

@@ -111,6 +111,15 @@ curl -X POST -H "Authorization: Bearer $ADMIN_KEY" -H "Content-Type: application
   (a refused node's error message contains its label, and the label is shown on its settings page).
 - These are what a future watchdog would call.
 
+## Subdomain claims
+
+- A node asks for its **Clinic ID** as subdomain. The first node key to claim it owns it: the CNAME comment holds
+  `pnode:<key fingerprint> <last seen>`. Any other key gets `409 Subdomain '…' belongs to another node`.
+- **Claims expire.** Running nodes renew theirs every 12 hours (and on every start). A subdomain whose owner hasn't been seen
+  for `CLAIM_TTL_DAYS` (Worker variable, default **30**) can be taken by another key; its old tunnel is deleted. If the old owner
+  comes back after that, it gets 409.
+- Release or `/v1/admin/evict` frees a subdomain immediately.
+
 ## What this does and doesn't protect
 
 - A leaked node (or its key) can only touch its own subdomain. Evict it and it's gone.

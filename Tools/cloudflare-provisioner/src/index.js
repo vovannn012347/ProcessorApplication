@@ -14,6 +14,8 @@
  * (body "label", e.g. its clinic id). The first node to claim a label owns it: the CNAME's comment records
  * the owner's key fingerprint ("pnode:<fingerprint>"), and any other key asking for that label gets 409.
  * Releasing (or an admin evict) deletes the record and frees the label.
+ * Claims expire: the comment also holds when the owner last provisioned ("pnode:<fingerprint> <time>"). Nodes renew it
+ * while running; a label whose owner hasn't been seen for CLAIM_TTL_DAYS can be claimed by another key.
  *   GET  /v1/admin/nodes (ADMIN_KEY)      list managed tunnels
  *   POST /v1/admin/evict (ADMIN_KEY)      block a node and delete its tunnel + CNAME
  *   POST /v1/admin/allow (ADMIN_KEY)      unblock a node / add it to the allowlist
@@ -24,6 +26,7 @@
  *   ZONE_ID            var
  *   ZONE_NAME          var      e.g. processor-app.pp.ua; nodes get <label>.<ZONE_NAME>
  *   TUNNEL_PREFIX      var      optional, default "pnode"; tunnels are named <prefix>-<label>
+ *   CLAIM_TTL_DAYS     var      optional, default 30; a label unclaimed by its owner for this long can be taken over
  *   JOIN_KEY           secret   optional; if set, nodes must send it in X-Join-Key
  *   ADMIN_KEY          secret   optional; enables the /v1/admin routes (Authorization: Bearer <ADMIN_KEY>)
  *   REQUIRE_ALLOWLIST  var      optional "true"; only nodes with an allow:<label> KV key may provision
@@ -45,6 +48,8 @@ const NONCE_TTL_SECONDS = 300; // KV minimum is 60
 const MAX_BODY_BYTES = 4096;
 const P256_SPKI_LENGTH = 91;
 const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";
+const DEFAULT_CLAIM_TTL_DAYS = 30;
+const CLAIM_REFRESH_MS = 6 * 60 * 60 * 1000; // rewrite the claim's "last seen" at most every 6 hours
 const LABEL_RE = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
 const RESERVED_LABELS = new Set(["www", "api", "admin", "mail", "provision", "provisioner", "status"]);
 
@@ -129,9 +134,13 @@ async function checkOwnership(env, node) {
   const records = (await findDnsRecords(env, node.hostname)).filter((r) => r.name === node.hostname);
   let ours = false;
   for (const r of records) {
-    const owner = recordOwner(r);
-    if (owner === null) continue;
-    if (owner !== node.fingerprint) {
+    const claim = recordClaim(r);
+    if (claim === null) continue;
+    if (claim.owner !== node.fingerprint) {
+      if (isClaimExpired(env, claim)) {
+        console.log(`claim on ${node.label} by ${claim.owner} expired (last seen ${claim.lastSeen?.toISOString() ?? "unknown"}), taken over by ${node.fingerprint}`);
+        continue;
+      }
       throw new HttpError(409, `Subdomain '${node.label}' belongs to another node`);
     }
     ours = true;
@@ -139,9 +148,26 @@ async function checkOwnership(env, node) {
   return ours;
 }
 
-function recordOwner(record) {
-  const m = /^pnode:([0-9a-f]{16})\b/.exec(record.comment || "");
-  return m ? m[1] : null;
+// Owner fingerprint and when the owner last provisioned, from the record comment ("pnode:<fp> <ISO time>")
+function recordClaim(record) {
+  const m = /^pnode:([0-9a-f]{16})\b(?:\s+(\S+))?/.exec(record.comment || "");
+  if (!m) return null;
+  let lastSeen = m[2] ? new Date(m[2]) : null;
+  if (!lastSeen || Number.isNaN(lastSeen.getTime())) {
+    lastSeen = record.modified_on ? new Date(record.modified_on) : null;
+    if (lastSeen && Number.isNaN(lastSeen.getTime())) lastSeen = null;
+  }
+  return { owner: m[1], lastSeen };
+}
+
+function claimTtlMs(env) {
+  const days = Number(env.CLAIM_TTL_DAYS);
+  return (Number.isFinite(days) && days > 0 ? days : DEFAULT_CLAIM_TTL_DAYS) * 24 * 60 * 60 * 1000;
+}
+
+function isClaimExpired(env, claim) {
+  if (!claim.lastSeen) return false; // can't tell: keep the owner
+  return Date.now() - claim.lastSeen.getTime() > claimTtlMs(env);
 }
 
 async function provision(env, keyNode, body) {
@@ -402,9 +428,14 @@ async function upsertCname(env, node, tunnelId) {
     await cf(env, "DELETE", `/zones/${env.ZONE_ID}/dns_records/${r.id}`);
   }
 
+  const claim = first ? recordClaim(first) : null;
+  const claimStale =
+    !claim || claim.owner !== node.fingerprint || !claim.lastSeen || Date.now() - claim.lastSeen.getTime() > CLAIM_REFRESH_MS;
+
   if (!first) {
     await cf(env, "POST", `/zones/${env.ZONE_ID}/dns_records`, record);
-  } else if (first.type !== "CNAME" || first.content !== target || first.proxied !== true) {
+  } else if (first.type !== "CNAME" || first.content !== target || first.proxied !== true || claimStale) {
+    // also renews the claim's "last seen"
     await cf(env, "PUT", `/zones/${env.ZONE_ID}/dns_records/${first.id}`, record);
   }
 }

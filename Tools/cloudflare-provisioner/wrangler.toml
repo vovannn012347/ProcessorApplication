@@ -9,6 +9,8 @@ workers_dev = true
 ACCOUNT_ID = ""
 ZONE_ID = ""
 ZONE_NAME = "processor-app.pp.ua"
+# Days without the owner provisioning before another node may claim its subdomain
+CLAIM_TTL_DAYS = "30"
 TUNNEL_PREFIX = "pnode"
 REQUIRE_ALLOWLIST = "false"
 

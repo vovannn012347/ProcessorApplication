@@ -35,6 +35,11 @@ public class CloudflareWorkerTunnelProvider : ITunnelProvider, IDisposable
     private readonly ILocalDataProvider _localData;
     private Process? _tunnelProcess;
 
+    // The Worker lets another node take a subdomain whose owner hasn't provisioned for a while (CLAIM_TTL_DAYS, default 30),
+    // so a running tunnel renews its claim periodically, not only on start.
+    private static readonly TimeSpan ClaimRenewInterval = TimeSpan.FromHours(12);
+    private CancellationTokenSource? _renewCts;
+
     private static readonly Regex LabelRegex = new("^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$", RegexOptions.CultureInvariant);
 
     public CloudflareWorkerTunnelProvider(
@@ -149,7 +154,61 @@ public class CloudflareWorkerTunnelProvider : ITunnelProvider, IDisposable
         string args = $"tunnel --no-autoupdate run --url {scheme}://localhost:{localPort} --protocol http2";
         if (!string.IsNullOrEmpty(cfg.ExtraArgs)) args += $" {cfg.ExtraArgs}";
 
-        return await LaunchProcessAsync(args, token, publicUrl, cfg.WaitTimeoutSeconds, ct);
+        string url = await LaunchProcessAsync(args, token, publicUrl, cfg.WaitTimeoutSeconds, ct);
+
+        StartClaimRenewal(label, scheme, localPort, TryGetIdFromToken(token));
+        return url;
+    }
+
+    private void StartClaimRenewal(string label, string scheme, int localPort, string? tunnelId)
+    {
+        _renewCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _renewCts = cts;
+        _ = RenewClaimLoopAsync(label, scheme, localPort, tunnelId, cts.Token);
+    }
+
+    private async Task RenewClaimLoopAsync(string label, string scheme, int localPort, string? tunnelId, CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(ClaimRenewInterval, ct);
+                if (!IsRunning) return;
+
+                var cfg = _settings.CurrentValue;
+                try
+                {
+                    var result = await _client.ProvisionAsync(cfg.ServiceUrl, cfg.JoinKey, scheme, localPort, rotate: false, label, ct);
+                    _logger.LogDebug("Renewed the claim on {Host}.", result.Hostname);
+
+                    if (tunnelId != null && !string.Equals(result.TunnelId, tunnelId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Our tunnel was replaced on the Worker side (evicted and re-claimed, deleted by hand...): restart with the new one
+                        _logger.LogWarning("The Worker now has tunnel {New} for {Host} instead of {Old}. Restarting the tunnel.",
+                            result.TunnelId, result.Hostname, tunnelId);
+                        await StopTunnelAsync();
+                        return;
+                    }
+                }
+                catch (ProvisioningServiceException ex)
+                {
+                    // Transient: try again next interval. 409 means another node took the name (our claim expired): stop serving it.
+                    _logger.LogWarning("Could not renew the claim on {Label}: {Msg}", label, ex.Message);
+                    if (ex.Status == System.Net.HttpStatusCode.Conflict)
+                    {
+                        await StopTunnelAsync();
+                        return;
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Claim renewal stopped for {Label}.", label);
+        }
     }
 
     /// <summary>
@@ -261,6 +320,9 @@ public class CloudflareWorkerTunnelProvider : ITunnelProvider, IDisposable
 
     private void StopTunnelInternal()
     {
+        _renewCts?.Cancel();
+        _renewCts = null;
+
         var process = _tunnelProcess;
         _tunnelProcess = null;
         CurrentUrl = null;

@@ -427,3 +427,65 @@ test("label validation", async () => {
     assert.equal(r.status, 400, String(bad));
   }
 });
+
+// ------------------------------------------------------------ claim expiry
+const isoDaysAgo = (d) => new Date(Date.now() - d * 86400000).toISOString().slice(0, 19) + "Z";
+
+test("an expired claim can be taken over; a fresh one can't", async () => {
+  const cf = fakeCloudflare();
+  const env = makeEnv({ CLAIM_TTL_DAYS: "30" });
+  const owner = await makeNode();
+  const newcomer = await makeNode();
+
+  let r = await call(env, await signed(owner, "/v1/provision", { port: 7107, label: "clinic01" }));
+  assert.equal(r.status, 200);
+  const ownerTunnel = r.body.tunnelId;
+
+  // owner seen 10 days ago: still owned
+  cf.dns[0].comment = cf.dns[0].comment.replace(/ \S+$/, " " + isoDaysAgo(10));
+  r = await call(env, await signed(newcomer, "/v1/provision", { port: 7200, label: "clinic01" }));
+  assert.equal(r.status, 409);
+
+  // owner seen 31 days ago: expired, newcomer takes it with a fresh tunnel
+  cf.dns[0].comment = cf.dns[0].comment.replace(/ \S+$/, " " + isoDaysAgo(31));
+  r = await call(env, await signed(newcomer, "/v1/provision", { port: 7200, label: "clinic01" }));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.notEqual(r.body.tunnelId, ownerTunnel);
+  assert.ok(cf.tunnels.find((t) => t.id === ownerTunnel).deleted_at, "old owner's tunnel removed");
+  assert.equal(cf.dns.length, 1);
+  assert.equal(cf.dns[0].content, `${r.body.tunnelId}.cfargotunnel.com`);
+
+  // and now the old owner is the one refused
+  r = await call(env, await signed(owner, "/v1/provision", { port: 7107, label: "clinic01" }));
+  assert.equal(r.status, 409);
+});
+
+test("provisioning renews a stale claim but doesn't rewrite a fresh one", async () => {
+  const cf = fakeCloudflare();
+  const env = makeEnv();
+  const node = await makeNode();
+  assert.equal((await call(env, await signed(node, "/v1/provision", { port: 7107, label: "clinic02" }))).status, 200);
+
+  cf.calls.length = 0;
+  assert.equal((await call(env, await signed(node, "/v1/provision", { port: 7107, label: "clinic02" }))).status, 200);
+  assert.ok(!cf.calls.some((c) => c.startsWith("PUT /zones")), "fresh claim not rewritten");
+
+  cf.dns[0].comment = cf.dns[0].comment.replace(/ \S+$/, " " + isoDaysAgo(2));
+  cf.calls.length = 0;
+  assert.equal((await call(env, await signed(node, "/v1/provision", { port: 7107, label: "clinic02" }))).status, 200);
+  assert.ok(cf.calls.some((c) => c.startsWith("PUT /zones")), "stale claim renewed");
+  const seen = new Date(cf.dns[0].comment.split(" ")[1]);
+  assert.ok(Date.now() - seen.getTime() < 60000);
+});
+
+test("default TTL is 30 days", async () => {
+  const cf = fakeCloudflare();
+  const env = makeEnv();
+  const a = await makeNode();
+  const b = await makeNode();
+  assert.equal((await call(env, await signed(a, "/v1/provision", { port: 1, label: "clinic03" }))).status, 200);
+  cf.dns[0].comment = cf.dns[0].comment.replace(/ \S+$/, " " + isoDaysAgo(29));
+  assert.equal((await call(env, await signed(b, "/v1/provision", { port: 1, label: "clinic03" }))).status, 409);
+  cf.dns[0].comment = cf.dns[0].comment.replace(/ \S+$/, " " + isoDaysAgo(31));
+  assert.equal((await call(env, await signed(b, "/v1/provision", { port: 1, label: "clinic03" }))).status, 200);
+});

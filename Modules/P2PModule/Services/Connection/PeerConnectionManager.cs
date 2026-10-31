@@ -1033,7 +1033,11 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
         conn.PeerConnection = pc;
         _connections[senderNodeId] = conn;
 
-        pc.ondatachannel += (remoteChannel) => RegisterAndBindDataChannel(senderNodeId, remoteChannel);
+        // Same dispatch as every other connection path. RegisterAndBindDataChannel treated every channel the
+        // offerer opened later as a managed JSON channel, so unmanaged channels (file transfer "unmanaged:file:*")
+        // never reached OnUnmanagedChannelReceived on the node that answered an HTTP-signalled connection:
+        // the seeder never saw the request, sent no BITFIELD and served no slices.
+        pc.ondatachannel += (remoteChannel) => HandleRemoteDataChannel(senderNodeId, remoteChannel);
 
         try
         {

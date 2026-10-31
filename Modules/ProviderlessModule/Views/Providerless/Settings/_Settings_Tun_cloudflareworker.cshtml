@@ -3,6 +3,7 @@
 @using ProviderlessModule.Configuration.Tunnel
 @using ProviderlessModule.Services.Tunnel.Provisioning
 @inject INodeProvisioningIdentity ProvisioningIdentity
+@inject ProviderlessModule.Services.ILocalDataProvider LocalData
 
 @{
     var key = TunnelProviderType.CloudflareWorker;
@@ -10,9 +11,10 @@
                    ? (CloudflareWorkerSettings)Model.TunnelSettings[key]
                    : new CloudflareWorkerSettings();
 
-    string nodeLabel;
-    try { nodeLabel = ProvisioningIdentity.Label; }
-    catch (Exception ex) { nodeLabel = $"(key unavailable: {ex.Message})"; }
+    string keyStatus;
+    try { keyStatus = ProvisioningIdentity.Label; }
+    catch (Exception ex) { keyStatus = $"(key unavailable: {ex.Message})"; }
+    string clinicLabel = (LocalData.GetEncryptedMachineHash() ?? "").Trim().Split('.')[0].ToLowerInvariant();
     var provisioningState = ProvisioningIdentity.LoadState();
 }
 
@@ -40,14 +42,15 @@
     </div>
 
     <div class="plss-bg-gray-50 plss-p-4 plss-rounded-xl plss-border plss-border-dashed plss-space-y-1 plss-text-[11px] plss-text-gray-500">
-        <div>Node label: <span class="plss-font-mono plss-text-gray-700">@nodeLabel</span></div>
+        <div>Subdomain (Clinic ID): <span class="plss-font-mono plss-text-gray-700">@clinicLabel</span></div>
+        <div>Node key: <span class="plss-font-mono plss-text-gray-700">@keyStatus</span></div>
         @if (provisioningState != null && !string.IsNullOrEmpty(provisioningState.Hostname))
         {
             <div>Assigned: <span class="plss-font-mono plss-text-gray-700">@provisioningState.Hostname</span>,
                 tunnel created @provisioningState.TunnelCreatedUtc.ToString("yyyy-MM-dd HH:mm") UTC</div>
         }
-        <div>The tunnel token is requested from the Worker automatically. The label comes from this node's key
-            (Module_Data/Portal/keys): back that folder up, a new key means a new subdomain.</div>
+        <div>The tunnel token is requested from the Worker automatically. The first claim ties the subdomain to this node's key
+            (Module_Data/Portal/keys): back that folder up. With a new key the Worker refuses the subdomain until the old one is released or evicted.</div>
     </div>
 
     <div class="plss-grid plss-grid-cols-2 plss-gap-4">

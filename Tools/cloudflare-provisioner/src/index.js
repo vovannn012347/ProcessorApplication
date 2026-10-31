@@ -9,6 +9,11 @@
  *   GET  /v1/health                       liveness, no auth
  *   POST /v1/provision   (node-signed)    create or reuse the node's tunnel, set ingress + CNAME, return the tunnel token
  *   POST /v1/release     (node-signed)    delete the node's tunnel and CNAME
+ *
+ * Subdomain: by default derived from the node key. A node may instead ask for its own stable label
+ * (body "label", e.g. its clinic id). The first node to claim a label owns it: the CNAME's comment records
+ * the owner's key fingerprint ("pnode:<fingerprint>"), and any other key asking for that label gets 409.
+ * Releasing (or an admin evict) deletes the record and frees the label.
  *   GET  /v1/admin/nodes (ADMIN_KEY)      list managed tunnels
  *   POST /v1/admin/evict (ADMIN_KEY)      block a node and delete its tunnel + CNAME
  *   POST /v1/admin/allow (ADMIN_KEY)      unblock a node / add it to the allowlist
@@ -40,6 +45,8 @@ const NONCE_TTL_SECONDS = 300; // KV minimum is 60
 const MAX_BODY_BYTES = 4096;
 const P256_SPKI_LENGTH = 91;
 const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";
+const LABEL_RE = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
+const RESERVED_LABELS = new Set(["www", "api", "admin", "mail", "provision", "provisioner", "status"]);
 
 export default {
   async fetch(request, env) {
@@ -97,7 +104,50 @@ async function nodeRoute(request, env, url, handler) {
   return json(await handler(env, node, body));
 }
 
-async function provision(env, node, body) {
+// Which subdomain a request is about: the label the node asked for, or its key-derived one.
+function resolveTarget(env, keyNode, body) {
+  if (body.label === undefined || body.label === null || body.label === "") return keyNode;
+  if (typeof body.label !== "string") throw new HttpError(400, "label must be a string");
+
+  const label = body.label.trim().toLowerCase();
+  if (!LABEL_RE.test(label)) {
+    throw new HttpError(400, "label must be 3-32 characters: a-z, 0-9 and '-', not starting or ending with '-'");
+  }
+  if (RESERVED_LABELS.has(label)) throw new HttpError(400, `label '${label}' is reserved`);
+
+  return {
+    ...keyNode,
+    label,
+    hostname: `${label}.${env.ZONE_NAME}`,
+    tunnelName: `${tunnelPrefix(env)}-${label}`,
+  };
+}
+
+// Refuses (409) when the subdomain's record belongs to another node key. Returns true if it's already ours,
+// false if nobody owns it yet (no record, or a legacy record without an owner).
+async function checkOwnership(env, node) {
+  const records = (await findDnsRecords(env, node.hostname)).filter((r) => r.name === node.hostname);
+  let ours = false;
+  for (const r of records) {
+    const owner = recordOwner(r);
+    if (owner === null) continue;
+    if (owner !== node.fingerprint) {
+      throw new HttpError(409, `Subdomain '${node.label}' belongs to another node`);
+    }
+    ours = true;
+  }
+  return ours;
+}
+
+function recordOwner(record) {
+  const m = /^pnode:([0-9a-f]{16})\b/.exec(record.comment || "");
+  return m ? m[1] : null;
+}
+
+async function provision(env, keyNode, body) {
+  const node = resolveTarget(env, keyNode, body);
+  const owned = await checkOwnership(env, node);
+
   const scheme = body.scheme === undefined ? "https" : body.scheme;
   if (scheme !== "http" && scheme !== "https") throw new HttpError(400, "scheme must be http or https");
 
@@ -108,7 +158,11 @@ async function provision(env, node, body) {
 
   let tunnel = await findTunnel(env, node.tunnelName);
   let rotated = false;
-  if (tunnel && rotate) {
+  if (tunnel && !owned) {
+    // Fresh claim of this label: a tunnel left behind without our record (legacy or half-finished) is not ours to reuse.
+    await deleteTunnel(env, tunnel.id);
+    tunnel = null;
+  } else if (tunnel && rotate) {
     await deleteTunnel(env, tunnel.id);
     tunnel = null;
     rotated = true;
@@ -152,7 +206,9 @@ async function provision(env, node, body) {
   };
 }
 
-async function release(env, node) {
+async function release(env, keyNode, body) {
+  const node = resolveTarget(env, keyNode, body);
+  await checkOwnership(env, node);
   const removed = await removeNode(env, node.label);
   console.log(`released ${node.label}`);
   return { released: true, hostname: node.hostname, ...removed };
@@ -196,7 +252,7 @@ async function adminRoute(request, env, url) {
       throw new HttpError(400, "Body is not valid JSON");
     }
     const label = typeof body?.label === "string" ? body.label.toLowerCase() : "";
-    if (!/^[a-z2-7]{26}$/.test(label)) throw new HttpError(400, "label must be a 26-character node label");
+    if (!LABEL_RE.test(label)) throw new HttpError(400, "label is not a valid node label");
 
     if (url.pathname === "/v1/admin/evict") {
       if (env.NODES) {

@@ -353,3 +353,77 @@ test("stray records at the node's name are replaced", async () => {
   assert.equal(cf.dns.length, 1);
   assert.equal(cf.dns[0].type, "CNAME");
 });
+
+// ------------------------------------------------------------ requested (stable) labels
+test("node can claim its own stable label; another key can't take it", async () => {
+  const cf = fakeCloudflare();
+  const env = makeEnv();
+  const owner = await makeNode();
+  const other = await makeNode();
+
+  let r = await call(env, await signed(owner, "/v1/provision", { port: 7107, label: "BDBE5C5D51E5" }));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.label, "bdbe5c5d51e5");
+  assert.equal(r.body.hostname, `bdbe5c5d51e5.${ZONE_NAME}`);
+  assert.equal(r.body.tunnelName, "pnode-bdbe5c5d51e5");
+  const firstTunnel = r.body.tunnelId;
+  assert.match(cf.dns[0].comment, /^pnode:[0-9a-f]{16} /);
+
+  // same key again: same tunnel
+  r = await call(env, await signed(owner, "/v1/provision", { port: 7108, label: "bdbe5c5d51e5" }));
+  assert.equal(r.status, 200);
+  assert.equal(r.body.tunnelId, firstTunnel);
+
+  // another key: refused, nothing touched
+  r = await call(env, await signed(other, "/v1/provision", { port: 9999, label: "bdbe5c5d51e5" }));
+  assert.equal(r.status, 409);
+  assert.match(r.body.error, /belongs to another node/);
+  r = await call(env, await signed(other, "/v1/release", { label: "bdbe5c5d51e5" }));
+  assert.equal(r.status, 409);
+  assert.equal(cf.tunnels.find((t) => t.id === firstTunnel).config.ingress[0].service, "https://localhost:7108");
+  assert.ok(!cf.tunnels.find((t) => t.id === firstTunnel).deleted_at);
+
+  // owner releases: label is free again
+  r = await call(env, await signed(owner, "/v1/release", { label: "bdbe5c5d51e5" }));
+  assert.equal(r.status, 200);
+  assert.equal(r.body.tunnelDeleted, true);
+  r = await call(env, await signed(other, "/v1/provision", { port: 7110, label: "bdbe5c5d51e5" }));
+  assert.equal(r.status, 200);
+});
+
+test("a key-derived label is protected the same way", async () => {
+  fakeCloudflare();
+  const env = makeEnv();
+  const a = await makeNode();
+  const b = await makeNode();
+  assert.equal((await call(env, await signed(a, "/v1/provision", { port: 7107 }))).status, 200);
+  const r = await call(env, await signed(b, "/v1/provision", { port: 7107, label: a.label }));
+  assert.equal(r.status, 409);
+});
+
+test("claiming a label with a legacy record and a leftover tunnel starts fresh", async () => {
+  const cf = fakeCloudflare();
+  const env = makeEnv();
+  const node = await makeNode();
+  const host = `abc123def456.${ZONE_NAME}`;
+  cf.dns.push({ id: "legacy", type: "CNAME", name: host, content: "old.cfargotunnel.com", proxied: true, comment: "HB:2026-10-01T00:00:00Z" });
+  cf.tunnels.push({ id: "leftover", name: "pnode-abc123def456", token: "token-leftover", config: null, connections: [] });
+
+  const r = await call(env, await signed(node, "/v1/provision", { port: 7107, label: "abc123def456" }));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.notEqual(r.body.tunnelId, "leftover");
+  assert.ok(cf.tunnels.find((t) => t.id === "leftover").deleted_at, "leftover tunnel removed");
+  assert.equal(cf.dns.length, 1);
+  assert.equal(cf.dns[0].content, `${r.body.tunnelId}.cfargotunnel.com`);
+  assert.match(cf.dns[0].comment, /^pnode:/);
+});
+
+test("label validation", async () => {
+  fakeCloudflare();
+  const env = makeEnv();
+  const node = await makeNode();
+  for (const bad of ["ab", "-abc", "abc-", "a_b_c", "a.b", "x".repeat(33), "www", 12345]) {
+    const r = await call(env, await signed(node, "/v1/provision", { port: 7107, label: bad }));
+    assert.equal(r.status, 400, String(bad));
+  }
+});

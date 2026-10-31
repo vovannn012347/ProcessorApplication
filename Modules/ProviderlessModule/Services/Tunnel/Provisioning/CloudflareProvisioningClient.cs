@@ -224,16 +224,22 @@ public sealed class CloudflareProvisioningClient
         _logger = logger;
     }
 
+    /// <param name="label">Subdomain to claim (e.g. the clinic id). Null = the label derived from the node key.
+    /// The first key to claim a label owns it; the Worker answers 409 to any other key.</param>
     public Task<ProvisioningResult> ProvisionAsync(
-        string serviceUrl, string? joinKey, string scheme, int port, bool rotate, CancellationToken ct)
+        string serviceUrl, string? joinKey, string scheme, int port, bool rotate, string? label, CancellationToken ct)
     {
-        var body = new { scheme, port, rotate };
+        object body = string.IsNullOrEmpty(label)
+            ? new { scheme, port, rotate }
+            : new { scheme, port, rotate, label };
         return SendAsync<ProvisioningResult>(serviceUrl, "/v1/provision", joinKey, body, ct);
     }
 
-    public Task ReleaseAsync(string serviceUrl, string? joinKey, CancellationToken ct)
+    /// <param name="label">Subdomain to release. Null = the label derived from the node key.</param>
+    public Task ReleaseAsync(string serviceUrl, string? joinKey, string? label, CancellationToken ct)
     {
-        return SendAsync<JsonElement>(serviceUrl, "/v1/release", joinKey, new { }, ct);
+        object body = string.IsNullOrEmpty(label) ? new { } : new { label };
+        return SendAsync<JsonElement>(serviceUrl, "/v1/release", joinKey, body, ct);
     }
 
     public static Uri GetServiceOrigin(string serviceUrl)

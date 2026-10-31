@@ -17,6 +17,7 @@ using ProviderlessModule.Configuration.Registry;
 using ProviderlessModule.Configuration.Tunnel;
 using ProviderlessModule.Infrastructure.Interfaces;
 using ProviderlessModule.Models;
+using ProviderlessModule.Services;
 
 namespace ProviderlessModule.Controllers;
 
@@ -29,18 +30,33 @@ public class SettingsController : Controller
 
     private readonly ISettingService _settingsService;
     private readonly IOptionsMonitor<PortalAccessSettings> _general;
+    private readonly ILocalDataProvider _localData;
+
+    // Generated once by LocalDataProvider and kept stable (the Clinic ID ties the node to its tunnel name and registry entry).
+    // Shown read-only on the page, never validated or saved from the form.
+    private static readonly string[] GeneratedGeneralFields =
+    {
+        nameof(PortalAccessSettings.EnforcedPCIdentifier),
+        nameof(PortalAccessSettings.SharedSecret)
+    };
 
     public SettingsController(
         ISettingService settingsService,
-        IOptionsMonitor<PortalAccessSettings> general)
+        IOptionsMonitor<PortalAccessSettings> general,
+        ILocalDataProvider localData)
     {
         _settingsService = settingsService;
         _general = general;
+        _localData = localData;
     }
 
     [HttpGet]
     public IActionResult Index()
     {
+        // Make sure the generated identifiers exist before showing them
+        _localData.GetEncryptedMachineHash();
+        _localData.GetSharedSecret();
+
         var model = new ProviderlessSettingsViewModel
         {
             General = _general.CurrentValue,
@@ -109,6 +125,13 @@ public class SettingsController : Controller
     {
         CleanPluginModelState(model);
 
+        foreach (var field in GeneratedGeneralFields)
+        {
+            ModelState.Remove($"{nameof(model.General)}.{field}");
+        }
+        model.General.EnforcedPCIdentifier = _localData.GetEncryptedMachineHash();
+        model.General.SharedSecret = _localData.GetSharedSecret();
+
         if (!ModelState.IsValid)
         {
             return Request.IsAjaxRequest() ? PartialView("Index", model) : View("Index", model);
@@ -172,6 +195,7 @@ public class SettingsController : Controller
             var type = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
             if (!type.IsPrimitive && !type.IsEnum && type != typeof(string) && type != typeof(decimal)) continue;
             if (!postedFields.Contains($"{formPrefix}.{prop.Name}")) continue;
+            if (obj is PortalAccessSettings && GeneratedGeneralFields.Contains(prop.Name)) continue;
             var value = prop.GetValue(obj)?.ToString() ?? string.Empty;
             string settingKey = $"{sectionName}:{prop.Name}";
 

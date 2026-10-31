@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 using Common.Interfaces;
 
@@ -20,6 +21,8 @@ namespace ProviderlessModule.Services.Tunnel.Methods;
 /// Cloudflare tunnel provisioned through the provisioning Worker (Tools/cloudflare-provisioner).
 /// On every start the node asks the Worker for its tunnel (idempotent: same tunnel, ingress updated to the current port),
 /// stores the returned tunnel token and runs cloudflared with it. No Cloudflare API credentials on the node.
+/// The subdomain is the node's Clinic ID (PortalAccessSettings:EnforcedPCIdentifier), so it stays stable and matches
+/// the token-based Cloudflare tunnel; the Worker ties it to this node's key on first claim.
 /// </summary>
 public class CloudflareWorkerTunnelProvider : ITunnelProvider, IDisposable
 {
@@ -29,7 +32,10 @@ public class CloudflareWorkerTunnelProvider : ITunnelProvider, IDisposable
     private readonly IProcessCaretaker _processCaretaker;
     private readonly CloudflareProvisioningClient _client;
     private readonly INodeProvisioningIdentity _identity;
+    private readonly ILocalDataProvider _localData;
     private Process? _tunnelProcess;
+
+    private static readonly Regex LabelRegex = new("^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$", RegexOptions.CultureInvariant);
 
     public CloudflareWorkerTunnelProvider(
         IOptionsMonitor<CloudflareWorkerSettings> settings,
@@ -37,7 +43,8 @@ public class CloudflareWorkerTunnelProvider : ITunnelProvider, IDisposable
         IServiceScopeFactory scopeFactory,
         IProcessCaretaker processCaretaker,
         CloudflareProvisioningClient client,
-        INodeProvisioningIdentity identity)
+        INodeProvisioningIdentity identity,
+        ILocalDataProvider localData)
     {
         _settings = settings;
         _logger = logger;
@@ -45,6 +52,7 @@ public class CloudflareWorkerTunnelProvider : ITunnelProvider, IDisposable
         _processCaretaker = processCaretaker;
         _client = client;
         _identity = identity;
+        _localData = localData;
     }
 
     public string Provider => TunnelProviderType.CloudflareWorker;
@@ -64,9 +72,26 @@ public class CloudflareWorkerTunnelProvider : ITunnelProvider, IDisposable
             throw new Exception("Cloudflare (Worker) tunnel: Provisioning Service URL is empty.");
         }
 
+        string label = GetClinicLabel();
         var state = _identity.LoadState();
         string serviceOrigin = CloudflareProvisioningClient.GetServiceOrigin(cfg.ServiceUrl).ToString();
         bool sameService = state != null && string.Equals(state.ServiceUrl, serviceOrigin, StringComparison.OrdinalIgnoreCase);
+
+        // Subdomain changed (e.g. from the old key-derived name to the Clinic ID): free the old one, start fresh
+        if (sameService && !string.IsNullOrEmpty(state!.Label) && !string.Equals(state.Label, label, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                await _client.ReleaseAsync(cfg.ServiceUrl, cfg.JoinKey, state.Label, ct);
+                _logger.LogInformation("Released the old subdomain {Old} (now using the Clinic ID {New}).", state.Label, label);
+            }
+            catch (ProvisioningServiceException ex)
+            {
+                _logger.LogWarning("Could not release the old subdomain {Old}: {Msg}", state.Label, ex.Message);
+            }
+            state = null;
+            sameService = false;
+        }
 
         bool rotate = cfg.TunnelRotationDays > 0
                       && sameService
@@ -79,7 +104,7 @@ public class CloudflareWorkerTunnelProvider : ITunnelProvider, IDisposable
         {
             if (rotate) _logger.LogInformation("Tunnel is older than {Days} days, asking the provisioning service for a new one.", cfg.TunnelRotationDays);
 
-            var result = await _client.ProvisionAsync(cfg.ServiceUrl, cfg.JoinKey, scheme, localPort, rotate, ct);
+            var result = await _client.ProvisionAsync(cfg.ServiceUrl, cfg.JoinKey, scheme, localPort, rotate, label, ct);
 
             if (string.IsNullOrEmpty(result.TunnelToken) || TryGetIdFromToken(result.TunnelToken) == null)
             {
@@ -125,6 +150,20 @@ public class CloudflareWorkerTunnelProvider : ITunnelProvider, IDisposable
         if (!string.IsNullOrEmpty(cfg.ExtraArgs)) args += $" {cfg.ExtraArgs}";
 
         return await LaunchProcessAsync(args, token, publicUrl, cfg.WaitTimeoutSeconds, ct);
+    }
+
+    /// <summary>
+    /// The Clinic ID as a DNS label. Tolerates an id saved with the domain appended ("abc123.processor-app.pp.ua").
+    /// </summary>
+    private string GetClinicLabel()
+    {
+        string raw = _localData.GetEncryptedMachineHash() ?? string.Empty;
+        string label = raw.Trim().Split('.')[0].ToLowerInvariant();
+        if (!LabelRegex.IsMatch(label))
+        {
+            throw new Exception($"Clinic ID '{raw}' can't be used as a subdomain (3-32 characters: a-z, 0-9, '-').");
+        }
+        return label;
     }
 
     private async Task<string> LaunchProcessAsync(string args, string tunnelToken, string publicUrl, int waitSeconds, CancellationToken ct)

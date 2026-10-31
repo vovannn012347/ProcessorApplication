@@ -43,21 +43,27 @@ public sealed class DynamicEndpointStore : IDynamicEndpointStore
 }
 
 /// <summary>
-/// Advertises the node's endpoints automatically: every few seconds it asks every module's IEndpointProvider for its
-/// endpoints (all of its sources), and when the node's advertised list changes (a tunnel came up, its URL changed or it
-/// went down, or the static P2P Endpoints setting was edited) it re-announces the identity to the mesh.
+/// Advertises the node's endpoints. It doesn't poll: modules call IEndpointChangeNotifier.NotifyEndpointsChanged() when
+/// their IEndpointProvider output changes (a tunnel came up, its URL changed or it went down), and the P2P settings
+/// change listener does the same for the static list. On a notification it re-reads all providers and, if the node's
+/// advertised list differs from the last one announced, re-announces the identity to the mesh.
 /// Static endpoints from P2PSettings.Endpoints (e.g. a public IP on a hosted server) always come first and stay.
 /// Off with P2PSettings.AutoAdvertiseEndpoints = false (then only the static list is advertised).
 /// </summary>
-public sealed class EndpointAdvertiserService : BackgroundService
+public sealed class EndpointAdvertiserService : BackgroundService, IEndpointChangeNotifier
 {
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(15);
+    // While the identity doesn't exist yet, look again after this delay
+    private static readonly TimeSpan IdentityWaitRetry = TimeSpan.FromSeconds(5);
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IDynamicEndpointStore _store;
     private readonly INodeIdentityService _identity;
     private readonly IOptionsMonitor<P2PSettings> _settings;
     private readonly ILogger<EndpointAdvertiserService> _logger;
+
+    // Coalesces notifications: several calls while a check is pending or running result in one more check
+    private readonly SemaphoreSlim _signal = new(0, 1);
+    private IDisposable? _settingsListener;
 
     private List<string> _lastAdvertised = new();
 
@@ -75,39 +81,68 @@ public sealed class EndpointAdvertiserService : BackgroundService
         _logger = logger;
     }
 
+    public void NotifyEndpointsChanged()
+    {
+        try { _signal.Release(); }
+        catch (SemaphoreFullException) { /* a check is already pending */ }
+        catch (ObjectDisposedException) { }
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Static endpoints (or AutoAdvertiseEndpoints) edited in the P2P settings
+        _settingsListener = _settings.OnChange(_ => NotifyEndpointsChanged());
+
+        NotifyEndpointsChanged(); // first check at startup
+
         try
         {
             while (!stoppingToken.IsCancellationRequested)
             {
+                await _signal.WaitAsync(stoppingToken);
+
                 try
                 {
-                    _store.Set(_settings.CurrentValue.AutoAdvertiseEndpoints ? CollectProvidedEndpoints() : Array.Empty<string>());
-
-                    var advertised = _identity.GetEndpoints();
-                    bool changed = !advertised.SequenceEqual(_lastAdvertised, StringComparer.OrdinalIgnoreCase);
-
-                    // Wait for the identity to exist before announcing anything
-                    if (changed && !string.IsNullOrEmpty(_identity.NodeId))
+                    if (!RecheckAndAnnounce())
                     {
-                        _logger.LogInformation("[P2P Endpoints] Advertised endpoints changed: [{Old}] -> [{New}]. Re-announcing identity.",
-                            string.Join(", ", _lastAdvertised), string.Join(", ", advertised));
-                        _lastAdvertised = advertised;
-                        _identity.TriggerUpdate();
+                        // Identity not created yet: check again shortly instead of losing this change
+                        _ = Task.Delay(IdentityWaitRetry, stoppingToken)
+                            .ContinueWith(_ => NotifyEndpointsChanged(), TaskContinuationOptions.OnlyOnRanToCompletion);
                     }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "[P2P Endpoints] Failed to refresh advertised endpoints.");
                 }
-
-                await Task.Delay(PollInterval, stoppingToken);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
         }
+    }
+
+    /// <summary>Returns false if the identity isn't ready yet (nothing announced).</summary>
+    private bool RecheckAndAnnounce()
+    {
+        _store.Set(_settings.CurrentValue.AutoAdvertiseEndpoints ? CollectProvidedEndpoints() : Array.Empty<string>());
+
+        var advertised = _identity.GetEndpoints();
+        if (advertised.SequenceEqual(_lastAdvertised, StringComparer.OrdinalIgnoreCase)) return true;
+
+        if (string.IsNullOrEmpty(_identity.NodeId)) return false;
+
+        _logger.LogInformation("[P2P Endpoints] Advertised endpoints changed: [{Old}] -> [{New}]. Re-announcing identity.",
+            string.Join(", ", _lastAdvertised), string.Join(", ", advertised));
+        _lastAdvertised = advertised;
+        _identity.TriggerUpdate();
+        return true;
+    }
+
+    public override void Dispose()
+    {
+        _settingsListener?.Dispose();
+        _signal.Dispose();
+        base.Dispose();
     }
 
     private List<string> CollectProvidedEndpoints()

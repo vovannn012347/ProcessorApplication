@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Hosting.Server;
+﻿using Common.Interfaces;
+
+using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -23,6 +25,8 @@ public class PortalOrchestratorService : BackgroundService
     private readonly IOptionsMonitor<PortalAccessSettings> _settings;
     private readonly ILogger<PortalOrchestratorService> _logger; 
     private readonly IPortalControlSignal _controlSignal;
+    // P2P (if installed) re-reads our endpoint provider and re-announces the node when the tunnel URL changes
+    private readonly IEnumerable<IEndpointChangeNotifier> _endpointNotifiers;
 
     // New dependencies for dynamic port discovery
     private readonly IServer _server;
@@ -38,7 +42,8 @@ public class PortalOrchestratorService : BackgroundService
         ILogger<PortalOrchestratorService> logger,
         IServer server,
         IHostApplicationLifetime lifetime,
-        IPortalControlSignal controlSignal)
+        IPortalControlSignal controlSignal,
+        IEnumerable<IEndpointChangeNotifier> endpointNotifiers)
     {
         _bootstrapper = bootstrapper;
         _tunnelSelector = tunnelSelector; 
@@ -50,6 +55,20 @@ public class PortalOrchestratorService : BackgroundService
         _server = server;
         _lifetime = lifetime;
         _controlSignal = controlSignal;
+        _endpointNotifiers = endpointNotifiers;
+    }
+
+    /// <summary>Sets the live tunnel URL and tells the endpoint advertiser if it changed.</summary>
+    private void SetTunnelUrl(string? url)
+    {
+        if (string.Equals(_state.CurrentTunnelUrl, url, StringComparison.OrdinalIgnoreCase)) return;
+        _state.CurrentTunnelUrl = url;
+
+        foreach (var notifier in _endpointNotifiers)
+        {
+            try { notifier.NotifyEndpointsChanged(); }
+            catch (Exception ex) { _logger.LogDebug(ex, "Endpoint change notification failed."); }
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
@@ -87,7 +106,7 @@ public class PortalOrchestratorService : BackgroundService
                         await tunnel.StopTunnelAsync();
 
                         _state.IsActive = false;
-                        _state.CurrentTunnelUrl = null;
+                        SetTunnelUrl(null);
                     }
 
                     // Idle wait: Check again in 10 seconds to see if user re-enabled it.
@@ -119,7 +138,7 @@ public class PortalOrchestratorService : BackgroundService
                         string publicUrl = await tunnel.StartTunnelAsync(port, scheme, ct);
 
                         // 4. Update State
-                        _state.CurrentTunnelUrl = publicUrl;
+                        SetTunnelUrl(publicUrl);
                         _state.IsActive = true;
                         _state.LastError = null;
                         _state.TunnelStartedAt = DateTime.UtcNow;
@@ -144,6 +163,7 @@ public class PortalOrchestratorService : BackgroundService
                         _logger.LogError("Startup/Recovery failed. Retry in 30s. Error: {Msg}", ex.Message);
                         _state.IsActive = false;
                         _state.LastError = ex.Message;
+                        SetTunnelUrl(null); // tunnel isn't up: stop advertising its address
                     }
                 }
                 else

@@ -30,8 +30,10 @@ public class ProviderlessTunnelEndpointProvider : IEndpointProvider
         switch (source)
         {
             case "Public_Tunnel":
-                // Grabs the live running Cloudflare or Ngrok URL from the Orchestrator's active state
-                if (!string.IsNullOrEmpty(_portalState.CurrentTunnelUrl))
+                // Grabs the live running Cloudflare or Ngrok URL from the Orchestrator's active state.
+                // Only real addresses: the token tunnel reports a placeholder when it has no public hostname.
+                if (Uri.TryCreate(_portalState.CurrentTunnelUrl, UriKind.Absolute, out var tunnelUri) &&
+                    (tunnelUri.Scheme == Uri.UriSchemeHttps || tunnelUri.Scheme == Uri.UriSchemeHttp))
                 {
                     results.Add(StripProtocol(_portalState.CurrentTunnelUrl));
                 }

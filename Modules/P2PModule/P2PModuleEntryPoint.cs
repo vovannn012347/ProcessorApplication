@@ -135,8 +135,11 @@ public class P2PModuleEntryPoint : IModule
         // 6. Gossip Network Event Handlers
         services.AddSingleton<IP2PGossipService, P2PGossipService>();
         services.AddHostedService<GossipSelfIdentityUpdatedHandler>();
-        // Advertises module-provided endpoints (tunnel URL...) and re-announces the identity when they change
-        services.AddHostedService<EndpointAdvertiserService>();
+        // Advertises module-provided endpoints (tunnel URL...): modules notify it through IEndpointChangeNotifier,
+        // it re-reads the providers and re-announces the identity when the list changes
+        services.AddSingleton<EndpointAdvertiserService>();
+        services.AddSingleton<IEndpointChangeNotifier>(sp => sp.GetRequiredService<EndpointAdvertiserService>());
+        services.AddHostedService(sp => sp.GetRequiredService<EndpointAdvertiserService>());
         services.AddHostedService<GossipNodeUpdatesHandler>();
 
         // 7. Decoupled Modular Consensus Stack

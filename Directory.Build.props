@@ -88,16 +88,31 @@
 
   <Target Name="ForceDeployNodeConfigFiles" AfterTargets="Build" Condition="Exists('$(MSBuildProjectDirectory)\configFiles\$(NodeFolderName)')">
 
+    <!--
+      Presets seed a NEW node folder only: a file is copied when the node doesn't have it yet, so a rebuild never
+      overwrites the node's live database (settings), P2P identity or other state with the preset again.
+      SQLite -wal/-shm presets are copied only together with a missing database (a stale -wal next to a live
+      database would corrupt it). To re-apply presets on purpose: delete the files, or run-test-nodes.ps1 -Fresh.
+    -->
     <ItemGroup>
-      <_ActiveConfigFiles Include="$(MSBuildProjectDirectory)\configFiles\$(NodeFolderName)\**\*" />
+      <_ActiveConfigFiles Include="$(MSBuildProjectDirectory)\configFiles\$(NodeFolderName)\**\*">
+        <Dest>$(BaseOutputFolder)\ProcessorApplication\%(RecursiveDir)%(Filename)%(Extension)</Dest>
+      </_ActiveConfigFiles>
+      <_ActiveConfigFiles>
+        <DbDest>$([System.Text.RegularExpressions.Regex]::Replace('%(Dest)', '-(wal|shm)$', ''))</DbDest>
+      </_ActiveConfigFiles>
+      <_NewConfigFiles Include="@(_ActiveConfigFiles)" Condition="!Exists('%(Dest)') And !Exists('%(DbDest)')" />
+      <_KeptConfigFiles Include="@(_ActiveConfigFiles)" Exclude="@(_NewConfigFiles)" />
     </ItemGroup>
 
-    <Message Importance="high" Text="[P2P Deployment] Force-deploying localized configFiles out of ($(MSBuildProjectName)) straight to the main ProcessorApplication container..." />
+    <Message Importance="high" Condition="'@(_NewConfigFiles)' != ''"
+             Text="[P2P Deployment] Seeding new node folder from configFiles ($(MSBuildProjectName)): @(_NewConfigFiles->'%(RecursiveDir)%(Filename)%(Extension)', ', ')" />
+    <Message Importance="normal" Condition="'@(_KeptConfigFiles)' != ''"
+             Text="[P2P Deployment] Kept the node's own copies (preset not applied): @(_KeptConfigFiles->'%(RecursiveDir)%(Filename)%(Extension)', ', ')" />
 
-    <Copy SourceFiles="@(_ActiveConfigFiles)"
-          DestinationFiles="$(BaseOutputFolder)\ProcessorApplication\%(RecursiveDir)%(Filename)%(Extension)"
-          OverwriteReadOnlyFiles="true"
-          SkipUnchangedFiles="false" />
+    <Copy SourceFiles="@(_NewConfigFiles)"
+          DestinationFiles="@(_NewConfigFiles->'%(Dest)')"
+          OverwriteReadOnlyFiles="true" />
   </Target>
   
 </Project>

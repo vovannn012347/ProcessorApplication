@@ -140,46 +140,69 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
         //_scopeFactory = scopeFactory;
     }
 
-    public void RegisterHandshakedNode(string nodeId)
+    public void RegisterHandshakedNode(string nodeId) => RegisterHandshakedNode(nodeId, null);
+
+    /// <summary>
+    /// Records the peer of a completed handshake. The session is looked up by its handshake id: by node id alone
+    /// it could be a different, still-running handshake with the same peer (both sides connecting at once, e.g. a
+    /// tracker dialling back a node that just connected to it), whose Response/Confirmation isn't there yet.
+    /// </summary>
+    private void RegisterHandshakedNode(string nodeId, Guid? handshakeId)
     {
-        if(_nodeHandshakes.TryGetValue(nodeId, out var session))
+        HandshakeSession? session = null;
+        if (handshakeId.HasValue) _handshakeSessions.TryGetValue(handshakeId.Value, out session);
+        if (session == null) _nodeHandshakes.TryGetValue(nodeId, out session);
+        if (session == null) return;
+
+        PeerImmutableData? identity;
+        List<SignatureEnvelope> signatures;
+        if (session.HandshakeDirection == HandshakeSession.HandshakeType.Inbound)
         {
-            PeerImmutableData identity;
-            PeerNodeRuntime? peerNode;
-            List<SignatureEnvelope> signatures;
-
-            if (session.HandshakeDirection == HandshakeSession.HandshakeType.Inbound)
-            {
-                identity = session.Request.Identity;
-                peerNode = _peerTracker.GetPeer(identity.NodeId);
-                signatures = session.Confirmation.RequestedSignatures.Values.ToList();
-            }
-            else
-            {
-                identity = session.Response.Identity;
-                peerNode = _peerTracker.GetPeer(identity.NodeId);
-                signatures = session.Response.RequestedSignatures.Values.ToList();
-            }
-
-            if (peerNode != null)
-            {
-                peerNode.Identity = identity;
-                peerNode.LastSeen = DateTime.UtcNow;
-                peerNode.Signatures = signatures;
-                //peerNode.Refresh.Clear();
-            }
-            else
-            {
-                peerNode = new PeerNodeRuntime
-                {
-                    Identity = identity,
-                    LastSeen = DateTime.UtcNow,
-                    Signatures = signatures,
-                };
-            }
-
-            _peerTracker.UpdatePeerAsync(peerNode);
+            identity = session.Request?.Identity;
+            signatures = session.Confirmation?.RequestedSignatures?.Values.ToList() ?? new List<SignatureEnvelope>();
         }
+        else
+        {
+            identity = session.Response?.Identity;
+            signatures = session.Response?.RequestedSignatures?.Values.ToList() ?? new List<SignatureEnvelope>();
+        }
+
+        if (identity == null)
+        {
+            _logger.LogWarning("[Challenge Engine] Handshake {Id} with {NodeId} has no peer identity yet; not registered.", session.HandshakeId, nodeId);
+            return;
+        }
+
+        // The completed handshake is the node's current one (IsRecentlyHandshaked / HTTP signalling read it).
+        _nodeHandshakes[nodeId] = session;
+
+        var peerNode = _peerTracker.GetPeer(identity.NodeId);
+        if (peerNode != null)
+        {
+            peerNode.Identity = identity;
+            peerNode.LastSeen = DateTime.UtcNow;
+            peerNode.Signatures = signatures;
+            //peerNode.Refresh.Clear();
+        }
+        else
+        {
+            peerNode = new PeerNodeRuntime
+            {
+                Identity = identity,
+                LastSeen = DateTime.UtcNow,
+                Signatures = signatures,
+            };
+        }
+
+        _peerTracker.UpdatePeerAsync(peerNode);
+    }
+
+    /// <summary>A new handshake with a peer doesn't hide a completed one until it completes itself.</summary>
+    private void TrackNodeHandshake(string nodeId, HandshakeSession session)
+    {
+        if (_nodeHandshakes.TryGetValue(nodeId, out var current) && current.Handshaked && !ReferenceEquals(current, session))
+            return;
+        _nodeHandshakes[nodeId] = session;
     }
 
     #region Handshake stages
@@ -416,7 +439,7 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
         challengeSession.ResponseExpectation = expectations;
 
         _handshakeSessions[request.HandShakeId] = challengeSession;
-        _nodeHandshakes[proverNodeId] = challengeSession;
+        TrackNodeHandshake(proverNodeId, challengeSession);
 
         return request;
     }
@@ -488,7 +511,7 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
 
         // Cache the session state
         _handshakeSessions[request.HandShakeId] = inboundSession;
-        _nodeHandshakes[request.Identity.NodeId] = inboundSession;
+        TrackNodeHandshake(request.Identity.NodeId, inboundSession);
 
         return response;
     }
@@ -805,7 +828,7 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
                     SendMessageRaw(JsonSerializer.Serialize(responseEnvelope), channel);
                     if (handshaked)
                     {
-                        RegisterHandshakedNode(nodeId);
+                        RegisterHandshakedNode(nodeId, responsePayload.HandShakeId);
                     }
                 }
             }
@@ -819,7 +842,7 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
                     var handshaked = await ProcessChallengeConfirmation(confirmationPayload);
                     if (handshaked)
                     {
-                        RegisterHandshakedNode(nodeId);
+                        RegisterHandshakedNode(nodeId, confirmationPayload.HandShakeId);
                     }
                     return IsRecentlyHandshaked(nodeId);
                 }
@@ -873,7 +896,7 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
 
                     if(await ProcessChallengeConfirmation(confirmationPayload) && IsRecentlyHandshaked(confirmationPayload.NodeId))
                     {
-                        RegisterHandshakedNode(confirmationPayload.NodeId);
+                        RegisterHandshakedNode(confirmationPayload.NodeId, confirmationPayload.HandShakeId);
 
                         return true.ToString();
                     }
@@ -910,8 +933,10 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
         var sessions = _handshakeSessions.Values.Where(s => s.CompletedAt < cleanNow);
         foreach (var session in sessions)
         {
-            _handshakeSessions.Remove(session.Request.HandShakeId, out _);
-            _nodeHandshakes.Remove(session.PeerNodeId, out _);
+            _handshakeSessions.Remove(session.HandshakeId, out _);
+            if (session.Request != null) _handshakeSessions.Remove(session.Request.HandShakeId, out _);
+            // only if it is still the node's current handshake (a newer one may have replaced it)
+            ((ICollection<KeyValuePair<string, HandshakeSession>>)_nodeHandshakes).Remove(new KeyValuePair<string, HandshakeSession>(session.PeerNodeId, session));
 
             if (!session.Handshaked)
             {
@@ -984,7 +1009,7 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
 
                     if (handshaked)
                     {
-                        RegisterHandshakedNode(nodeId);
+                        RegisterHandshakedNode(nodeId, handshakeResponse.HandShakeId);
                     }
                 }
             }

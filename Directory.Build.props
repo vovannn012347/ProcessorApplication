@@ -67,6 +67,20 @@
     <NodeSettingsInHome>false</NodeSettingsInHome>
   </PropertyGroup>
 
+  <!-- after the per-configuration groups: needs NodeFolderName and RuntimeIdentifier -->
+  <PropertyGroup Condition="$(Configuration.StartsWith('Node'))">
+    <!--
+      Configurations of one group (NodeClient1Debug / NodeClient2Debug, the two trackers) build the same program
+      folder. They share one intermediate folder and leave the configuration name out of the assembly, so building
+      the second configuration compiles nothing and copies nothing (files unchanged): a node of the group can keep
+      running while Visual Studio builds the other one before starting it. Each build still seeds its own node home.
+      Visual Studio's own up-to-date shortcut is off so that seeding always runs.
+    -->
+    <IntermediateOutputPath>obj\$(NodeFolderName)\$(RuntimeIdentifier)\</IntermediateOutputPath>
+    <GenerateAssemblyConfigurationAttribute>false</GenerateAssemblyConfigurationAttribute>
+    <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
+  </PropertyGroup>
+
   <PropertyGroup>
     <BaseOutputFolder>$(SolutionDir)bin\$(RuntimeIdentifier)\$(NodeFolderName)</BaseOutputFolder>
     <OutputPath>$(BaseOutputFolder)\$(MSBuildProjectName)\</OutputPath>
@@ -75,8 +89,8 @@
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     
     <!--razor view-->
-    <RazorCompileOnBuild>false</RazorCompileOnBuild>
-    <RazorCompileOnPublish>false</RazorCompileOnPublish>
+    <RazorCompileOnBuild>true</RazorCompileOnBuild>
+    <RazorCompileOnPublish>true</RazorCompileOnPublish>
     <MvcRazorCompileOnPublish>false</MvcRazorCompileOnPublish>
     <CopyRazorGenerateFilesToPublishDirectory>true</CopyRazorGenerateFilesToPublishDirectory>
     

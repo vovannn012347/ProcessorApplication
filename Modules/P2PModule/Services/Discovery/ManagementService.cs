@@ -470,6 +470,7 @@ public class ManagementService : BackgroundService, IMeshManagementService, IDis
                     await _peerTracker.UpdatePeerActivityAsync(nodeId);
                     return true;
                 }
+                _logger.LogInformation("[P2P Heartbeat] Ping to {NodeId} failed: {Error}", nodeId, result.Error);
             }
         }
 

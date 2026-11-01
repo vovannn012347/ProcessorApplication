@@ -320,10 +320,18 @@ public class P2PRouterService : IP2PRouterService, IDisposable
                         Ttl = 8,
                         CreatedUtc = DateTime.UtcNow
                     };
-                    _connectionManager.SendMessageRaw(frame.SenderNodeId, JsonSerializer.Serialize(responseEnvelope), channelLabel);
+                    // Answer over the connection the request arrived on (senderNodeId is that connection's key).
+                    // Looking the connection up by the id written in the request instead can miss it - e.g. a peer
+                    // whose node id changed is still connected under the id it was dialled with - and the answer
+                    // was then silently dropped: the asker saw a timeout (failed heartbeat) on a healthy link.
+                    if (!_connectionManager.SendMessageRaw(senderNodeId, JsonSerializer.Serialize(responseEnvelope), channelLabel))
+                    {
+                        _logger.LogWarning("[P2P Router] Could not send the answer to {Command} back to {Peer} (channel '{Channel}' not open).",
+                            frame.CommandType, senderNodeId, channelLabel);
+                    }
                 }
-                catch (OperationCanceledException) { SendErrorResponse(frame.SenderNodeId, frame.MessageId, "Operation cancelled.", channelLabel); }
-                catch (Exception ex) { SendErrorResponse(frame.SenderNodeId, frame.MessageId, ex.Message, channelLabel); }
+                catch (OperationCanceledException) { SendErrorResponse(senderNodeId, frame.SenderNodeId, frame.MessageId, "Operation cancelled.", channelLabel); }
+                catch (Exception ex) { SendErrorResponse(senderNodeId, frame.SenderNodeId, frame.MessageId, ex.Message, channelLabel); }
             });
         }
     }
@@ -570,10 +578,10 @@ public class P2PRouterService : IP2PRouterService, IDisposable
     public void RegisterCommandHandler(string commandType, Func<string, P2PPacketEnvelope, CancellationToken, Task<string>> handler) => _commandHandlers[commandType] = handler;
     public void UnregisterCommandHandler(string commandType) => _commandHandlers.TryRemove(commandType, out _);
 
-    private void SendErrorResponse(string targetNodeId, Guid messageId, string errorReason, string channelLabel)
+    private void SendErrorResponse(string connectionNodeId, string targetNodeId, Guid messageId, string errorReason, string channelLabel)
     {
         var errorFrame = new P2PPacketEnvelope { MessageId = messageId, SenderNodeId = _identity.GetLocalNodeId(), TargetNodeId = targetNodeId, CommandType = "Response-Error", ErrorMessage = errorReason, Ttl = 8, CreatedUtc = DateTime.UtcNow };
-        _connectionManager.SendMessageRaw(targetNodeId, JsonSerializer.Serialize(errorFrame), channelLabel);
+        _connectionManager.SendMessageRaw(connectionNodeId, JsonSerializer.Serialize(errorFrame), channelLabel);
     }
 
     private void CleanupDedicatedChannelDeferred(string targetNodeId, string label, bool useDedicated)

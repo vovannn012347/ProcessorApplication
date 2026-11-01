@@ -2,7 +2,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -132,11 +131,9 @@ public class PeerTracker : IPeerTracker, IDisposable, IAsyncDisposable
         ILogger<PeerTracker> logger,
         IOptionsMonitor<P2PSettings> settings,
         IOptionsMonitor<StorageSettings> storageSettings,
-        IConsensusStore archiveStore,
-        IServiceProvider services)
+        IConsensusStore archiveStore)
     {
         //_identity = nodeIdentity;
-        _services = services;
         _archiveStore = archiveStore;
         _logger = logger;
 
@@ -146,22 +143,6 @@ public class PeerTracker : IPeerTracker, IDisposable, IAsyncDisposable
         UpdateSettings();
         _settingsChangeListener = _p2pSettings.OnChangeDebounced(_ => UpdateSettings());
         _settingsChangeListener2 = _storageSettings.OnChangeDebounced(_ => UpdateSettings());
-    }
-
-    // Resolved on use, not in the constructor: NodeIdentityService and PeerTracker are built from each other's graphs.
-    private readonly IServiceProvider _services;
-
-    private bool IsSelf(string nodeId)
-    {
-        try
-        {
-            string? local = _services.GetService<INodeIdentityService>()?.GetLocalNodeId();
-            return !string.IsNullOrEmpty(local) && string.Equals(local, nodeId, StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return false; // identity not ready yet
-        }
     }
 
     private void UpdateSettings()
@@ -356,7 +337,6 @@ public class PeerTracker : IPeerTracker, IDisposable, IAsyncDisposable
     public Task UpdatePeerAsync(PeerImmutableData identity)
     {
         if (identity == null || string.IsNullOrEmpty(identity.NodeId)) return Task.CompletedTask;
-        if (IsSelf(identity.NodeId)) return Task.CompletedTask; // never our own node (gossip/consensus echo us back)
 
         bool identityChanged = false;
         if (_nodesCache.TryGetValue(identity.NodeId, out var cache))
@@ -414,7 +394,6 @@ public class PeerTracker : IPeerTracker, IDisposable, IAsyncDisposable
     public Task UpdatePeerAsync(PeerNodeRuntime node)
     {
         if (node == null || string.IsNullOrEmpty(node.Identity.NodeId)) return Task.CompletedTask;
-        if (IsSelf(node.Identity.NodeId)) return Task.CompletedTask; // never our own node (gossip/consensus echo us back)
 
         var identity = node.Identity;
 

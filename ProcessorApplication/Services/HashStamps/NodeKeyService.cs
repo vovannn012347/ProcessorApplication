@@ -198,6 +198,13 @@ public sealed class NodeKeyService : INodeKeyService
         if (s.HashStampBackupEnabled && !string.IsNullOrWhiteSpace(s.HashStampBackupFilePath))
             candidates.Add(Path.Combine(s.HashStampBackupFilePath, KeyFileName));
 
+        // Where builds before the node-home fix kept it: the shared program folder. Every node started from that
+        // program folder used that one key, so it is the right key for any of their homes. Copied, not moved.
+        string configured = s.NodeKeyFilePath;
+        string relative = string.IsNullOrWhiteSpace(configured) ? DefaultRelativePath : configured;
+        if (NodeHome.IsSeparate && !Path.IsPathRooted(relative))
+            candidates.Add(Path.GetFullPath(Path.Combine(NodeHome.AppFolder, relative)));
+
         foreach (var candidate in candidates)
         {
             try

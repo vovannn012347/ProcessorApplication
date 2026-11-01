@@ -410,7 +410,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
         remoteChannel.onclose += () =>
         {
-            conn.DataChannels.TryRemove(cleanLabel, out _);
+            RemoveChannelIfCurrent(conn, cleanLabel, remoteChannel);
             _logger.LogInformation("[PeerConnectionManager] Unmanaged data channel '{Label}' closed for peer {SenderNodeId}.", cleanLabel, senderNodeId);
         };
 
@@ -437,6 +437,17 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
     }
 
 
+    /// <summary>
+    /// Forgets a closed channel - but only if the connection still maps the label to THAT channel. Channels are
+    /// registered by label, and a re-dial or a re-opened file channel registers a new channel under the same label
+    /// before the old one's close event arrives; removing by label alone then dropped the new, working channel
+    /// (e.g. "p2p-control-channel": every request and heartbeat over a healthy connection timed out after that).
+    /// </summary>
+    private static void RemoveChannelIfCurrent(ActivePeerConnection conn, string label, RTCDataChannel closed)
+    {
+        ((ICollection<KeyValuePair<string, RTCDataChannel>>)conn.DataChannels).Remove(new KeyValuePair<string, RTCDataChannel>(label, closed));
+    }
+
     private void RegisterAndBindDataChannel(string nodeId, RTCDataChannel dc, bool isUnmanaged = false)
     {
         if (_connections.TryGetValue(nodeId, out var conn))
@@ -449,7 +460,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
             dc.onclose += () =>
             {
-                conn.DataChannels.TryRemove(cleanLabel, out _);
+                RemoveChannelIfCurrent(conn, cleanLabel, dc);
             };
 
             dc.onerror += (err) =>
@@ -509,7 +520,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
         dc.onclose += () =>
         {
             if (_connections.TryGetValue(nodeId, out var activeConn))
-                activeConn.DataChannels.TryRemove(label, out _);
+                RemoveChannelIfCurrent(activeConn, label, dc);
         };
 
         if (_connections.TryGetValue(nodeId, out var conn))
@@ -638,7 +649,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
         dc.onclose += () =>
         {
-            if (_connections.TryGetValue(nodeId, out var activeConn)) activeConn.DataChannels.TryRemove(label, out _);
+            if (_connections.TryGetValue(nodeId, out var activeConn)) RemoveChannelIfCurrent(activeConn, label, dc);
         };
 
         dc.onmessage += (channel, protocol, data) => UpdateConnectionActivity(nodeId);
@@ -693,6 +704,12 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
     //general peer connection method
     public async Task<ActivePeerConnection?> ConnectPeerAsync(string nodeId, string[] signalingEndpoints, string connectionType)
     {
+        if (string.Equals(nodeId, _identityService.NodeId, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogDebug("[P2P Transport] Not connecting to {NodeId}: that is this node.", nodeId);
+            return null;
+        }
+
         _logger.LogInformation("[P2P Transport] Establishing WebRTC session with {NodeId}.", nodeId);
 
         if (_connections.TryGetValue(nodeId, out var existingConn) && 

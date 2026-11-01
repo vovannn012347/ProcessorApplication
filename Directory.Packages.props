@@ -17,4 +17,21 @@
 		<PackageVersion Include="SIPSorcery" Version="6.0.11" />
 		<PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
 	</ItemGroup>
+
+	<!--
+		Libraries the main application ships for everyone (one copy, in ProcessorApplication's folder).
+		- ProcessorApplication.csproj references every package listed here.
+		- Modules may reference them too (to compile), but never copy them: Modules/Directory.Build.targets
+		  sets ExcludeAssets="runtime;native" on these, so the module uses the main application's copy at runtime.
+		To move a library into the main application: add one line here (and its PackageVersion above).
+	-->
+	<ItemGroup>
+		<HostProvidedPackage Include="MailKit" />
+		<HostProvidedPackage Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />
+		<HostProvidedPackage Include="Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation" />
+		<HostProvidedPackage Include="Microsoft.EntityFrameworkCore" />
+		<HostProvidedPackage Include="Microsoft.EntityFrameworkCore.Sqlite" />
+		<HostProvidedPackage Include="Newtonsoft.Json" />
+		<HostProvidedPackage Include="SIPSorcery" />
+	</ItemGroup>
 </Project>

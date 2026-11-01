@@ -15,6 +15,16 @@
   </PropertyGroup>
 
   <!--
+    Libraries the main application ships (HostProvidedPackage in Directory.Packages.props): a module
+    compiles against them but never copies them, so it uses the main application's single copy at runtime.
+    Applies to the module's own PackageReference items (imported after the .csproj, so Update sees them);
+    packages that arrive through a ProjectReference are already excluded in Directory.Build.props.
+  -->
+  <ItemGroup>
+    <PackageReference Update="@(HostProvidedPackage)" ExcludeAssets="runtime;native" />
+  </ItemGroup>
+
+  <!--
     Finds literal duplicates of this module's own build output from TWO sources together - neither
     one alone is enough:
 

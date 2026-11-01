@@ -81,6 +81,12 @@
           };
           // Big or irrelevant folders under the host root: node data (downloads!), static web files, other modules.
           var skipTop = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Module_Data", "wwwroot", "Modules", "logs" };
+          // Assemblies at the host's root (its own + the framework in a self-contained build): a module's copy of
+          // one of these is never loaded (ModuleAssemblyLoadContext takes the host's), whatever its size.
+          var hostRootAssemblies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+          if (SearchRoots.Length > 0 && Directory.Exists(SearchRoots[0]))
+              foreach (var f in Directory.GetFiles(SearchRoots[0], "*.dll"))
+                  hostRootAssemblies.Add(Path.GetFileName(f));
 
           // Source 1: the pre-computed project-reference list (files that sit at the output root).
           if (File.Exists(ExclusionListFile))
@@ -132,7 +138,9 @@
               if (!File.Exists(path)) continue;
 
               var rel = path.StartsWith(targetRoot, StringComparison.OrdinalIgnoreCase) ? path.Substring(targetRoot.Length) : Path.GetFileName(path);
-              if (known.TryGetValue(rel.Replace('/', '\\'), out var sizes) && sizes.Contains(new FileInfo(path).Length))
+              bool rootDll = rel.IndexOfAny(new[] { '\\', '/' }) < 0 && rel.EndsWith(".dll", StringComparison.OrdinalIgnoreCase);
+              if ((rootDll && hostRootAssemblies.Contains(rel)) ||
+                  (known.TryGetValue(rel.Replace('/', '\\'), out var sizes) && sizes.Contains(new FileInfo(path).Length)))
               {
                   dupes.Add(item);
               }

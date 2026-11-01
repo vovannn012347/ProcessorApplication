@@ -422,8 +422,37 @@ public class ModuleAssemblyLoadContext : AssemblyLoadContext
             : null;
     }
 
+    /// <summary>
+    /// Simple names of every assembly the main application itself runs with (its own folder + the .NET framework;
+    /// for a self-contained build both are in the app folder). These are always taken from the main application,
+    /// never from a module's own copy: two copies of e.g. Microsoft.Extensions.Logging.Abstractions would make
+    /// ILogger&lt;T&gt; two different types, and dependency injection then can't hand the module a logger
+    /// ("Unable to resolve service for type ILogger`1[...]").
+    /// </summary>
+    private static readonly Lazy<HashSet<string>> HostAssemblyNames = new(() =>
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") is string tpa)
+        {
+            foreach (var path in tpa.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+            {
+                names.Add(Path.GetFileNameWithoutExtension(path));
+            }
+        }
+        return names;
+    });
+
     protected override Assembly? Load(AssemblyName assemblyName)
     {
+        // Anything the main application has (framework, Microsoft.Extensions.*, EF Core, Common, ...) comes from the
+        // main application, so every module shares one copy and one type identity with it.
+        if (assemblyName.Name != null && HostAssemblyNames.Value.Contains(assemblyName.Name))
+        {
+            // By simple name: the main application's copy even if a module was compiled against a different version.
+            try { return AssemblyLoadContext.Default.LoadFromAssemblyName(new AssemblyName(assemblyName.Name)); }
+            catch { return null; }
+        }
+
         // 0. Has some OTHER module's ALC already loaded an assembly with this exact name? Reuse
         // that instance rather than loading a fresh copy - this is what keeps a shared dependency
         // (e.g. P2PModule, referenced by FileTransferModule) to a single CLR type identity across

@@ -1,37 +1,32 @@
 <#
 .SYNOPSIS
-    Starts N swarm nodes from ONE TrackerSwarm build, each with its own node home and port.
+    Starts the swarm nodes made by setup-swarm-homes.ps1 (or the swarm template node) from ONE TrackerSwarm build.
 
 .DESCRIPTION
     Layout (platform = -Rid, default win-x64):
         bin\<platform>\TrackerSwarm\ProcessorApplication\     program files + the shared appsettings.*.NodeTrackerSwarm.json
-        bin\<platform>\TrackerSwarm\nodes\swarm-001\          node 1: databases, Module_Data, its own settings override
-        bin\<platform>\TrackerSwarm\nodes\swarm-002\ ...
-
-    Node i listens on http://localhost:(FirstPort + i - 1) (http only, no https port per node).
-    On first creation every home gets:
-      - the preset files <project>\configFiles\TrackerSwarm\** (if any), like the build does for the test mesh;
-      - Modules\P2PModule\appsettings.P2P.NodeTrackerSwarm.json with this node's own signalling endpoint and the
-        seed endpoints, layered over the shared file of the same name in the program folder.
-    Re-running with different -Seeds rewrites that override in every home (nothing else is touched).
+        bin\<platform>\TrackerSwarm\nodes\_template\          the template node (admin user etc.), see setup-swarm-homes.ps1
+        bin\<platform>\TrackerSwarm\nodes\<name>\             one node: databases, Module_Data, swarm-node.json, own settings
 
     Each node runs:
         ProcessorApplication.exe --node-home <home> --environment NodeTrackerSwarm --urls http://localhost:<port> --SettingsIngest:Mode=<Reingest>
+    Its port, name and seeds come from <home>\swarm-node.json (written by setup-swarm-homes.ps1).
 
 .EXAMPLE
-    .\Build\run-swarm.ps1 -Build -Count 50                     # build once, start 50 nodes on 6101..6150
-    .\Build\run-swarm.ps1 -Count 10 -FirstPort 6201            # 10 nodes on other ports
-    .\Build\run-swarm.ps1 -Count 50 -Seeds http://localhost:5044,http://localhost:5045   # seed from the test-mesh trackers
-    .\Build\run-swarm.ps1 -Stop                                # stop every swarm node started by this script
-    .\Build\run-swarm.ps1 -Count 50 -Fresh                     # wipe the homes' data first (asks to confirm)
+    .\Build\run-swarm.ps1 -Build -Template              # build, start only the template node (http://localhost:5048) to set it up
+    .\Build\setup-swarm-homes.ps1 -Count 50             # (template stopped) make 50 homes from it
+    .\Build\run-swarm.ps1 -Reingest Overwrite           # first start of the copies: apply every settings file
+    .\Build\run-swarm.ps1                               # later starts
+    .\Build\run-swarm.ps1 -Count 10                     # only the first 10 homes
+    .\Build\run-swarm.ps1 -Stop                         # stop everything this script started
 #>
 [CmdletBinding()]
 param(
-    [int] $Count = 10,
-    [int] $FirstPort = 6101,
+    # Start only the template node (to set it up), not the swarm.
+    [switch] $Template,
 
-    # Signalling endpoints the nodes contact first. Default: the first swarm node.
-    [string[]] $Seeds = @(),
+    # Start only the first N homes (in swarm-homes.json order). 0 = all.
+    [int] $Count = 0,
 
     [string] $Rid = 'win-x64',
     [switch] $Build,
@@ -39,10 +34,9 @@ param(
     [ValidateSet('Changed', 'Overwrite', 'Off')]
     [string] $Reingest = 'Changed',
 
-    # Seconds between node starts (the first node gets 5 s head start as the default seed).
+    # Seconds between node starts (the first node gets 5 s head start).
     [double] $StartDelaySeconds = 1,
 
-    [switch] $Fresh,
     [switch] $Stop
 )
 
@@ -56,15 +50,15 @@ $pidFile = Join-Path $groupRoot 'swarm.pids.json'
 
 function Stop-Swarm {
     if (-not (Test-Path $pidFile)) { Write-Host 'No running swarm nodes recorded.'; return }
-    $entries = Get-Content $pidFile -Raw | ConvertFrom-Json
-    foreach ($e in @($entries)) {
+    $entries = @(Get-Content $pidFile -Raw | ConvertFrom-Json)
+    foreach ($e in $entries) {
         $p = Get-Process -Id $e.Pid -ErrorAction SilentlyContinue
         if ($p -and ($p.ProcessName -like 'ProcessorApplication*' -or $p.ProcessName -eq 'dotnet')) {
             Stop-Process -Id $e.Pid -Force
         }
     }
     Remove-Item $pidFile -Force
-    Write-Host "Stopped $(@($entries).Count) swarm node(s)."
+    Write-Host "Stopped $($entries.Count) swarm node(s)."
 }
 
 if ($Stop) { Stop-Swarm; return }
@@ -79,84 +73,51 @@ if (-not (Test-Path (Join-Path $app 'ProcessorApplication.dll'))) {
     throw "The swarm is not built ($app). Run with -Build, or build configuration NodeTrackerSwarm."
 }
 
-if ($Seeds.Count -eq 0) { $Seeds = @("http://localhost:$FirstPort") }
-
-# Preset folders <project>\configFiles\TrackerSwarm (found once).
-$presetDirs = @(Get-ChildItem $root -Directory -Recurse -Filter 'configFiles' -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -notmatch '\\(bin|obj|node_modules)\\' } |
-    ForEach-Object { Join-Path $_.FullName 'TrackerSwarm' } |
-    Where-Object { Test-Path $_ })
-
-function Get-NodeName([int] $i) { 'swarm-{0:D3}' -f $i }
-
-function Write-NodeOverride([string] $nodeHome, [int] $port) {
-    $dir = Join-Path $nodeHome 'Modules\P2PModule'
-    New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    $override = [ordered]@{
-        P2PSettings = [ordered]@{
-            Endpoints     = @("http://localhost:$port")
-            SeedEndpoints = @($Seeds | Where-Object { $_ -ne "http://localhost:$port" })
-        }
+# --- Which nodes -----------------------------------------------------------------------------------------------
+if ($Template) {
+    $nodes = @([pscustomobject]@{ Name = '_template'; Port = 5048; Home = (Join-Path $homesRoot '_template') })
+} else {
+    $nodes = @()
+    foreach ($dir in Get-ChildItem $homesRoot -Directory -ErrorAction SilentlyContinue | Sort-Object Name) {
+        $info = Join-Path $dir.FullName 'swarm-node.json'
+        if (-not (Test-Path $info)) { continue }
+        $j = Get-Content $info -Raw | ConvertFrom-Json
+        $nodes += [pscustomobject]@{ Name = $j.Name; Port = [int]$j.Port; Home = $dir.FullName }
     }
-    $json = $override | ConvertTo-Json -Depth 5
-    Set-Content -Path (Join-Path $dir 'appsettings.P2P.NodeTrackerSwarm.json') -Value $json -Encoding UTF8
+    if ($nodes.Count -eq 0) { throw "No swarm homes in $homesRoot. Make them with .\Build\setup-swarm-homes.ps1." }
+    $nodes = @($nodes | Sort-Object Port)
+    if ($Count -gt 0) { $nodes = @($nodes | Select-Object -First $Count) }
 }
 
-# --- Prepare homes ---------------------------------------------------------------------------------------------
-if ($Fresh) {
-    $answer = Read-Host "Delete databases and Module_Data of swarm-001..$(Get-NodeName $Count)? Type YES"
-    if ($answer -ne 'YES') { Write-Host 'Cancelled.'; return }
+foreach ($n in $nodes) {
+    $busy = Get-NetTCPConnection -State Listen -LocalPort $n.Port -ErrorAction SilentlyContinue
+    if ($busy) { throw "Port $($n.Port) ($($n.Name)) is already in use by PID $($busy[0].OwningProcess). Stop it first (-Stop)." }
 }
 
-for ($i = 1; $i -le $Count; $i++) {
-    $nodeHome = Join-Path $homesRoot (Get-NodeName $i)
-    $isNew = -not (Test-Path $nodeHome)
-    New-Item -ItemType Directory -Force -Path $nodeHome | Out-Null
-
-    if ($Fresh -and -not $isNew) {
-        Get-ChildItem $nodeHome -File -Recurse | Where-Object { $_.Name -match '\.db(-wal|-shm)?$' } | Remove-Item -Force
-        foreach ($d in @('Module_Data', 'data')) {
-            $p = Join-Path $nodeHome $d
-            if (Test-Path $p) { Remove-Item $p -Recurse -Force }
-        }
-    }
-    if ($isNew -or $Fresh) {
-        foreach ($preset in $presetDirs) { Copy-Item (Join-Path $preset '*') $nodeHome -Recurse -Force }
-    }
-    Write-NodeOverride $nodeHome ($FirstPort + $i - 1)
-}
-
-# --- Ports -------------------------------------------------------------------------------------------------------
-for ($i = 1; $i -le $Count; $i++) {
-    $port = $FirstPort + $i - 1
-    $busy = Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue
-    if ($busy) { throw "Port $port ($(Get-NodeName $i)) is already in use by PID $($busy[0].OwningProcess). Stop it first (-Stop) or use -FirstPort." }
-}
-
-# --- Start ---------------------------------------------------------------------------------------------------------
+# --- Start -------------------------------------------------------------------------------------------------------
 $exe = Join-Path $app 'ProcessorApplication.exe'
 $dll = Join-Path $app 'ProcessorApplication.dll'
 $started = @()
 if (Test-Path $pidFile) { $started += @(Get-Content $pidFile -Raw | ConvertFrom-Json) }
 
-for ($i = 1; $i -le $Count; $i++) {
-    $name = Get-NodeName $i
-    $port = $FirstPort + $i - 1
-    $nodeHome = Join-Path $homesRoot $name
-    $appArgs = @('--node-home', "`"$nodeHome`"", '--environment', 'NodeTrackerSwarm', '--urls', "http://localhost:$port", "--SettingsIngest:Mode=$Reingest")
+$first = $true
+foreach ($n in $nodes) {
+    New-Item -ItemType Directory -Force -Path $n.Home | Out-Null
+    $appArgs = @('--node-home', "`"$($n.Home)`"", '--environment', 'NodeTrackerSwarm', '--urls', "http://localhost:$($n.Port)", "--SettingsIngest:Mode=$Reingest")
 
     if (Test-Path $exe) {
-        $proc = Start-Process -FilePath $exe -ArgumentList $appArgs -WorkingDirectory $nodeHome -PassThru
+        $proc = Start-Process -FilePath $exe -ArgumentList $appArgs -WorkingDirectory $n.Home -PassThru
     } else {
-        $proc = Start-Process -FilePath 'dotnet' -ArgumentList (@("`"$dll`"") + $appArgs) -WorkingDirectory $nodeHome -PassThru
+        $proc = Start-Process -FilePath 'dotnet' -ArgumentList (@("`"$dll`"") + $appArgs) -WorkingDirectory $n.Home -PassThru
     }
-    $started += [pscustomobject]@{ Node = $name; Pid = $proc.Id; Url = "http://localhost:$port" }
-    Write-Host ("{0}  PID {1,-6} http://localhost:{2}" -f $name, $proc.Id, $port) -ForegroundColor Green
+    $started += [pscustomobject]@{ Node = $n.Name; Pid = $proc.Id; Url = "http://localhost:$($n.Port)" }
+    Write-Host ("{0,-12} PID {1,-6} http://localhost:{2}" -f $n.Name, $proc.Id, $n.Port) -ForegroundColor Green
 
-    if ($i -eq 1) { Start-Sleep -Seconds 5 } elseif ($StartDelaySeconds -gt 0) { Start-Sleep -Milliseconds ([int]($StartDelaySeconds * 1000)) }
+    if ($first) { Start-Sleep -Seconds 5; $first = $false }
+    elseif ($StartDelaySeconds -gt 0) { Start-Sleep -Milliseconds ([int]($StartDelaySeconds * 1000)) }
 }
 
 $started | ConvertTo-Json | Set-Content $pidFile -Encoding UTF8
 Write-Host ''
-Write-Host "Seeds: $($Seeds -join ', ')"
+if ($Template) { Write-Host 'Set up the template (admin user, settings), stop it (-Stop), then run .\Build\setup-swarm-homes.ps1.' }
 Write-Host 'Stop all: .\Build\run-swarm.ps1 -Stop'

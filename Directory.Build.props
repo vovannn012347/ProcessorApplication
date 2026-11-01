@@ -8,45 +8,63 @@
   </PropertyGroup>
 
   <!--
-    Node builds: one build per node GROUP, with a node home per node inside it.
+    Node builds: one program folder per node GROUP, a node home per node inside it.
 
       bin\<platform>\Tracker\ProcessorApplication\       program files, shared by Tracker1 and Tracker2
       bin\<platform>\Tracker\nodes\Tracker1\             Tracker1's own databases, Module_Data and settings files
       bin\<platform>\Tracker\nodes\Tracker2\
       bin\<platform>\Client\ProcessorApplication\        same for Client1 / Client2
       bin\<platform>\Client\nodes\Client1\ ...
-      bin\<platform>\TrackerSwarm\ProcessorApplication\  swarm program files; its node homes are made by Build\run-swarm.ps1
+      bin\<platform>\TrackerSwarm\ProcessorApplication\  swarm program files
+      bin\<platform>\TrackerSwarm\nodes\_template\       the swarm template node (set it up once, e.g. create the admin user)
+      bin\<platform>\TrackerSwarm\nodes\swarm-001\ ...   copies of the template, made by Build\setup-swarm-homes.ps1
 
-    NodeTracker1Debug and NodeTracker2Debug build the same Tracker group (either one sets up both homes), the
-    two client configurations the Client group. Each build seeds the group's node homes (SeedNodeHomes below):
-      - <project>\configFiles\<Node>\**            -> nodes\<Node>\  (only files the node doesn't have yet)
-      - <project>\appsettings.<module>.Node<Node>Debug.json -> nodes\<Node>\[Modules\<Module>\]  (kept up to date)
-    A node runs with:  ProcessorApplication.exe --node-home ..\nodes\Tracker1 --environment NodeTracker1Debug
-    (Build\run-test-nodes.ps1 and the Visual Studio launch profiles do exactly that.)
+    NodeTracker1Debug and NodeTracker2Debug build the same Tracker program folder; each one seeds its own
+    node home (NodeHome, see SeedNodeHome below):
+      - project configFiles\(node)\**  copied to nodes\(node)\  (only files the node does not have yet)
+      - project appsettings.(module).Node(node)Debug.json copied to nodes\(node)\ or nodes\(node)\Modules\(Module)\  (kept up to date)
+    A node is started with the program arguments  node-home ..\nodes\Tracker1  and  environment NodeTracker1Debug
+    (both with two leading dashes; Build\run-test-nodes.ps1 and the Visual Studio launch profiles pass them).
+    Note: an XML comment may not contain two dashes in a row, so they are not written out here.
   -->
   <PropertyGroup Condition="$(Configuration.StartsWith('Node'))">
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ConfigurationKey>$(Configuration)</ConfigurationKey>
+    <!-- appsettings.(module).(configuration).json of the node go into its home, not the shared program folder -->
+    <NodeSettingsInHome>true</NodeSettingsInHome>
 
     <!--platform specification, comment out if needed-->
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
     <PlatformTarget Condition="'$(RuntimeIdentifier)' == 'win-x86'">x86</PlatformTarget>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(Configuration)' == 'NodeTracker1Debug' Or '$(Configuration)' == 'NodeTracker2Debug'">
+  <PropertyGroup Condition="'$(Configuration)' == 'NodeTracker1Debug'">
     <NodeFolderName>Tracker</NodeFolderName>
-    <NodeHomes>Tracker1;Tracker2</NodeHomes>
+    <NodeHome>Tracker1</NodeHome>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(Configuration)' == 'NodeClient1Debug' Or '$(Configuration)' == 'NodeClient2Debug'">
+  <PropertyGroup Condition="'$(Configuration)' == 'NodeTracker2Debug'">
+    <NodeFolderName>Tracker</NodeFolderName>
+    <NodeHome>Tracker2</NodeHome>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'NodeClient1Debug'">
     <NodeFolderName>Client</NodeFolderName>
-    <NodeHomes>Client1;Client2</NodeHomes>
+    <NodeHome>Client1</NodeHome>
+  </PropertyGroup>
+  
+  <PropertyGroup Condition="'$(Configuration)' == 'NodeClient2Debug'">
+    <NodeFolderName>Client</NodeFolderName>
+    <NodeHome>Client2</NodeHome>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'NodeTrackerSwarm'">
     <NodeFolderName>TrackerSwarm</NodeFolderName>
-    <!-- many node homes, made and seeded by Build\run-swarm.ps1; appsettings.*.NodeTrackerSwarm.json are shared by all of them -->
-    <NodeHomesByScript>true</NodeHomesByScript>
+    <!-- the build seeds only the template home (presets from configFiles\TrackerSwarm); Build\setup-swarm-homes.ps1 copies it -->
+    <NodeHome>_template</NodeHome>
+    <NodePresetName>TrackerSwarm</NodePresetName>
+    <!-- appsettings.(module).NodeTrackerSwarm.json are shared by every swarm node: they stay in the program folder -->
+    <NodeSettingsInHome>false</NodeSettingsInHome>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -89,15 +107,15 @@
 
     <Content Include="$(ProjectDir)appsettings.json"  CopyToOutputDirectory="PreserveNewest"
              Condition="Exists('$(ProjectDir)appsettings.json')" />
-    <!-- node-specific files (configurations with node homes) are copied into each node home by SeedNodeHomes instead -->
+    <!-- node-specific files (configurations with node homes) are copied into each node home by SeedNodeHome instead -->
     <Content Include="$(ProjectDir)appsettings.$(ConfigurationKey).json" CopyToOutputDirectory="PreserveNewest"
-             Condition="'$(NodeHomes)' == '' AND '$(ConfigurationKey)' != '' AND Exists('$(ProjectDir)appsettings.$(ConfigurationKey).json')" />
+             Condition="'$(NodeSettingsInHome)' != 'true' AND '$(ConfigurationKey)' != '' AND Exists('$(ProjectDir)appsettings.$(ConfigurationKey).json')" />
 
 
     <Content Include="$(ProjectDir)appsettings.$(ModuleKey).json" CopyToOutputDirectory="PreserveNewest"
              Condition="'$(ModuleKey)' != '' AND Exists('$(ProjectDir)appsettings.$(ModuleKey).json')" />
     <Content Include="$(ProjectDir)appsettings.$(ModuleKey).$(ConfigurationKey).json" CopyToOutputDirectory="PreserveNewest"
-             Condition="'$(NodeHomes)' == '' AND '$(ModuleKey)'  != '' AND '$(ConfigurationKey)' != '' AND Exists('$(ProjectDir)appsettings.$(ModuleKey).$(ConfigurationKey).json')" />
+             Condition="'$(NodeSettingsInHome)' != 'true' AND '$(ModuleKey)'  != '' AND '$(ConfigurationKey)' != '' AND Exists('$(ProjectDir)appsettings.$(ModuleKey).$(ConfigurationKey).json')" />
 
   </ItemGroup>
 
@@ -120,7 +138,7 @@
 
   <!-- single-node layout (Debug/Release: the app folder is the node's folder) -->
   <Target Name="ForceDeployNodeConfigFiles" AfterTargets="Build"
-          Condition="'$(NodeHomes)' == '' AND '$(NodeHomesByScript)' != 'true' AND Exists('$(MSBuildProjectDirectory)\configFiles\$(NodeFolderName)')">
+          Condition="'$(NodeHome)' == '' AND Exists('$(MSBuildProjectDirectory)\configFiles\$(NodeFolderName)')">
 
     <!--
       Presets seed a NEW node folder only: a file is copied when the node doesn't have it yet, so a rebuild never
@@ -150,70 +168,68 @@
   </Target>
   
   <!--
-    Seeds the node homes of this build's group (see NodeHomes above). For every node in NodeHomes:
-      1. presets  <project>\configFiles\<Node>\**  -> <group>\nodes\<Node>\, only files the node doesn't have yet,
-         so a rebuild never overwrites a node's live database, P2P identity or keys. SQLite -wal/-shm presets go
-         only together with a missing database (a stale -wal next to a live database would corrupt it).
-      2. settings <project>\appsettings.<ModuleKey>.Node<Node>Debug.json -> the same place inside the node home
-         as in the app folder (main: the home root; a module: Modules\<Module>\). Updated whenever the project's
-         file changes - the project's file is the source; settings re-ingest applies it to the node's database.
+    Seeds this build's node home (NodeHome above):
+      1. presets  (project)\configFiles\(NodePresetName, default the home's name)\**  -> (group)\nodes\(NodeHome)\,
+         only files the node doesn't have yet, so a rebuild never overwrites a node's live database, P2P identity
+         or keys. SQLite -wal/-shm presets go only together with a missing database (a stale -wal next to a live
+         database would corrupt it).
+      2. if NodeSettingsInHome: (project)\appsettings.(ModuleKey).(Configuration).json -> the same place inside the
+         node home as in the program folder (main: the home root; a module: Modules\(Module)\). Updated whenever
+         the project's file changes - the project's file is the source; settings re-ingest applies it to the node.
   -->
-  <UsingTask TaskName="SeedNodeHomes" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+  <UsingTask TaskName="SeedNodeHome" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
     <ParameterGroup>
       <ProjectDir ParameterType="System.String" Required="true" />
-      <HomesRoot ParameterType="System.String" Required="true" />
-      <Homes ParameterType="System.String" Required="true" />
-      <SettingsPrefix ParameterType="System.String" Required="true" />
+      <HomeDir ParameterType="System.String" Required="true" />
+      <PresetName ParameterType="System.String" Required="true" />
+      <SettingsFile ParameterType="System.String" />
       <SettingsSubDir ParameterType="System.String" />
       <ProjectName ParameterType="System.String" />
     </ParameterGroup>
     <Task>
-      <Using Namespace="System.IO" />
-      <Using Namespace="System.Linq" />
       <Code Type="Fragment" Language="cs">
         <![CDATA[
-          foreach (var home in Homes.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(h => h.Trim()))
+          Directory.CreateDirectory(HomeDir);
+          string homeName = Path.GetFileName(HomeDir.TrimEnd('\\', '/'));
+
+          // 1. presets: decide everything before copying anything (a database copied in this run must not
+          //    make its own -wal look like "database already there")
+          string presetRoot = Path.Combine(ProjectDir, "configFiles", PresetName);
+          if (Directory.Exists(presetRoot))
           {
-              string homeDir = Path.Combine(HomesRoot, home);
-              Directory.CreateDirectory(homeDir);
-
-              // 1. presets: decide everything before copying anything (a database copied in this run must not
-              //    make its own -wal look like "database already there")
-              string presetRoot = Path.Combine(ProjectDir, "configFiles", home);
-              if (Directory.Exists(presetRoot))
+              var copies = new List<KeyValuePair<string, string>>();
+              foreach (var src in Directory.GetFiles(presetRoot, "*", SearchOption.AllDirectories))
               {
-                  var copies = new List<KeyValuePair<string, string>>();
-                  foreach (var src in Directory.GetFiles(presetRoot, "*", SearchOption.AllDirectories))
-                  {
-                      string rel = src.Substring(presetRoot.Length).TrimStart('\\', '/');
-                      string dest = Path.Combine(homeDir, rel);
-                      if (File.Exists(dest)) continue;
-                      string db = System.Text.RegularExpressions.Regex.Replace(dest, "-(wal|shm)$", "");
-                      if (db != dest && File.Exists(db)) continue;
-                      copies.Add(new KeyValuePair<string, string>(src, dest));
-                  }
-                  foreach (var c in copies)
-                  {
-                      Directory.CreateDirectory(Path.GetDirectoryName(c.Value));
-                      File.Copy(c.Key, c.Value, false);
-                  }
-                  if (copies.Count > 0)
-                      Log.LogMessage(MessageImportance.High, "[Node home] " + home + ": seeded " + copies.Count + " preset file(s) from " + ProjectName + "\\configFiles\\" + home);
+                  string rel = src.Substring(presetRoot.Length).TrimStart('\\', '/');
+                  string dest = Path.Combine(HomeDir, rel);
+                  if (File.Exists(dest)) continue;
+                  string db = System.Text.RegularExpressions.Regex.Replace(dest, "-(wal|shm)$", "");
+                  if (db != dest && File.Exists(db)) continue;
+                  copies.Add(new KeyValuePair<string, string>(src, dest));
               }
+              foreach (var c in copies)
+              {
+                  Directory.CreateDirectory(Path.GetDirectoryName(c.Value));
+                  File.Copy(c.Key, c.Value, false);
+              }
+              if (copies.Count > 0)
+                  Log.LogMessage(MessageImportance.High, "[Node home] " + homeName + ": seeded " + copies.Count + " preset file(s) from " + ProjectName + "\\configFiles\\" + PresetName);
+          }
 
-              // 2. this node's settings file
-              string fileName = SettingsPrefix + ".Node" + home + "Debug.json";
-              string settingsSrc = Path.Combine(ProjectDir, fileName);
+          // 2. this node's settings file
+          if (!string.IsNullOrEmpty(SettingsFile))
+          {
+              string settingsSrc = Path.Combine(ProjectDir, SettingsFile);
               if (File.Exists(settingsSrc))
               {
-                  string destDir = string.IsNullOrEmpty(SettingsSubDir) ? homeDir : Path.Combine(homeDir, SettingsSubDir);
-                  string settingsDest = Path.Combine(destDir, fileName);
+                  string destDir = string.IsNullOrEmpty(SettingsSubDir) ? HomeDir : Path.Combine(HomeDir, SettingsSubDir);
+                  string settingsDest = Path.Combine(destDir, SettingsFile);
                   bool same = File.Exists(settingsDest) && File.ReadAllBytes(settingsDest).SequenceEqual(File.ReadAllBytes(settingsSrc));
                   if (!same)
                   {
                       Directory.CreateDirectory(destDir);
                       File.Copy(settingsSrc, settingsDest, true);
-                      Log.LogMessage(MessageImportance.High, "[Node home] " + home + ": settings " + Path.Combine(SettingsSubDir ?? "", fileName));
+                      Log.LogMessage(MessageImportance.High, "[Node home] " + homeName + ": settings " + Path.Combine(SettingsSubDir ?? "", SettingsFile));
                   }
               }
           }
@@ -222,19 +238,23 @@
     </Task>
   </UsingTask>
 
-  <Target Name="SeedNodeHomes" AfterTargets="Build" Condition="'$(NodeHomes)' != '' AND '$(ModuleKey)' != ''">
+  <Target Name="SeedNodeHome" AfterTargets="Build" Condition="'$(NodeHome)' != '' AND '$(ModuleKey)' != ''">
     <PropertyGroup>
       <_IsModuleProject>false</_IsModuleProject>
       <_IsModuleProject Condition="$(MSBuildProjectDirectory.Contains('\Modules\')) or $(MSBuildProjectDirectory.Contains('/Modules/'))">true</_IsModuleProject>
       <_NodeSettingsSubDir></_NodeSettingsSubDir>
       <_NodeSettingsSubDir Condition="'$(_IsModuleProject)' == 'true'">Modules\$(MSBuildProjectName)</_NodeSettingsSubDir>
+      <_NodeSettingsFile></_NodeSettingsFile>
+      <_NodeSettingsFile Condition="'$(NodeSettingsInHome)' == 'true'">appsettings.$(ModuleKey).$(ConfigurationKey).json</_NodeSettingsFile>
+      <_NodePresetName>$(NodePresetName)</_NodePresetName>
+      <_NodePresetName Condition="'$(_NodePresetName)' == ''">$(NodeHome)</_NodePresetName>
     </PropertyGroup>
-    <SeedNodeHomes ProjectDir="$(MSBuildProjectDirectory)"
-                   HomesRoot="$(BaseOutputFolder)\nodes"
-                   Homes="$(NodeHomes)"
-                   SettingsPrefix="appsettings.$(ModuleKey)"
-                   SettingsSubDir="$(_NodeSettingsSubDir)"
-                   ProjectName="$(MSBuildProjectName)" />
+    <SeedNodeHome ProjectDir="$(MSBuildProjectDirectory)"
+                  HomeDir="$(BaseOutputFolder)\nodes\$(NodeHome)"
+                  PresetName="$(_NodePresetName)"
+                  SettingsFile="$(_NodeSettingsFile)"
+                  SettingsSubDir="$(_NodeSettingsSubDir)"
+                  ProjectName="$(MSBuildProjectName)" />
   </Target>
 
 </Project>

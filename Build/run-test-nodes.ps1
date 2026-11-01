@@ -22,7 +22,7 @@
     home (the build copies them there from the projects). Settings files are re-applied on start according to -Reingest.
 
 .EXAMPLE
-    .\Build\run-test-nodes.ps1 -Build -Reingest Overwrite     # first time: build both groups, apply the node settings
+    .\Build\run-test-nodes.ps1 -Build -Reingest Overwrite     # first time: build all 4 nodes, apply the node settings
     .\Build\run-test-nodes.ps1                                # later: start with the existing builds ("Changed" re-ingest)
     .\Build\run-test-nodes.ps1 -Nodes Tracker1,Client1        # only some nodes
     .\Build\run-test-nodes.ps1 -Stop                          # stop the nodes this script started
@@ -37,7 +37,7 @@ param(
     # Platform folder (must match the RuntimeIdentifier of the build).
     [string] $Rid = 'win-x64',
 
-    # Build the needed groups first (dotnet build <sln> -c NodeTracker1Debug / NodeClient1Debug).
+    # Build each node's configuration first (dotnet build <sln> -c Node...Debug); the second node of a group is quick.
     [switch] $Build,
 
     # How the module settings files are applied on start: Changed (default), Overwrite, Off.
@@ -110,12 +110,11 @@ function Stop-TestNodes {
 
 if ($Stop) { Stop-TestNodes; return }
 
-# --- Build (one build per group; either configuration of a group sets up both of its node homes) ----------
+# --- Build (each node's configuration: the group's program folder + that node's home) -----------------------
 if ($Build) {
-    $groups = $Nodes | ForEach-Object { $nodeTable[$_].Group } | Select-Object -Unique
-    foreach ($g in $groups) {
-        $cfg = if ($g -eq 'Tracker') { 'NodeTracker1Debug' } else { 'NodeClient1Debug' }
-        Write-Host "=== Building group $g ($cfg, $Rid) ===" -ForegroundColor Cyan
+    foreach ($node in $Nodes) {
+        $cfg = $nodeTable[$node].Config
+        Write-Host "=== Building $node ($cfg, $Rid) ===" -ForegroundColor Cyan
         & dotnet build $sln -c $cfg -p:RuntimeIdentifier=$Rid --nologo -v minimal
         if ($LASTEXITCODE -ne 0) { throw "Build of $cfg failed." }
     }

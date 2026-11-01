@@ -177,9 +177,9 @@
       <ModuleConfigs Include="$(ProjectDir)appsettings.$(ModuleKey).json"
                      Condition="'$(ModuleKey)' != '' AND Exists('$(ProjectDir)appsettings.$(ModuleKey).json')" />
 
-      <!-- node-specific settings go into each node home instead (SeedNodeHomes, Directory.Build.props) -->
+      <!-- node-specific settings go into each node home instead (SeedNodeHome, Directory.Build.props) -->
       <ModuleConfigs Include="$(ProjectDir)appsettings.$(ModuleKey).$(ConfigurationKey).json"
-                     Condition="'$(NodeHomes)' == '' AND '$(ModuleKey)'  != '' AND '$(ConfigurationKey)' != '' AND Exists('$(ProjectDir)appsettings.$(ModuleKey).$(ConfigurationKey).json')" />
+                     Condition="'$(NodeSettingsInHome)' != 'true' AND '$(ModuleKey)'  != '' AND '$(ConfigurationKey)' != '' AND Exists('$(ProjectDir)appsettings.$(ModuleKey).$(ConfigurationKey).json')" />
     </ItemGroup>
 
     <Copy SourceFiles="@(IsolatedContextAssets)"

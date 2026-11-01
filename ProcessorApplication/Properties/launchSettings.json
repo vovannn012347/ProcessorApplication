@@ -43,6 +43,17 @@
       "dotnetRunMessages": true,
       "applicationUrl": "https://localhost:7107;http://localhost:5044"
     },
+    "µProcessorSwarmTemplate": {
+      "commandName": "Project",
+      "workingDirectory": "$(TargetDir)",
+      "commandLineArgs": "--node-home ..\\nodes\\_template",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "NodeTrackerSwarm"
+      },
+      "dotnetRunMessages": true,
+      "applicationUrl": "https://localhost:7111;http://localhost:5048"
+    },
     "µProcessorTracker2": {
       "commandName": "Project",
       "workingDirectory": "$(TargetDir)",

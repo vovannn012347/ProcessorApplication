@@ -48,6 +48,8 @@
       <CandidateFiles ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
       <ExclusionListFile ParameterType="System.String" Required="true" />
       <SearchRoots ParameterType="System.String[]" Required="true" />
+      <TargetDir ParameterType="System.String" Required="true" />
+      <OwnDeployFolder ParameterType="System.String" Required="true" />
       <DuplicateFiles ParameterType="Microsoft.Build.Framework.ITaskItem[]" Output="true" />
     </ParameterGroup>
     <Task>
@@ -57,45 +59,70 @@
       <Using Namespace="Microsoft.Build.Framework" />
       <Code Type="Fragment" Language="cs">
         <![CDATA[
-          var known = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+          // Relative path (inside its folder) -> every size seen there. Matching on the relative path, not the
+          // bare file name: runtimes\win-x64\native\e_sqlite3.dll and runtimes\linux-x64\native\e_sqlite3.dll
+          // are different files with the same name, and a name-only key let one "win" and the rest slip through.
+          var known = new Dictionary<string, HashSet<long>>(StringComparer.OrdinalIgnoreCase);
+          Action<string, long> add = (rel, size) =>
+          {
+              rel = rel.Replace('/', '\\');
+              if (!known.TryGetValue(rel, out var sizes)) known[rel] = sizes = new HashSet<long>();
+              sizes.Add(size);
+          };
+          // Big or irrelevant folders under the host root: node data (downloads!), static web files, other modules.
+          var skipTop = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Module_Data", "wwwroot", "Modules", "logs" };
 
-          // Source 1: the pre-computed project-reference list.
+          // Source 1: the pre-computed project-reference list (files that sit at the output root).
           if (File.Exists(ExclusionListFile))
           {
               foreach (var line in File.ReadAllLines(ExclusionListFile))
               {
                   var parts = line.Split('|');
                   if (parts.Length != 2) continue;
-                  if (long.TryParse(parts[1], out var size))
+                  if (long.TryParse(parts[1], out var size)) add(parts[0], size);
+              }
+          }
+
+          // Source 2: what is already deployed. SearchRoots[0] = host output root (paths relative to it),
+          // SearchRoots[1] = the Modules folder (paths relative to each module's own folder).
+          for (int r = 0; r < SearchRoots.Length; r++)
+          {
+              var root = SearchRoots[r];
+              if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) continue;
+              var bases = r == 0 ? new[] { root } : Directory.GetDirectories(root);
+              // This module's OWN previous deployment never counts as "provided by someone else": with it
+              // included, a rebuilt DLL that happened to keep the same byte size was treated as a duplicate
+              // of its old self and never redeployed (stale code kept running).
+              var own = string.IsNullOrEmpty(OwnDeployFolder) ? "" : Path.GetFullPath(OwnDeployFolder).TrimEnd('\\', '/');
+              foreach (var baseDir in bases)
+              {
+                  if (r == 1 && string.Equals(Path.GetFullPath(baseDir).TrimEnd('\\', '/'), own, StringComparison.OrdinalIgnoreCase)) continue;
+                  var basePath = Path.GetFullPath(baseDir).TrimEnd('\\', '/') + Path.DirectorySeparatorChar;
+                  var stack = new Stack<string>();
+                  stack.Push(basePath);
+                  while (stack.Count > 0)
                   {
-                      known[parts[0]] = size;
+                      var dir = stack.Pop();
+                      foreach (var file in Directory.GetFiles(dir))
+                          add(file.Substring(basePath.Length), new FileInfo(file).Length);
+                      foreach (var sub in Directory.GetDirectories(dir))
+                      {
+                          if (r == 0 && dir == basePath && skipTop.Contains(Path.GetFileName(sub))) continue;
+                          stack.Push(sub);
+                      }
                   }
               }
           }
 
-          // Source 2: whatever's already physically deployed - catches transitive package
-          // dependencies (e.g. BouncyCastle.Crypto via SIPSorcery) the list above can't see.
-          // First one found wins if the same name shows up more than once with different sizes
-          // somewhere - rare, and not worth failing the build over.
-          foreach (var root in SearchRoots)
-          {
-              if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) continue;
-              foreach (var file in Directory.GetFiles(root, "*.*", SearchOption.AllDirectories))
-              {
-                  var name = Path.GetFileName(file);
-                  if (known.ContainsKey(name)) continue;
-                  known[name] = new FileInfo(file).Length;
-              }
-          }
-
+          var targetRoot = TargetDir == null ? "" : Path.GetFullPath(TargetDir).TrimEnd('\\', '/') + Path.DirectorySeparatorChar;
           var dupes = new List<ITaskItem>();
           foreach (var item in CandidateFiles)
           {
               var path = item.GetMetadata("FullPath");
               if (!File.Exists(path)) continue;
 
-              var name = Path.GetFileName(path);
-              if (known.TryGetValue(name, out var knownSize) && knownSize == new FileInfo(path).Length)
+              var rel = path.StartsWith(targetRoot, StringComparison.OrdinalIgnoreCase) ? path.Substring(targetRoot.Length) : Path.GetFileName(path);
+              if (known.TryGetValue(rel.Replace('/', '\\'), out var sizes) && sizes.Contains(new FileInfo(path).Length))
               {
                   dupes.Add(item);
               }
@@ -114,7 +141,9 @@
 
     <FindDuplicateFiles CandidateFiles="@(RawModuleOutputs)"
                          ExclusionListFile="$(TargetDir)$(ModuleKey).manifest.foreign-refs.txt"
-                         SearchRoots="$(MainProjectBinRoot);$(MainProjectBinRoot)Modules\">
+                         SearchRoots="$(MainProjectBinRoot);$(MainProjectBinRoot)Modules\"
+                         TargetDir="$(TargetDir)"
+                         OwnDeployFolder="$(TargetModuleFolder)">
       <Output TaskParameter="DuplicateFiles" ItemName="ParentDuplicateAssemblies" />
     </FindDuplicateFiles>
 
@@ -122,6 +151,7 @@
       <IsolatedContextAssets Include="@(RawModuleOutputs)" />
       <IsolatedContextAssets Remove="@(ParentDuplicateAssemblies)" />
       <IsolatedContextAssets Remove="$(TargetDir)refs\**\*.*" />
+      <IsolatedContextAssets Remove="$(TargetDir)runtimes\**\*.*" />
       <IsolatedContextAssets Remove="$(TargetDir)*.exe" />
       <IsolatedContextAssets Remove="$(TargetDir)*.exe.config" />
       <IsolatedContextAssets Remove="$(TargetDir)*.runtimeconfig.json" />
@@ -155,6 +185,28 @@
           DestinationFiles="@(ModuleUiAssets->'$(TargetModuleFolder)wwwroot\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true"
           OverwriteReadOnlyFiles="true" />
+
+    <!--
+      Native libraries live with the host, never in a module folder (runtimes\** is excluded above).
+      A native file only a module brings (the host doesn't have it yet) is copied into the host's own
+      runtimes\ folder; ModuleAssemblyLoadContext.LoadUnmanagedDll looks there. Existing host files are
+      never overwritten. Managed files under runtimes\*\lib are not copied: a module's load context can't
+      use them from there.
+    -->
+    <ItemGroup>
+      <_ModuleNativeAssets Include="$(TargetDir)runtimes\*\native\**\*.*">
+        <Dest>$(MainProjectBinRoot)runtimes\%(RecursiveDir)%(Filename)%(Extension)</Dest>
+      </_ModuleNativeAssets>
+    </ItemGroup>
+    <ItemGroup>
+      <_NewNativeAssets Include="@(_ModuleNativeAssets)" Condition="!Exists('%(Dest)')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_NewNativeAssets)"
+          DestinationFiles="@(_NewNativeAssets->'%(Dest)')"
+          OverwriteReadOnlyFiles="true"
+          Condition="'@(_NewNativeAssets)' != ''" />
+    <Message Importance="high" Condition="'@(_NewNativeAssets)' != ''"
+             Text="[P2P Build Shield] Native files moved to the host for '$(ProjectName)': @(_NewNativeAssets->'%(Filename)%(Extension)', ', ')" />
 
     <Message Importance="high" Text="[P2P Build Shield] Context split complete for module '$(ProjectName)'. Parent duplicate assemblies skipped." />
   </Target>

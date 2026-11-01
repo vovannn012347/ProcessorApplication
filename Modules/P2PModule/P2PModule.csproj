@@ -7,7 +7,7 @@
 
     <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
-    <Configurations>Debug;Release;TrackerDebug;ClientDebug;NodeTracker1Debug;NodeTracker2Debug;NodeClient1Debug;NodeClient2Debug</Configurations>
+    <Configurations>Debug;Release;TrackerDebug;ClientDebug;NodeTracker1Debug;NodeTracker2Debug;NodeClient1Debug;NodeClient2Debug;NodeTrackerSwarm</Configurations>
 
     <!--for appsettings hook in build.props-->
     <ModuleKey>P2P</ModuleKey>
@@ -19,7 +19,7 @@
   </ItemGroup>
   
   <ItemGroup>
-    <PackageReference Include="SIPSorcery" Version="6.0.11" />
+    <PackageReference Include="SIPSorcery" />
     <Content Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
     <Folder Include="configFiles\Debug\" />
     <Folder Include="configFiles\Debug\Module_Data\P2P\identity\" />

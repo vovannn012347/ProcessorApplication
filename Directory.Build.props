@@ -7,6 +7,16 @@
 
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)' == 'NodeTrackerSwarm'">
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ConfigurationKey>NodeTrackerSwarm</ConfigurationKey>
+    <NodeFolderName>TrackerSwarm</NodeFolderName>
+
+    <!--platform specification, comment out if needed-->
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+    <PlatformTarget Condition="'$(RuntimeIdentifier)' == 'win-x86'">x86</PlatformTarget>
+  </PropertyGroup>
+  
   <PropertyGroup Condition="'$(Configuration)' == 'NodeTracker1Debug'">
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ConfigurationKey>NodeTracker1Debug</ConfigurationKey>
@@ -32,7 +42,7 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <BaseOutputFolder>$(SolutionDir)bin\$(NodeFolderName)</BaseOutputFolder>
+    <BaseOutputFolder>$(SolutionDir)bin\$(RuntimeIdentifier)\$(NodeFolderName)</BaseOutputFolder>
     <OutputPath>$(BaseOutputFolder)\$(MSBuildProjectName)\</OutputPath>
     
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
@@ -47,6 +57,19 @@
     <EnableDefaultContentItems>false</EnableDefaultContentItems>
     <!--translations-->
     <SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!--
+    Self-contained: when a platform (RuntimeIdentifier) is set, the host carries the .NET runtime and every
+    shared library; modules are plain libraries that ship only their own files and use the host's copies.
+  -->
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'ProcessorApplication' And '$(RuntimeIdentifier)' != ''">
+    <SelfContained>true</SelfContained>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(MSBuildProjectDirectory.Contains('\Modules\')) or $(MSBuildProjectDirectory.Contains('/Modules/'))">
+    <SelfContained>false</SelfContained>
+    <!-- modules reference the host (an executable) only to compile against it -->
+    <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
   </PropertyGroup>
   
   <!--Apply to all projects-->
@@ -71,8 +94,8 @@
 
   <ItemDefinitionGroup Condition="$(MSBuildProjectDirectory.Contains('\Modules\')) or $(MSBuildProjectDirectory.Contains('/Modules/'))">
     <ProjectReference>
-      <!--do not copy parent references-->
       <Private>False</Private>
+      <ExcludeAssets>runtime;native</ExcludeAssets>
       <CopyLocalSatelliteAssemblies>False</CopyLocalSatelliteAssemblies>
     </ProjectReference>
   </ItemDefinitionGroup>

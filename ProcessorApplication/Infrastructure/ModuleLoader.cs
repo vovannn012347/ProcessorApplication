@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 using System.Text.Json;
 
@@ -470,6 +471,56 @@ public class ModuleAssemblyLoadContext : AssemblyLoadContext
         // Returning null here tells the runtime: "Check the Default Load Context."
         // This is where the magic happens: the Host's context finds it immediately.
         return base.Load(assemblyName);
+    }
+
+    /// <summary>
+    /// Native libraries (e.g. e_sqlite3). Modules don't carry native files: the build moves them into the
+    /// host's output (flat for a platform build, runtimes\{rid}\native\ for a portable one). Looked up in:
+    /// the module's own deps map, the module folder, then the host folder; first match wins.
+    /// Returning IntPtr.Zero falls back to the runtime's normal probing (default context, OS search path).
+    /// </summary>
+    protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
+    {
+        string? mapped = _resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
+        if (mapped != null && File.Exists(mapped)) return LoadUnmanagedDllFromPath(mapped);
+
+        string moduleDir = Path.GetDirectoryName(_modulePath) ?? AppContext.BaseDirectory;
+        foreach (var dir in new[] { moduleDir, AppContext.BaseDirectory })
+        {
+            foreach (var candidate in NativeCandidates(dir, unmanagedDllName))
+            {
+                if (File.Exists(candidate)) return LoadUnmanagedDllFromPath(candidate);
+            }
+        }
+        return IntPtr.Zero;
+    }
+
+    private static readonly Lazy<string[]> NativeRids = new(() =>
+    {
+        string os = OperatingSystem.IsWindows() ? "win" : OperatingSystem.IsMacOS() ? "osx" : "linux";
+        string arch = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant(); // x64, x86, arm, arm64
+        // .NET 6 reports version-specific ids such as "win10-x64"; the build output uses the generic ones.
+        return new[] { RuntimeInformation.RuntimeIdentifier, $"{os}-{arch}", os }
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    });
+
+    private static IEnumerable<string> NativeCandidates(string dir, string name)
+    {
+        var fileNames = new List<string> { name };
+        if (OperatingSystem.IsWindows())
+        {
+            if (!name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) fileNames.Add(name + ".dll");
+        }
+        else
+        {
+            string ext = OperatingSystem.IsMacOS() ? ".dylib" : ".so";
+            if (!name.Contains(ext)) fileNames.Add(name + ext);
+            if (!name.StartsWith("lib")) fileNames.Add("lib" + name + (name.Contains(ext) ? "" : ext));
+        }
+
+        foreach (var f in fileNames) yield return Path.Combine(dir, f);
+        foreach (var rid in NativeRids.Value)
+            foreach (var f in fileNames) yield return Path.Combine(dir, "runtimes", rid, "native", f);
     }
 }
 

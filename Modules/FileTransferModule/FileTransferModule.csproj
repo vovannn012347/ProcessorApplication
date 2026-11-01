@@ -8,7 +8,7 @@
     <Private>False</Private>
     <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
-    <Configurations>Debug;Release;TrackerDebug;ClientDebug;NodeTracker1Debug;NodeTracker2Debug;NodeClient1Debug;NodeClient2Debug</Configurations>
+    <Configurations>Debug;Release;TrackerDebug;ClientDebug;NodeTracker1Debug;NodeTracker2Debug;NodeClient1Debug;NodeClient2Debug;NodeTrackerSwarm</Configurations>
 
     <!--for appsettings hook in build.props-->
     <ModuleKey>FileTransfer</ModuleKey>

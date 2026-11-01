@@ -74,12 +74,23 @@
       folder. They share one intermediate folder and leave the configuration name out of the assembly, so building
       the second configuration compiles nothing and copies nothing (files unchanged): a node of the group can keep
       running while Visual Studio builds the other one before starting it. Each build still seeds its own node home.
-      Visual Studio's own up-to-date shortcut is off so that seeding always runs.
+      Visual Studio only builds when something changed; a node home that is missing or has older preset or settings
+      files than the project counts as a change (see the UpToDateCheck items below).
     -->
     <IntermediateOutputPath>obj\$(NodeFolderName)\$(RuntimeIdentifier)\</IntermediateOutputPath>
     <GenerateAssemblyConfigurationAttribute>false</GenerateAssemblyConfigurationAttribute>
-    <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
   </PropertyGroup>
+
+  <!--
+    Visual Studio's fast up-to-date check: build again when this node's home was never seeded (stamp missing) or a
+    preset / the node's settings file in the project is newer than the last seeding. Otherwise F5 starts at once.
+  -->
+  <ItemGroup Condition="'$(NodeHome)' != '' AND '$(ModuleKey)' != ''">
+    <UpToDateCheckInput Include="$(MSBuildProjectDirectory)\configFiles\$(NodePresetName)\**\*" />
+    <UpToDateCheckInput Include="$(MSBuildProjectDirectory)\appsettings.$(ModuleKey).$(ConfigurationKey).json"
+                        Condition="'$(NodeSettingsInHome)' == 'true' AND Exists('$(MSBuildProjectDirectory)\appsettings.$(ModuleKey).$(ConfigurationKey).json')" />
+    <UpToDateCheckBuilt Include="$(NodeHomeSeedStamp)" />
+  </ItemGroup>
 
   <PropertyGroup>
     <BaseOutputFolder>$(SolutionDir)bin\$(RuntimeIdentifier)\$(NodeFolderName)</BaseOutputFolder>
@@ -98,6 +109,14 @@
     <!--translations-->
     <SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
   </PropertyGroup>
+
+  <!-- after BaseOutputFolder -->
+  <PropertyGroup Condition="'$(NodeHome)' != ''">
+    <NodePresetName Condition="'$(NodePresetName)' == ''">$(NodeHome)</NodePresetName>
+    <!-- written by SeedNodeHome; tells Visual Studio this project's part of the node home is up to date -->
+    <NodeHomeSeedStamp>$(BaseOutputFolder)\nodes\$(NodeHome)\.build\$(MSBuildProjectName).seeded</NodeHomeSeedStamp>
+  </PropertyGroup>
+
 
   <!--
     Self-contained: when a platform (RuntimeIdentifier) is set, the host carries the .NET runtime and every
@@ -262,6 +281,7 @@
       <_NodeSettingsFile Condition="'$(NodeSettingsInHome)' == 'true'">appsettings.$(ModuleKey).$(ConfigurationKey).json</_NodeSettingsFile>
       <_NodePresetName>$(NodePresetName)</_NodePresetName>
       <_NodePresetName Condition="'$(_NodePresetName)' == ''">$(NodeHome)</_NodePresetName>
+      <_NodeHomeSeedStamp>$(BaseOutputFolder)\nodes\$(NodeHome)\.build\$(MSBuildProjectName).seeded</_NodeHomeSeedStamp>
     </PropertyGroup>
     <SeedNodeHome ProjectDir="$(MSBuildProjectDirectory)"
                   HomeDir="$(BaseOutputFolder)\nodes\$(NodeHome)"
@@ -269,6 +289,8 @@
                   SettingsFile="$(_NodeSettingsFile)"
                   SettingsSubDir="$(_NodeSettingsSubDir)"
                   ProjectName="$(MSBuildProjectName)" />
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_NodeHomeSeedStamp)'))" />
+    <Touch Files="$(_NodeHomeSeedStamp)" AlwaysCreate="true" />
   </Target>
 
 </Project>

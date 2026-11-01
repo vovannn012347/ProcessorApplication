@@ -13,6 +13,7 @@
     "µProcessorClient1": {
       "commandName": "Project",
       "workingDirectory": "$(TargetDir)",
+      "commandLineArgs": "--node-home ..\\nodes\\Client1",
       "launchBrowser": false,
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "NodeClient1Debug"
@@ -23,6 +24,7 @@
     "µProcessorClient2": {
       "commandName": "Project",
       "workingDirectory": "$(TargetDir)",
+      "commandLineArgs": "--node-home ..\\nodes\\Client2",
       "launchBrowser": false,
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "NodeClient2Debug"
@@ -33,6 +35,7 @@
     "µProcessorTracker1": {
       "commandName": "Project",
       "workingDirectory": "$(TargetDir)",
+      "commandLineArgs": "--node-home ..\\nodes\\Tracker1",
       "launchBrowser": false,
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "NodeTracker1Debug"
@@ -43,6 +46,7 @@
     "µProcessorTracker2": {
       "commandName": "Project",
       "workingDirectory": "$(TargetDir)",
+      "commandLineArgs": "--node-home ..\\nodes\\Tracker2",
       "launchBrowser": false,
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "NodeTracker2Debug"

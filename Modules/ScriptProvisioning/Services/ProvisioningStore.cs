@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using Common.Infrastructure;
+using System.Text.Json;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -45,7 +46,7 @@ public sealed class ProvisioningStore : IProvisioningStore
         {
             string path = _settings.CurrentValue.DataPath;
             if (string.IsNullOrWhiteSpace(path)) path = "Module_Data/ScriptProvisioning";
-            return Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(AppContext.BaseDirectory, path));
+            return NodeHome.Resolve(path);
         }
     }
 

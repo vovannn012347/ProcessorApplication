@@ -1,4 +1,5 @@
-﻿using Common.Models;
+﻿using Common.Infrastructure;
+using Common.Models;
 
 using Infrastructure.Monitoring;
 
@@ -15,16 +16,35 @@ using ProcessorApplication.Infrastructure.Web;
 using ProcessorApplication.Services;
 using ProcessorApplication.Utils;
 
+// This node's own folder (databases, Module_Data, its settings files): --node-home <folder> or PROCESSOR_NODE_HOME.
+// Becomes the current directory, so every relative data path lands in it. Without it: the app folder, as before.
+NodeHome.Initialize(args);
+
 const string ModuleDir = "Modules";
 var modulesRoot = Path.Combine(AppContext.BaseDirectory, ModuleDir);
 if (!Directory.Exists(modulesRoot)) Directory.CreateDirectory(modulesRoot);
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    // Program files (views, wwwroot) are always the app folder's, also when the current directory is a node home.
+    ContentRootPath = AppContext.BaseDirectory,
+});
 
 builder.Configuration
     .SetBasePath(AppContext.BaseDirectory)
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true);
+
+if (NodeHome.IsSeparate)
+{
+    // The node's own copies override the shared ones.
+    builder.Configuration
+        .AddJsonFile(Path.Combine(NodeHome.Folder, "appsettings.json"), optional: true, reloadOnChange: true)
+        .AddJsonFile(Path.Combine(NodeHome.Folder, $"appsettings.{builder.Environment.EnvironmentName}.json"), optional: true, reloadOnChange: true);
+}
+
+builder.Configuration
     // Re-add these after the JSON files above, so environment variables and command-line arguments override
     // appsettings.json again (CreateBuilder loads them before, and the re-added files would win otherwise).
     // Needed e.g. for "--SettingsIngest:Mode=Overwrite" and for headless nodes configured by environment.
@@ -33,7 +53,8 @@ builder.Configuration
 
 // 2. Load Module JSON Files (Prefixed with Area)
 // This adds "Main:SecuritySettings:..." from the file to the config
-builder.Configuration.AddModuleJsonFiles(AppContext.BaseDirectory, builder.Environment.EnvironmentName);
+// App folder first, then the node home's files (same names and places) on top.
+builder.Configuration.AddLayeredModuleJsonFiles(builder.Environment.EnvironmentName);
 
 var modules = ModuleLoader.DiscoverModules(builder.Services, builder.Configuration, AppContext.BaseDirectory);
 

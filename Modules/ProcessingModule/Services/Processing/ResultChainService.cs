@@ -1,4 +1,5 @@
-﻿using System.Security.Cryptography;
+﻿using Common.Infrastructure;
+using System.Security.Cryptography;
 using System.Text;
 
 using Microsoft.EntityFrameworkCore;
@@ -381,7 +382,7 @@ public sealed class ResultChainService : IResultChainService
         {
             string configured = _settings.CurrentValue.ResultChainBackupPath;
             string path = string.IsNullOrWhiteSpace(configured) ? "Module_Data/Processor/result_chain" : configured;
-            return Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(AppContext.BaseDirectory, path));
+            return NodeHome.Resolve(path);
         }
     }
 

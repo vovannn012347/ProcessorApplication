@@ -4,6 +4,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
+using Common.Infrastructure;
+
 using Microsoft.Extensions.Options;
 
 namespace ProcessorApplication.Utils;
@@ -48,6 +50,31 @@ public static class ModuleConfigurationExtensions
             LoadAndPrefixJson(builder, areaName, filePath);
         }
 
+        return builder;
+    }
+
+    /// <summary>
+    /// Module settings files of the app folder, then those of the node home (when the node runs from its own
+    /// folder, see Common.Infrastructure.NodeHome), in load order: the node's files override the shared ones.
+    /// </summary>
+    public static IEnumerable<(string Area, string FilePath)> GetLayeredModuleJsonFiles(string environment)
+    {
+        foreach (var f in GetModuleJsonFiles(NodeHome.AppFolder, environment))
+            yield return f;
+
+        if (NodeHome.IsSeparate)
+        {
+            foreach (var f in GetModuleJsonFiles(NodeHome.Folder, environment))
+                yield return f;
+        }
+    }
+
+    public static IConfigurationBuilder AddLayeredModuleJsonFiles(this IConfigurationBuilder builder, string environment)
+    {
+        foreach (var (areaName, filePath) in GetLayeredModuleJsonFiles(environment))
+        {
+            LoadAndPrefixJson(builder, areaName, filePath);
+        }
         return builder;
     }
 

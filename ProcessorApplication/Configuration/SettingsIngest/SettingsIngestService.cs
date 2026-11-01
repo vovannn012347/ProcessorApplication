@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
+using Common.Infrastructure;
 using Common.Interfaces;
 using Common.Models.Database;
 
@@ -175,14 +176,14 @@ public class SettingsIngestService : ISettingsIngestService
 
         // 1. What the files say, per area (environment file overrides base file).
         var fileUnits = new Dictionary<string, Dictionary<string, SettingUnit>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (area, filePath) in ModuleConfigurationExtensions.GetModuleJsonFiles(AppContext.BaseDirectory, _env.EnvironmentName))
+        foreach (var (area, filePath) in ModuleConfigurationExtensions.GetLayeredModuleJsonFiles(_env.EnvironmentName))
         {
             if (!moduleIds.Contains(area))
                 continue;
             if (areaFilter != null && !string.Equals(area, areaFilter, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            result.Files.Add(Path.GetRelativePath(AppContext.BaseDirectory, filePath));
+            result.Files.Add(DescribeFile(filePath));
             try
             {
                 var units = ReadUnits(await File.ReadAllTextAsync(filePath, ct));
@@ -296,6 +297,14 @@ public class SettingsIngestService : ISettingsIngestService
     #region File reading
 
     /// <summary>One thing that is applied as a whole: a single value, or a complete list.</summary>
+    /// <summary>"Modules/P2PModule/appsettings.P2P.json", or "[node home] Modules/..." for the node's own copy.</summary>
+    private static string DescribeFile(string filePath)
+    {
+        if (NodeHome.IsSeparate && filePath.StartsWith(NodeHome.Folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            return "[node home] " + Path.GetRelativePath(NodeHome.Folder, filePath);
+        return Path.GetRelativePath(NodeHome.AppFolder, filePath);
+    }
+
     private sealed class SettingUnit
     {
         public string Key { get; init; } = string.Empty;

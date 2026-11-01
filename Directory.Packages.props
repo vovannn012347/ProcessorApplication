@@ -20,6 +20,9 @@
 
 	<!--
 		Libraries the main application ships for everyone (one copy, in ProcessorApplication's folder).
+		Only libraries used by the main application or by several unrelated modules belong here. A library that
+		belongs to one module (SIPSorcery -> P2PModule, Newtonsoft.Json -> ProcessingModule) stays with that module;
+		modules that depend on it (FileTransfer, ScriptProvisioning) don't copy it, they use the owner's copy.
 		- ProcessorApplication.csproj references every package listed here.
 		- Modules may reference them too (to compile), but never copy them: Modules/Directory.Build.targets
 		  sets ExcludeAssets="runtime;native" on these, so the module uses the main application's copy at runtime.
@@ -31,7 +34,5 @@
 		<HostProvidedPackage Include="Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation" />
 		<HostProvidedPackage Include="Microsoft.EntityFrameworkCore" />
 		<HostProvidedPackage Include="Microsoft.EntityFrameworkCore.Sqlite" />
-		<HostProvidedPackage Include="Newtonsoft.Json" />
-		<HostProvidedPackage Include="SIPSorcery" />
 	</ItemGroup>
 </Project>

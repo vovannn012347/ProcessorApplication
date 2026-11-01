@@ -467,6 +467,14 @@ public class ModuleAssemblyLoadContext : AssemblyLoadContext
             }
         }
 
+        // 3b. A library another module owns (e.g. SIPSorcery, shipped only with P2PModule) that the owner hasn't
+        // loaded yet: let the owner load it from its folder, so every module gets that one copy and type identity.
+        var owned = ModuleRegistry.LoadFromOwnerModule(assemblyName, this);
+        if (owned != null)
+        {
+            return owned;
+        }
+
         // 4. Fallback: If nothing above knows, it's likely a shared host assembly.
         // Returning null here tells the runtime: "Check the Default Load Context."
         // This is where the magic happens: the Host's context finds it immediately.
@@ -479,6 +487,23 @@ public class ModuleAssemblyLoadContext : AssemblyLoadContext
     /// the module's own deps map, the module folder, then the host folder; first match wins.
     /// Returning IntPtr.Zero falls back to the runtime's normal probing (default context, OS search path).
     /// </summary>
+    private readonly object _ownFolderLoadLock = new();
+
+    /// <summary>Loads a library that sits in this module's own folder (into this module's context), if it's there.</summary>
+    internal Assembly? TryLoadFromOwnFolder(AssemblyName name)
+    {
+        if (string.IsNullOrEmpty(name.Name)) return null;
+        string? dir = Path.GetDirectoryName(_modulePath);
+        if (dir == null) return null;
+        string file = Path.Combine(dir, name.Name + ".dll");
+        if (!File.Exists(file)) return null;
+
+        lock (_ownFolderLoadLock)
+        {
+            return Assemblies.FirstOrDefault(a => a.GetName().Name == name.Name) ?? LoadFromAssemblyPath(file);
+        }
+    }
+
     protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
     {
         string? mapped = _resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
@@ -527,6 +552,21 @@ public class ModuleAssemblyLoadContext : AssemblyLoadContext
 public static class ModuleRegistry
 {
     public static readonly List<ModuleAssemblyLoadContext> Contexts = new();
+
+    /// <summary>
+    /// Asks every other module whether the library is in its own folder and, if so, has that module load it.
+    /// Used when a module needs a library that only its owner ships (dependents don't carry a copy).
+    /// </summary>
+    public static Assembly? LoadFromOwnerModule(AssemblyName name, AssemblyLoadContext requester)
+    {
+        foreach (var context in Contexts.ToArray())
+        {
+            if (ReferenceEquals(context, requester)) continue;
+            var loaded = context.TryLoadFromOwnFolder(name);
+            if (loaded != null) return loaded;
+        }
+        return null;
+    }
 
     public static Assembly? ResolveFromAnyModule(AssemblyName name)
     {

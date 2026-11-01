@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+﻿using Common.Infrastructure;
+using System.Runtime.InteropServices;
 
 using Common.Interfaces;
 using Common.Interfaces.Menu;
@@ -122,11 +123,13 @@ public class ProcessorModuleEntryPoint : IModule
 
         if (!string.IsNullOrWhiteSpace(rawConnectionString))
         {
-            var moduleFolder = Path.GetDirectoryName(typeof(ProcessorModuleEntryPoint).Assembly.Location);
+            // The database lives in the module's folder - inside the node home when the node has its own folder.
+            var moduleFolder = NodeHome.MapFromAppFolder(Path.GetDirectoryName(typeof(ProcessorModuleEntryPoint).Assembly.Location)!);
             var builder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(rawConnectionString);
             if (!Path.IsPathRooted(builder.DataSource))
             {
-                builder.DataSource = Path.Combine(moduleFolder!, builder.DataSource);
+                Directory.CreateDirectory(moduleFolder);
+                builder.DataSource = Path.Combine(moduleFolder, builder.DataSource);
             }
             var absoluteConnectionString = builder.ToString();
 

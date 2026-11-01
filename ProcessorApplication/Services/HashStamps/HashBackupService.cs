@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using Common.Infrastructure;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -50,7 +51,7 @@ public class HashBackupService : IHashBackupService
         {
             string configured = _settingsMonitor.CurrentValue.LocalStampBackupPath;
             string path = string.IsNullOrWhiteSpace(configured) ? DefaultLocalRelativePath : configured;
-            return Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(AppContext.BaseDirectory, path));
+            return NodeHome.Resolve(path);
         }
     }
 

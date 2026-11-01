@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using Common.Infrastructure;
+using System.Collections.Concurrent;
 using System.Text.Json;
 
 using Microsoft.Extensions.Logging;
@@ -32,7 +33,7 @@ public class PeerRatingOverrideService : IPeerRatingOverrideService
     public PeerRatingOverrideService(ILogger<PeerRatingOverrideService> logger)
     {
         _logger = logger;
-        _storagePath = Path.Combine(AppContext.BaseDirectory, "data", "p2p", "overrides.json");
+        _storagePath = Path.Combine(NodeHome.Folder, "data", "p2p", "overrides.json");
     }
 
     public async Task LoadRulesAsync()

@@ -31,6 +31,51 @@
             </div>
         </div>
 
+        @* MODULE STATUS & ANNOUNCE - read-only role/capability readout plus manual triggers (moved here from Settings) *@
+        <div class="ftt-bg-slate-900 ftt-text-white ftt-rounded-xl ftt-shadow-md ftt-p-6 ftt-mb-4">
+            <div class="ftt-flex ftt-justify-between ftt-items-center ftt-mb-4">
+                <h2 class="ftt-text-sm ftt-font-bold ftt-text-slate-200">Module Status</h2>
+                <button type="button" id="btn-refresh-status" class="ftt-text-[11px] ftt-text-slate-400 hover:ftt-text-white transition">
+                    <i class="fa-solid fa-arrows-rotate"></i> Refresh
+                </button>
+            </div>
+
+            <div class="ftt-grid ftt-grid-cols-1 sm:ftt-grid-cols-2 ftt-gap-4 ftt-text-xs ftt-mb-5">
+                <div>
+                    <span class="ftt-text-slate-400 ftt-block">Node Identifier</span>
+                    <strong id="status-node-id" class="ftt-font-mono ftt-text-white ftt-break-all">-</strong>
+                </div>
+                <div>
+                    <span class="ftt-text-slate-400 ftt-block">Roles Advertised</span>
+                    <strong id="status-roles" class="ftt-text-white">-</strong>
+                </div>
+                <div>
+                    <span class="ftt-text-slate-400 ftt-block">Catalogue Epidemic Walk</span>
+                    <strong id="status-walk" class="ftt-text-white">-</strong>
+                </div>
+                <div>
+                    <span class="ftt-text-slate-400 ftt-block">Known file_tracker Peers</span>
+                    <strong id="status-trackers" class="ftt-text-white">-</strong>
+                </div>
+            </div>
+
+            <p class="ftt-text-[11px] ftt-text-slate-500 ftt-mb-4">
+                Neither "file_tracker" nor "file_node" is a toggle here - both are gossiped roles set via
+                <code class="ftt-bg-slate-800 ftt-px-1 ftt-rounded">P2PSettings.NodeRoles</code> in the P2P module's own settings. This panel only shows their current effect.
+            </p>
+
+            <div class="ftt-flex ftt-flex-wrap ftt-gap-3">
+                <button type="button" id="btn-trigger-announce" class="ftt-px-4 ftt-py-2 ftt-bg-amber-600 hover:ftt-bg-amber-700 ftt-text-white ftt-text-xs ftt-font-bold ftt-rounded-lg transition">
+                    <i class="fa-solid fa-bullhorn"></i> Announce Now
+                </button>
+                <button type="button" id="btn-ensure-walk" class="ftt-px-4 ftt-py-2 ftt-bg-slate-700 hover:ftt-bg-slate-600 ftt-text-white ftt-text-xs ftt-font-bold ftt-rounded-lg transition">
+                    <i class="fa-solid fa-diagram-project"></i> Start Catalogue Sync
+                </button>
+            </div>
+
+            <div id="status-action-message" class="ftt-hidden ftt-mt-4 ftt-text-xs"></div>
+        </div>
+
         <div class="ftt-bg-slate-50 ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-p-4 ftt-mb-4 ftt-shadow-sm">
             <h3 class="ftt-text-xs ftt-font-bold ftt-text-slate-800 ftt-uppercase ftt-tracking-wider ftt-mb-2">Query A Specific Node Directly</h3>
             <p class="ftt-text-[10px] ftt-text-slate-400 ftt-mb-2">Bypasses epidemic convergence - probes that one node right now and saves what it reports back into local storage (subject to the per-host cap).</p>

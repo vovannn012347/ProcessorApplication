@@ -21,7 +21,6 @@
             this.attachGeneralSettingsForm(root);
             this.attachCatalogSettingsForm(root);
             this.initAccessListEditor(root);
-            this.initStatusPanel(root);
         },
 
         /** Any __RequestVerificationToken already rendered on the page works for any action here. */
@@ -211,61 +210,6 @@
         // ---------------------------------------------------------------------------------
         // 4. Module status & manual triggers
         // ---------------------------------------------------------------------------------
-
-        initStatusPanel: function (container) {
-            const refreshBtn = container.querySelector('#btn-refresh-status');
-            const announceBtn = container.querySelector('#btn-trigger-announce');
-            const walkBtn = container.querySelector('#btn-ensure-walk');
-
-            if (refreshBtn) refreshBtn.onclick = () => this.loadStatus(container);
-            if (announceBtn) announceBtn.onclick = () => this.postCatalogAction(container, 'TriggerAnnounceAll', (data) => `Announced ${data.announced} file(s) to known trackers.`);
-            if (walkBtn) walkBtn.onclick = () => this.postCatalogAction(container, 'EnsureCatalogWalkRunning', (data) => data.running ? 'Catalogue sync is running.' : 'Catalogue sync did not start (is "file_node" advertised?).');
-
-            this.loadStatus(container);
-        },
-
-        loadStatus: function (container) {
-            fetch(`${CATALOG_CONTROLLER_BASE}/GetFileModuleStatus`, {
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            })
-                .then(r => r.json())
-                .then(data => {
-                    container.querySelector('#status-node-id').textContent = data.nodeId || '-';
-
-                    const roles = [];
-                    if (data.isFileTrackerRole) roles.push('file_tracker');
-                    if (data.isFileNodeRole) roles.push('file_node');
-                    container.querySelector('#status-roles').textContent = roles.length ? roles.join(', ') : 'none';
-
-                    container.querySelector('#status-walk').textContent = data.isCatalogWalkRunning ? 'Running' : 'Idle';
-
-                    const trackerIds = data.knownTrackerPeerIds || [];
-                    container.querySelector('#status-trackers').textContent = trackerIds.length ? `${trackerIds.length} known` : 'None known yet';
-                })
-                .catch(err => console.error(`[${SCRIPT_ID}] Failed loading module status:`, err));
-        },
-
-        postCatalogAction: function (container, action, messageFn) {
-            const token = this.getAntiForgeryToken(container);
-            const body = new FormData();
-            if (token) body.append('__RequestVerificationToken', token);
-
-            fetch(`${CATALOG_CONTROLLER_BASE}/${action}`, {
-                method: 'POST',
-                body: body,
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            })
-                .then(r => r.json())
-                .then(data => {
-                    const msgEl = container.querySelector('#status-action-message');
-                    if (msgEl) {
-                        msgEl.textContent = messageFn(data);
-                        msgEl.classList.remove('ftt-hidden');
-                    }
-                    this.loadStatus(container);
-                })
-                .catch(err => console.error(`[${SCRIPT_ID}] Action ${action} failed:`, err));
-        },
 
         dispose: function (el) {
             console.log(`[${SCRIPT_ID}] Purging settings lifecycle.`);

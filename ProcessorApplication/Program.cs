@@ -56,6 +56,25 @@ builder.Configuration
 // App folder first, then the node home's files (same names and places) on top.
 builder.Configuration.AddLayeredModuleJsonFiles(builder.Environment.EnvironmentName);
 
+// A node environment (NodeTracker1Debug...) with no settings file for it anywhere means the program folder was built
+// with a different configuration than the launch profile expects (e.g. built NodeTrackerSwarm, started the Tracker1
+// profile): the node would silently run on the shared defaults. Say so loudly.
+if (builder.Environment.EnvironmentName.StartsWith("Node", StringComparison.OrdinalIgnoreCase))
+{
+    var envName = builder.Environment.EnvironmentName;
+    bool anyNodeFile = ModuleConfigurationExtensions.GetLayeredModuleJsonFiles(envName)
+        .Any(f => Path.GetFileName(f.FilePath).Contains("." + envName + ".", StringComparison.OrdinalIgnoreCase));
+    if (!anyNodeFile)
+    {
+        var previous = Console.ForegroundColor;
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.Error.WriteLine($"[Node home] No settings files for environment '{envName}' in the program folder ({NodeHome.AppFolder})");
+        Console.Error.WriteLine($"[Node home] or the node home ({NodeHome.Folder}). The program folder was probably built with another");
+        Console.Error.WriteLine($"[Node home] configuration: build configuration '{envName}' and start again. Running on the shared defaults.");
+        Console.ForegroundColor = previous;
+    }
+}
+
 var modules = ModuleLoader.DiscoverModules(builder.Services, builder.Configuration, AppContext.BaseDirectory);
 
 ModuleRegistry.InstallResolutionDivert(); //important, do not touch

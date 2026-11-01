@@ -19,6 +19,7 @@
 
             console.log(`[${SCRIPT_ID}] Initializing File Catalog Controller.`);
             this.bindEvents(root);
+            if (root.querySelector('#btn-refresh-status')) this.initStatusPanel(root);
         },
 
         getAntiForgeryToken: function () {
@@ -312,6 +313,62 @@
                 : 'ftt-mb-4 ftt-p-3 ftt-rounded-lg ftt-text-xs ftt-font-medium ftt-bg-red-50 ftt-text-red-800 ftt-border ftt-border-red-200 ftt-block';
 
             setTimeout(() => box.classList.add('ftt-hidden'), 6000);
+        },
+
+        // --- Module status panel (roles, catalogue walk, known trackers, announce / sync) ---
+        initStatusPanel: function (container) {
+            const refreshBtn = container.querySelector('#btn-refresh-status');
+            const announceBtn = container.querySelector('#btn-trigger-announce');
+            const walkBtn = container.querySelector('#btn-ensure-walk');
+
+            if (refreshBtn) refreshBtn.onclick = () => this.loadStatus(container);
+            if (announceBtn) announceBtn.onclick = () => this.postCatalogAction(container, 'TriggerAnnounceAll', (data) => `Announced ${data.announced} file(s) to known trackers.`);
+            if (walkBtn) walkBtn.onclick = () => this.postCatalogAction(container, 'EnsureCatalogWalkRunning', (data) => data.running ? 'Catalogue sync is running.' : 'Catalogue sync did not start (is "file_node" advertised?).');
+
+            this.loadStatus(container);
+        },
+
+        loadStatus: function (container) {
+            fetch(`/${CONTROLLER_PATH}/GetFileModuleStatus`, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+                .then(r => r.json())
+                .then(data => {
+                    container.querySelector('#status-node-id').textContent = data.nodeId || '-';
+
+                    const roles = [];
+                    if (data.isFileTrackerRole) roles.push('file_tracker');
+                    if (data.isFileNodeRole) roles.push('file_node');
+                    container.querySelector('#status-roles').textContent = roles.length ? roles.join(', ') : 'none';
+
+                    container.querySelector('#status-walk').textContent = data.isCatalogWalkRunning ? 'Running' : 'Idle';
+
+                    const trackerIds = data.knownTrackerPeerIds || [];
+                    container.querySelector('#status-trackers').textContent = trackerIds.length ? `${trackerIds.length} known` : 'None known yet';
+                })
+                .catch(err => console.error(`[${SCRIPT_ID}] Failed loading module status:`, err));
+        },
+
+        postCatalogAction: function (container, action, messageFn) {
+            const token = this.getAntiForgeryToken();
+            const body = new FormData();
+            if (token) body.append('__RequestVerificationToken', token);
+
+            fetch(`/${CONTROLLER_PATH}/${action}`, {
+                method: 'POST',
+                body: body,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+                .then(r => r.json())
+                .then(data => {
+                    const msgEl = container.querySelector('#status-action-message');
+                    if (msgEl) {
+                        msgEl.textContent = messageFn(data);
+                        msgEl.classList.remove('ftt-hidden');
+                    }
+                    this.loadStatus(container);
+                })
+                .catch(err => console.error(`[${SCRIPT_ID}] Action ${action} failed:`, err));
         },
 
         dispose: function () { }

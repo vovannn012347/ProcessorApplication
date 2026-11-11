@@ -8,9 +8,12 @@ using ProcessingModule.Infrastructure.Util;
 using ProcessingModule.Services.Runtime;
 using ProcessingModule.Database.Models;
 
-namespace ProcessingModule.Services.Sandboxing.Windows;
+namespace ProcessingModule.Services.Sandboxing;
 
-public class WindowsNoneSandboxPython : ISandboxProcessing
+/// <summary>
+/// No sandbox: the executor runs as the app's own account. Platform-neutral (was WindowsNoneSandboxPython).
+/// </summary>
+public class NoneSandboxPython : ISandboxProcessing
 {
     private readonly IOptionsMonitor<ProcessorSettings> _settings;
     private readonly IOptionsMonitor<PythonProcessingSettings> _pythonSettings;
@@ -18,7 +21,7 @@ public class WindowsNoneSandboxPython : ISandboxProcessing
 
     public SandboxType GetSandboxType() => SandboxType.None;
 
-    public WindowsNoneSandboxPython(
+    public NoneSandboxPython(
         IOptionsMonitor<ProcessorSettings> settings,
         IOptionsMonitor<PythonProcessingSettings> pythonSettings,
         IDbContextFactory<ProcessorDbContext> dbContextFactory
@@ -40,20 +43,8 @@ public class WindowsNoneSandboxPython : ISandboxProcessing
         var subJob = await db.ProcessingJobs.Include(s => s.ParentJob).FirstOrDefaultAsync(s => s.Id == orchestrationId);
         if (subJob == null) throw new Exception($"Sub-job {orchestrationId} not found.");
 
-        // 1. Resolve and Validate Executor Path
-        string executorPath = Path.GetFullPath(_pythonSettings.CurrentValue.PythonExecutablePath);
-
-        // Check if path is a directory; if so, look for executor.exe inside
-        if (Directory.Exists(executorPath))
-        {
-            executorPath = Path.Combine(executorPath, "executor.exe");
-        }
-
-        if (!File.Exists(executorPath))
-        {
-            // Throw specific exception for infrastructure failure
-            throw new FileNotFoundException($"Critical Error: Python Executor not found at {executorPath}");
-        }
+        // 1. Resolve and Validate Executor Path (folder or file; executor.exe on Windows, executor elsewhere)
+        string executorPath = ExecutorPaths.Resolve(_pythonSettings.CurrentValue.PythonExecutablePath);
 
         // The executor runs with WorkingDirectory = jobRoot, so every path handed to it must be absolute
         // (relative ones would be resolved inside the job folder). The manifest path is the exception:

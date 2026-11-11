@@ -72,10 +72,11 @@ public class ProcessingService : IProcessingService
             return;
         }
 
-        var sandbox = _sandboxSelector.GetActiveProcessor();
-
         try
         {
+            // Inside the try: if no sandbox can be resolved the step must end in Error, not stay Running
+            var sandbox = _sandboxSelector.GetActiveProcessor();
+
             // Physical execution via standalone executor
             await sandbox.ExecuteJobAsync(subJob.Id);
 

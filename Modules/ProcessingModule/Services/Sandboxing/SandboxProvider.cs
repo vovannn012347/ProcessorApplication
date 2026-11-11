@@ -39,6 +39,9 @@ public class SandboxProvider : ISandboxProvider
     {
         var currentType = _settings.CurrentValue.SandboxingType;
 
-        return modules.First(m => m.GetSandboxType() == currentType);
+        return modules.FirstOrDefault(m => m.GetSandboxType() == currentType)
+            ?? new UnavailableSandbox(currentType,
+                $"Sandbox type '{currentType}' is not available on this operating system " +
+                $"({System.Runtime.InteropServices.RuntimeInformation.OSDescription}). Choose another one in Processing settings.");
     }
 }

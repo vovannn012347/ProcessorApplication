@@ -16,6 +16,11 @@
   <ItemGroup>
     <Content Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!-- Linux OS-sandbox root setup script, run by Settings -> Provision (or by the admin with sudo) -->
+  <ItemGroup>
+    <None Include="Sandboxing\linux\*.sh" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
   
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />

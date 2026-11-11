@@ -76,11 +76,7 @@ public class WindowsOsSandboxPython : ISandboxProcessing, IDisposable
         if (string.IsNullOrWhiteSpace(pyConfig.PythonExecutablePath)) throw new InvalidOperationException("Python/Executor Path is not configured.");
 
         // Same resolution as the no-sandbox runner: accept the executor folder or the .exe itself
-        string executorPath = Path.GetFullPath(pyConfig.PythonExecutablePath);
-        if (Directory.Exists(executorPath))
-            executorPath = Path.Combine(executorPath, "executor.exe");
-        if (!File.Exists(executorPath))
-            throw new FileNotFoundException($"Critical Error: Python Executor not found at {executorPath}");
+        string executorPath = ExecutorPaths.Resolve(pyConfig.PythonExecutablePath);
 
 
         using var db = await _factory.CreateDbContextAsync();

@@ -26,6 +26,7 @@ using ProcessingModule.Services;
 using ProcessingModule.Services.Installation;
 using ProcessingModule.Services.Processing;
 using ProcessingModule.Services.Sandboxing;
+using ProcessingModule.Services.Sandboxing.Linux;
 using ProcessingModule.Services.Sandboxing.Windows;
 using Microsoft.AspNetCore.Routing;
 
@@ -158,19 +159,22 @@ public class ProcessorModuleEntryPoint : IModule
         services.AddScoped<IProcessingService, ProcessingService>();
         services.AddScoped<IResultChainService, ResultChainService>();
 
+        // No-sandbox runner works on every OS
+        services.AddSingleton<ISandboxProcessing, NoneSandboxPython>();
+
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            services.AddSingleton<ISandboxProcessing, WindowsNoneSandboxPython>();
             services.AddSingleton<ISandboxProcessing, WindowsOsSandboxPython>();
             services.AddSingleton<ISandboxProcessing, WindowsDockerSandboxPython>();
             services.AddScoped<IOsUserManagementService, WindowsOsUserManagementService>();
         }
-        //else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-        //{
-        //    services.AddScoped<ISandboxProcessing, LinuxNoneSandbox>();
-        //    services.AddScoped<ISandboxProcessing, LinuxOsSandbox>();
-        //    services.AddScoped<ISandboxProcessing, LinuxDockerSandbox>();
-        //}
+        else
+        {
+            // Linux: OS-user sandbox via a worker user + sudo rule (Sandboxing/linux/processor-sandbox-setup.sh).
+            // Docker isn't implemented here: SandboxProvider returns UnavailableSandbox, so such steps end in Error.
+            services.AddSingleton<ISandboxProcessing, LinuxOsSandboxPython>();
+            services.AddScoped<IOsUserManagementService, LinuxOsUserManagementService>();
+        }
 
         //services.AddHostedService<OsUserProvisioningTask>();
 

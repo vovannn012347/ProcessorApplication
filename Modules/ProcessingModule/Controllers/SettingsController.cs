@@ -3,6 +3,7 @@
 using Common.Interfaces;
 
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
@@ -176,14 +177,11 @@ public class SettingsController : Controller
         Response.Headers.Add("Connection", "keep-alive");
         var ct = HttpContext.RequestAborted;
 
+        var stream = new EventStreamWriter(Response, ct);
         try
         {
-            await _osUserService.ProvisionUserAsync(async (msg) =>
-            {
-                if (ct.IsCancellationRequested) return;
-                await Response.Body.WriteAsync(Encoding.UTF8.GetBytes($"data: {msg}\n\n"), ct);
-                await Response.Body.FlushAsync(ct);
-            }, ct);
+            await _osUserService.ProvisionUserAsync(stream.Write, ct);
+            await stream.DrainAsync();
 
             await Response.Body.WriteAsync(Encoding.UTF8.GetBytes("data: [DONE]\n\n"), ct);
 
@@ -205,14 +203,11 @@ public class SettingsController : Controller
         Response.Headers.Add("Connection", "keep-alive");
         var ct = HttpContext.RequestAborted;
 
+        var stream = new EventStreamWriter(Response, ct);
         try
         {
-            await _osUserService.CheckStatusAsync(async (msg) =>
-            {
-                if (ct.IsCancellationRequested) return;
-                await Response.Body.WriteAsync(Encoding.UTF8.GetBytes($"data: {msg}\n\n"), ct);
-                await Response.Body.FlushAsync(ct);
-            }, ct);
+            await _osUserService.CheckStatusAsync(stream.Write, ct);
+            await stream.DrainAsync();
 
             await Response.Body.WriteAsync(Encoding.UTF8.GetBytes("data: [DONE]\n\n"), ct);
 
@@ -223,5 +218,48 @@ public class SettingsController : Controller
             var errorData = $"data: [CRITICAL] {ex.Message}\n\n";
             await Response.Body.WriteAsync(Encoding.UTF8.GetBytes(errorData));
         }
+    }
+}
+
+/// <summary>
+/// Server-sent event lines in the order they were logged. The provisioning services report through a plain
+/// Action&lt;string&gt;; an async lambda there became async void, so lines logged quickly one after another were written to the
+/// response concurrently (out of order, or "concurrent write" errors). Writes are chained here instead.
+/// </summary>
+internal sealed class EventStreamWriter
+{
+    private readonly HttpResponse _response;
+    private readonly CancellationToken _ct;
+    private readonly object _gate = new();
+    private Task _tail = Task.CompletedTask;
+
+    public EventStreamWriter(HttpResponse response, CancellationToken ct)
+    {
+        _response = response;
+        _ct = ct;
+    }
+
+    public void Write(string message)
+    {
+        // A line break would end the SSE event early; send multi-line messages as separate events
+        var lines = (message ?? string.Empty).Replace("\r", string.Empty).Split('\n');
+        lock (_gate)
+        {
+            foreach (var line in lines)
+            {
+                var bytes = Encoding.UTF8.GetBytes($"data: {line}\n\n");
+                _tail = _tail.ContinueWith(async _ =>
+                {
+                    if (_ct.IsCancellationRequested) return;
+                    await _response.Body.WriteAsync(bytes, _ct);
+                    await _response.Body.FlushAsync(_ct);
+                }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
+            }
+        }
+    }
+
+    public Task DrainAsync()
+    {
+        lock (_gate) return _tail.ContinueWith(_ => { }, TaskScheduler.Default);
     }
 }

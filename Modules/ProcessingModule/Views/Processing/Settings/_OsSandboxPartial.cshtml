@@ -33,6 +33,15 @@
         </button>
     </div>
 
+    @if (!OperatingSystem.IsWindows())
+    {
+        <p class="pm-text-[10px] pm-text-slate-400">
+            Linux: names are used in lower case. "Setup User" needs root once: it runs the setup directly if the app may use sudo
+            without a password, otherwise it prints the exact <span class="pm-font-mono">sudo bash ...</span> command to run in a
+            terminal. Restart the app afterwards. No passwords are stored; scripts run as the worker without network access.
+        </p>
+    }
+
     <!-- Integrated Log Window -->
     <div id="osLogWrapper" class="pm-hidden pm-mt-4 pm-animate-in pm-fade-in pm-slide-in-from-top-1">
         <div class="pm-flex pm-items-center pm-justify-between pm-mb-1 pm-px-1">

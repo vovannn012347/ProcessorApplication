@@ -448,6 +448,12 @@ Modules/ProviderlessModule/domains.txt
 # Cloudflare Worker local secrets (wrangler dev) and wrangler state
 **/.dev.vars
 **/.wrangler/
-**/hash_backups/
-**/hashstamps/
-**/result_chain/
+# Node runtime data is ignored by LOCATION, never by folder name: on Windows git ignores case, so the old
+# **/hashstamps/ rule also hid the source folder ProcessorApplication/Services/HashStamps/.
+# Node homes keep all their data (keys, identity, keychain, hashstamps, result_chain, ...) under these:
+**/Module_Data/
+**/app/data/
+**/configFiles/
+
+# Working files from Claude sessions (drafts, reports, helper scripts)
+/Claude outputs/

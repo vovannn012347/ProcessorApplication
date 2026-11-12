@@ -37,6 +37,10 @@ param(
     # Seconds between node starts (the first node gets 5 s head start).
     [double] $StartDelaySeconds = 1,
 
+    # Console window of each node: Minimized (default, one taskbar entry each), Normal, or Hidden (log nothing visible).
+    [ValidateSet('Minimized', 'Normal', 'Hidden')]
+    [string] $Window = 'Minimized',
+
     [switch] $Stop
 )
 
@@ -106,9 +110,9 @@ foreach ($n in $nodes) {
     $appArgs = @('--node-home', "`"$($n.Home)`"", '--environment', 'NodeTrackerSwarm', '--urls', "http://localhost:$($n.Port)", "--SettingsIngest:Mode=$Reingest")
 
     if (Test-Path $exe) {
-        $proc = Start-Process -FilePath $exe -ArgumentList $appArgs -WorkingDirectory $n.Home -PassThru
+        $proc = Start-Process -FilePath $exe -ArgumentList $appArgs -WorkingDirectory $n.Home -WindowStyle $(if ($Template) { 'Normal' } else { $Window }) -PassThru
     } else {
-        $proc = Start-Process -FilePath 'dotnet' -ArgumentList (@("`"$dll`"") + $appArgs) -WorkingDirectory $n.Home -PassThru
+        $proc = Start-Process -FilePath 'dotnet' -ArgumentList (@("`"$dll`"") + $appArgs) -WorkingDirectory $n.Home -WindowStyle $(if ($Template) { 'Normal' } else { $Window }) -PassThru
     }
     $started += [pscustomobject]@{ Node = $n.Name; Pid = $proc.Id; Url = "http://localhost:$($n.Port)" }
     Write-Host ("{0,-12} PID {1,-6} http://localhost:{2}" -f $n.Name, $proc.Id, $n.Port) -ForegroundColor Green

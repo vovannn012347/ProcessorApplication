@@ -56,10 +56,8 @@ public sealed class UserSealingKeyProvider : IUserSealingKeyProvider
 
     public async Task<SealingKey> GetSealingKeyForStampAsync(string owner, string purpose, int stampId, CancellationToken ct = default)
     {
-        var row = await _db.HashStamps.AsNoTracking().FirstOrDefaultAsync(s => s.Id == stampId, ct)
-                  ?? throw new CryptographicException($"Server key stamp {stampId} not found.");
-        var stamp = await _stamps.GetHashByTimeAsync(row.StampTime);
-        if (stamp.Id != stampId) throw new CryptographicException($"Server key stamp {stampId} could not be resolved.");
+        var stamp = await _stamps.GetByIdAsync(stampId)
+                    ?? throw new CryptographicException($"Server key stamp {stampId} not found.");
         return await BuildAsync(owner, purpose, stamp.Id, stamp.MasterKey, ct);
     }
 

@@ -41,6 +41,12 @@ public interface INodeKeyService
     string Wrap(string plaintext);
     string Unwrap(string wrapped);
 
+    /// <summary>
+    /// A 32-byte key derived from the root key for encrypting one store of the node's own files
+    /// (e.g. "keychain" for the server key chain). Different purposes get unrelated keys.
+    /// </summary>
+    byte[] DeriveStorageKey(string purpose);
+
     /// <summary>Copies the root key file into a backup folder (only if it isn't there yet or differs).</summary>
     void CopyKeyFileTo(string directory);
 }
@@ -134,6 +140,11 @@ public sealed class NodeKeyService : INodeKeyService
 
             _wrapKey = HMACSHA256.HashData(_root, Encoding.UTF8.GetBytes(WrapLabel));
         }
+    }
+
+    public byte[] DeriveStorageKey(string purpose)
+    {
+        return HMACSHA256.HashData(Root, Encoding.UTF8.GetBytes("processor-node/storage/v1|" + purpose));
     }
 
     public string DerivePeriodKey(DateTime stampTime)

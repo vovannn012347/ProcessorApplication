@@ -275,43 +275,6 @@ namespace ProcessorApplication.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
-            modelBuilder.Entity("ProcessorApplication.Database.Models.ServerHashStamp", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("KeyCheck")
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("KeyMode")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("PreviousHash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("StampTime")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("StoredKey")
-                        .IsRequired()
-                        .HasColumnType("TEXT")
-                        .HasColumnName("MasterKey");
-
-                    b.Property<string>("WrappedKey")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("StampTime")
-                        .IsUnique();
-
-                    b.ToTable("HashStamps");
-                });
-
             modelBuilder.Entity("ProcessorApplication.Database.Models.UserWidgetSetting", b =>
                 {
                     b.Property<string>("UserId")

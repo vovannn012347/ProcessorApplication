@@ -126,6 +126,7 @@ public class MainModule : IModule
 
         services.AddSingleton<INodeKeyService, NodeKeyService>(); // node root key file (outside the DB)
         services.AddScoped<IHashBackupService, HashBackupService>();
+        services.AddSingleton<IHashStampStore, HashStampFileStore>(); // key chain: encrypted files in the node home
         services.AddScoped<IHashStampService, HashStampService>();
         services.AddHostedService<HashGenerationJob>();
 

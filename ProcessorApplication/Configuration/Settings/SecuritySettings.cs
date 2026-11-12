@@ -23,11 +23,18 @@ public class SecuritySettings
     [Display(Name = "Forensic backup directory")]
     public string HashStampBackupFilePath { get; set; } = "";
 
-    /// <summary>Node root key file. Empty = Module_Data/Main/keys/node.key next to the application.</summary>
+    /// <summary>Node root key file. Empty = Module_Data/Main/keys/node.key in the node home.</summary>
     [Display(Name = "Node root key file")]
     public string NodeKeyFilePath { get; set; } = "";
 
-    /// <summary>Local stamp backup folder (always written). Empty = Module_Data/Main/hashstamps next to the application.</summary>
+    /// <summary>
+    /// The server key chain itself: one encrypted file per stamp plus a head file. Empty = Module_Data/Main/keychain
+    /// in the node home. Relative paths are taken from the node home.
+    /// </summary>
+    [Display(Name = "Server key chain directory")]
+    public string KeyChainPath { get; set; } = "";
+
+    /// <summary>Local stamp backup folder (always written). Empty = Module_Data/Main/hashstamps in the node home.</summary>
     [Display(Name = "Local hash stamp backup directory")]
     public string LocalStampBackupPath { get; set; } = "";
     [Display(Name = "Sensitive data access Logging")]

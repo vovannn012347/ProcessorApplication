@@ -13,7 +13,7 @@ namespace ProcessorApplication.Database;
 public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole, string>
 {
     public DbSet<Setting> Settings { get; set; }
-    public DbSet<ServerHashStamp> HashStamps { get; set; }
+    // Server hash stamps are not in the database: encrypted files in the node home (HashStampFileStore).
     public DbSet<UserWidgetSetting> DashboardItemData { get; set; }
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
@@ -29,13 +29,6 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole, str
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-
-        modelBuilder.Entity<ServerHashStamp>()
-            .HasKey(s => s.Id);
-
-        modelBuilder.Entity<ServerHashStamp>()
-            .HasIndex(s => s.StampTime)
-            .IsUnique();
 
         modelBuilder.Entity<Setting>()
             .HasKey(s => s.Id);

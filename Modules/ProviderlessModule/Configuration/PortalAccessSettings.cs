@@ -37,7 +37,7 @@ public class PortalAccessSettings
     /// </summary>
     [Required]
     //[Display(Name = "Active Tunnel Provider")]
-    public string SelectedTunnel { get; set; } = "cloudflare";
+    public string SelectedTunnel { get; set; } = "cloudflareworker";
     //public TunnelProviderType SelectedTunnel { get; set; } = TunnelProviderType.Cloudflare;
 }
 

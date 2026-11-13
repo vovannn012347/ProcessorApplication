@@ -83,7 +83,7 @@
             }
 
             // Modal dismiss
-            const closeDlModal = () => { if (downloadModal) downloadModal.classList.add('ftt-hidden'); };
+            const closeDlModal = () => { if (downloadModal) downloadModal.classList.add('is-hidden'); };
             downloadModal?.querySelector('#btn-close-download-modal')?.addEventListener('click', closeDlModal);
             downloadModal?.querySelector('#btn-cancel-download')?.addEventListener('click', closeDlModal);
 
@@ -104,7 +104,7 @@
                         const customDir = downloadModal.querySelector('#modal-input-directory');
                         if (customDir) customDir.value = '';
 
-                        downloadModal.classList.remove('ftt-hidden');
+                        downloadModal.classList.remove('is-hidden');
                         return;
                     }
 
@@ -141,7 +141,7 @@
                     const spinner = formDownload.querySelector('#download-spinner');
                     const confirmBtn = formDownload.querySelector('#btn-confirm-download');
 
-                    if (spinner) spinner.classList.remove('ftt-hidden');
+                    if (spinner) spinner.classList.remove('is-hidden');
                     if (confirmBtn) confirmBtn.disabled = true;
 
                     try {
@@ -162,7 +162,7 @@
                         console.error(`[${SCRIPT_ID}] Start download error:`, err);
                         this.showStatus(rootElement, 'Network error starting download.', false);
                     } finally {
-                        if (spinner) spinner.classList.add('ftt-hidden');
+                        if (spinner) spinner.classList.add('is-hidden');
                         if (confirmBtn) confirmBtn.disabled = false;
                     }
                 };
@@ -260,9 +260,9 @@
 
             if (checked.length > 0) {
                 countEl.textContent = String(checked.length);
-                bar.classList.remove('ftt-hidden');
+                bar.classList.remove('is-hidden');
             } else {
-                bar.classList.add('ftt-hidden');
+                bar.classList.add('is-hidden');
             }
         },
 
@@ -308,11 +308,9 @@
             if (!box) return;
 
             box.textContent = message;
-            box.className = isSuccess
-                ? 'ftt-mb-4 ftt-p-3 ftt-rounded-lg ftt-text-xs ftt-font-medium ftt-bg-emerald-50 ftt-text-emerald-800 ftt-border ftt-border-emerald-200 ftt-block'
-                : 'ftt-mb-4 ftt-p-3 ftt-rounded-lg ftt-text-xs ftt-font-medium ftt-bg-red-50 ftt-text-red-800 ftt-border ftt-border-red-200 ftt-block';
+            box.className = 'msg ' + (isSuccess ? 'ok' : 'warn');
 
-            setTimeout(() => box.classList.add('ftt-hidden'), 6000);
+            setTimeout(() => box.classList.add('is-hidden'), 6000);
         },
 
         // --- Module status panel (roles, catalogue walk, known trackers, announce / sync) ---
@@ -364,7 +362,7 @@
                     const msgEl = container.querySelector('#status-action-message');
                     if (msgEl) {
                         msgEl.textContent = messageFn(data);
-                        msgEl.classList.remove('ftt-hidden');
+                        msgEl.classList.remove('is-hidden');
                     }
                     this.loadStatus(container);
                 })

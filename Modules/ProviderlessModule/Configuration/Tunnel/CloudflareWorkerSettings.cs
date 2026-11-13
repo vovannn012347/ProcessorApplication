@@ -14,7 +14,7 @@ public class CloudflareWorkerSettings : ITunnelSettings
 {
     public string ProviderKey => TunnelProviderType.CloudflareWorker;
 
-    public string ProviderName => "CloudflareWorkerSettings_key";
+    public string ProviderName => "Cloudflare Worker";
     public string SettingsViewPath => "~/Views/Providerless/Settings/_Settings_Tun_cloudflareworker.cshtml";
 
     /// <summary>

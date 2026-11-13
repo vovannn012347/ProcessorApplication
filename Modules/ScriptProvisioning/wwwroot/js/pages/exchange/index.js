@@ -9,22 +9,12 @@
     const CONTROLLER_PATH = "ScriptProvisioning/Exchange";
     const TASK_POLL_MS = 1500;
 
-    const BADGE = "spv-inline-flex spv-items-center spv-gap-1 spv-px-2 spv-py-0.5 spv-rounded-full spv-text-[10px] spv-font-semibold spv-border ";
-    const TONE = {
-        green: "spv-bg-emerald-50 spv-text-emerald-700 spv-border-emerald-200",
-        amber: "spv-bg-amber-50 spv-text-amber-700 spv-border-amber-200",
-        sky: "spv-bg-sky-50 spv-text-sky-700 spv-border-sky-200",
-        indigo: "spv-bg-indigo-50 spv-text-indigo-700 spv-border-indigo-200",
-        red: "spv-bg-red-50 spv-text-red-700 spv-border-red-200",
-        gray: "spv-bg-slate-100 spv-text-slate-600 spv-border-slate-200"
-    };
-    const BUTTON = "spv-px-3 spv-py-1.5 spv-rounded-lg spv-text-[11px] spv-font-semibold spv-text-white disabled:spv-opacity-50 disabled:spv-cursor-not-allowed ";
-    const BUTTON_TONE = {
-        primary: "spv-bg-indigo-600 hover:spv-bg-indigo-700",
-        warn: "spv-bg-amber-600 hover:spv-bg-amber-700",
-        neutral: "spv-bg-slate-600 hover:spv-bg-slate-700"
-    };
-    const CELL = "spv-px-4 spv-py-3 spv-align-top";
+    // ui.css classes: badge tones and buttons
+    const BADGE = "badge ";
+    const TONE = { green: "ok", amber: "warn", sky: "", indigo: "", red: "bad", gray: "" };
+    const BUTTON = "btn sm ";
+    const BUTTON_TONE = { primary: "", warn: "", neutral: "" };
+    const CELL = "";
 
     let root = null;
     let pollTimer = null;
@@ -100,10 +90,9 @@
         status: function (message, ok) {
             const box = root.querySelector('#spv-status');
             box.textContent = message;
-            box.className = 'spv-p-3 spv-rounded-lg spv-text-xs spv-font-medium spv-border spv-block ' +
-                (ok ? 'spv-bg-emerald-50 spv-text-emerald-800 spv-border-emerald-200' : 'spv-bg-red-50 spv-text-red-800 spv-border-red-200');
+            box.className = 'msg ' + (ok ? 'ok' : 'warn');
             clearTimeout(this._statusTimer);
-            this._statusTimer = setTimeout(() => box.classList.add('spv-hidden'), 8000);
+            this._statusTimer = setTimeout(() => box.classList.add('is-hidden'), 8000);
         },
 
         // ------------------------------------------------------------ network
@@ -117,21 +106,21 @@
         renderRemote: function (list) {
             const body = root.querySelector('#spv-remote-body');
             body.replaceChildren();
-            root.querySelector('#spv-remote-empty').classList.toggle('spv-hidden', list.length > 0);
+            root.querySelector('#spv-remote-empty').classList.toggle('is-hidden', list.length > 0);
 
             for (const p of list) {
-                const tr = this.el('tr', 'hover:spv-bg-slate-50');
+                const tr = this.el('tr', '');
 
-                const script = this.el('td', CELL + ' spv-min-w-[14rem]');
-                script.appendChild(this.el('div', 'spv-font-semibold spv-text-slate-700 spv-break-all', p.scriptId));
-                script.appendChild(this.el('div', 'spv-text-[10px] spv-text-slate-400 spv-font-mono spv-break-all', p.fileName));
+                const script = this.el('td', '');
+                script.appendChild(this.el('div', 'wrap', p.scriptId));
+                script.appendChild(this.el('div', 'mono aux wrap', p.fileName));
                 tr.appendChild(script);
 
-                tr.appendChild(this.el('td', CELL + ' spv-whitespace-nowrap', p.version));
-                tr.appendChild(this.el('td', CELL + ' spv-font-mono spv-text-slate-500', p.hashPrefix));
-                tr.appendChild(this.el('td', CELL + ' spv-text-right spv-whitespace-nowrap', this.size(p.sizeBytes)));
+                tr.appendChild(this.el('td', 'nowrap', p.version));
+                tr.appendChild(this.el('td', 'mono aux', p.hashPrefix));
+                tr.appendChild(this.el('td', 'nowrap', this.size(p.sizeBytes)));
 
-                const hosts = this.el('td', CELL + ' spv-min-w-[8rem] spv-font-mono spv-text-[10px] spv-text-slate-500 spv-break-all');
+                const hosts = this.el('td', 'mono aux wrap');
                 hosts.textContent = p.hostNodeIds.length ? p.hostNodeIds.join(', ') : (p.publishedHere ? '(this node)' : '-');
                 tr.appendChild(hosts);
 
@@ -150,7 +139,7 @@
                 }
                 tr.appendChild(here);
 
-                const actions = this.el('td', CELL + ' spv-text-right spv-whitespace-nowrap');
+                const actions = this.el('td', 'nowrap');
                 if (p.activeTaskId) {
                     actions.appendChild(this.badge('Installing...', 'indigo'));
                 } else if (p.status === 'New' || p.status === 'NewVersion') {
@@ -209,7 +198,7 @@
         renderTasks: function (tasks) {
             const section = root.querySelector('#spv-tasks-section');
             const list = root.querySelector('#spv-tasks-list');
-            section.classList.toggle('spv-hidden', tasks.length === 0);
+            section.classList.toggle('is-hidden', tasks.length === 0);
             list.replaceChildren();
 
             const tone = {
@@ -221,27 +210,27 @@
             };
 
             for (const t of tasks) {
-                const li = this.el('li', 'spv-px-4 spv-py-3');
-                const head = this.el('div', 'spv-flex spv-justify-between spv-items-center spv-gap-2');
-                const name = this.el('div', 'spv-text-xs spv-font-semibold spv-text-slate-700 spv-break-all',
+                const li = this.el('li', '');
+                const head = this.el('div', 'actions');
+                const name = this.el('div', 'wrap',
                     (t.scriptId || t.fileName) + (t.version ? ' ' + t.version : ''));
                 head.appendChild(name);
                 head.appendChild(this.badge(label[t.state] || t.state, tone[t.state] || 'indigo'));
                 li.appendChild(head);
 
                 if (!t.isFinished && (t.state === 'Downloading' || t.progress > 0)) {
-                    const bar = this.el('div', 'spv-w-full spv-h-1.5 spv-bg-slate-100 spv-rounded-full spv-overflow-hidden spv-mt-2');
-                    const fill = this.el('div', 'spv-h-full spv-bg-indigo-500');
+                    const bar = this.el('div', 'bar');
+                    const fill = this.el('i', '');
                     fill.style.width = Math.min(100, Math.max(0, t.progress || 0)) + '%';
                     bar.appendChild(fill);
                     li.appendChild(bar);
                 }
 
-                li.appendChild(this.el('div', 'spv-text-[11px] spv-text-slate-500 spv-mt-1 spv-break-all', t.message));
+                li.appendChild(this.el('div', 'aux wrap', t.message));
 
                 if (t.report && t.report.length) {
-                    const ul = this.el('ul', 'spv-list-disc spv-pl-5 spv-mt-1 spv-text-[10px] spv-text-slate-500');
-                    for (const line of t.report) ul.appendChild(this.el('li', 'spv-break-all', line));
+                    const ul = this.el('ul', 'aux');
+                    for (const line of t.report) ul.appendChild(this.el('li', 'wrap', line));
                     li.appendChild(ul);
                 }
                 list.appendChild(li);
@@ -259,20 +248,20 @@
         renderBuilds: function (list) {
             const body = root.querySelector('#spv-builds-body');
             body.replaceChildren();
-            root.querySelector('#spv-builds-empty').classList.toggle('spv-hidden', list.length > 0);
+            root.querySelector('#spv-builds-empty').classList.toggle('is-hidden', list.length > 0);
 
             for (const b of list) {
-                const tr = this.el('tr', 'hover:spv-bg-slate-50');
+                const tr = this.el('tr', '');
 
-                const script = this.el('td', CELL + ' spv-min-w-[14rem]');
-                script.appendChild(this.el('div', 'spv-font-semibold spv-text-slate-700 spv-break-all', b.label || b.scriptId));
-                if (b.label) script.appendChild(this.el('div', 'spv-text-[10px] spv-text-slate-400 spv-font-mono spv-break-all', b.scriptId));
+                const script = this.el('td', '');
+                script.appendChild(this.el('div', 'wrap', b.label || b.scriptId));
+                if (b.label) script.appendChild(this.el('div', 'mono aux wrap', b.scriptId));
                 tr.appendChild(script);
 
-                tr.appendChild(this.el('td', CELL + ' spv-whitespace-nowrap', b.version));
-                tr.appendChild(this.el('td', CELL + ' spv-font-mono spv-text-slate-500', this.short(b.artifactHash)));
+                tr.appendChild(this.el('td', 'nowrap', b.version));
+                tr.appendChild(this.el('td', 'mono aux', this.short(b.artifactHash)));
 
-                const origin = this.el('td', CELL + ' spv-min-w-[10rem] spv-text-[10px] spv-text-slate-500 spv-break-all');
+                const origin = this.el('td', 'aux wrap');
                 origin.textContent = b.origin
                     ? `from ${b.origin.hostNodeIds.join(', ') || 'network'}, ${new Date(b.origin.installedUtc).toLocaleString()}${b.origin.replaced ? ' (replaced local build)' : ''}`
                     : 'local';
@@ -290,7 +279,7 @@
                 }
                 tr.appendChild(shared);
 
-                const actions = this.el('td', CELL + ' spv-text-right spv-whitespace-nowrap');
+                const actions = this.el('td', 'nowrap');
                 if (b.published) {
                     if (!b.seeding) actions.appendChild(this.button('Publish again', 'primary', (btn) => this.publish(b, btn)));
                     actions.appendChild(document.createTextNode(' '));

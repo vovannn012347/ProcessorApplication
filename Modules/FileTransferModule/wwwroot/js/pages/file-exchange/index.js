@@ -42,7 +42,7 @@
 
             if (btnCloseBitfield && bitfieldModal) {
                 btnCloseBitfield.onclick = () => {
-                    bitfieldModal.classList.add('ftt-hidden');
+                    bitfieldModal.classList.add('is-hidden');
                     if (bitfieldContent) bitfieldContent.innerHTML = '';
                 };
             }
@@ -67,7 +67,7 @@
                             .then(html => {
                                 if (bitfieldContent && bitfieldModal) {
                                     bitfieldContent.innerHTML = html;
-                                    bitfieldModal.classList.remove('ftt-hidden');
+                                    bitfieldModal.classList.remove('is-hidden');
                                 }
                             })
                             .catch(err => console.error(`[${SCRIPT_ID}] Bitfield state error:`, err));

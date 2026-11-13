@@ -8,7 +8,7 @@ public class CloudflareSettings : ITunnelSettings
 {
     public string ProviderKey => "cloudflare";
 
-    public string ProviderName => "CloudflareSettings_key";
+    public string ProviderName => "Cloudflare Tunnel";
     public string SettingsViewPath => "~/Views/Providerless/Settings/_Settings_Tun_cloudflare.cshtml";
 
     /// <summary>

@@ -1,58 +1,31 @@
 ﻿@using ProcessorApplication.Models.User
 @model PagedUserListViewModel
+@{
+    ViewData["Title"] = "User Administration";
+}
 
 <div id="user-list-container">
-    <h1 class="mm-text-3xl mm-font-bold mm-text-gray-900 mm-mb-6">User Administration</h1>
-
-    <div class="mm-bg-white mm-shadow mm-overflow-hidden sm:mm-rounded-lg">
-        <div class="mm-p-4 mm-border-b mm-border-gray-200">
-            <p class="mm-text-sm mm-text-gray-700">Displaying @Model.Users.Count users (Total: @Model.TotalCount)</p>
-        </div>
-
-        <div class="mm-overflow-x-auto">
-            <table class="mm-min-w-full mm-divide-y mm-divide-gray-200">
-                <thead class="mm-bg-gray-50">
-                    <tr>
-                        <th class="mm-px-6 mm-py-3 mm-text-left mm-text-xs mm-font-medium mm-text-gray-500 mm-uppercase mm-tracking-wider">Name / Nickname</th>
-                        <th class="mm-px-6 mm-py-3 mm-text-left mm-text-xs mm-font-medium mm-text-gray-500 mm-uppercase mm-tracking-wider">User Identifier ID</th>
-                        <th class="mm-px-6 mm-py-3 mm-text-left mm-text-xs mm-font-medium mm-text-gray-500 mm-uppercase mm-tracking-wider">Status</th>
-                        <th class="mm-px-6 mm-py-3 mm-text-right mm-text-xs mm-font-medium mm-text-gray-500 mm-uppercase mm-tracking-wider">Actions</th>
-                    </tr>
-                </thead>
-                <tbody class="mm-bg-white mm-divide-y mm-divide-gray-200">
-                    @foreach (var user in Model.Users)
-                    {
-                        <tr>
-                            <td class="mm-px-6 mm-py-4 mm-whitespace-nowrap">
-                                <div class="mm-text-sm mm-font-medium mm-text-gray-900">@user.Name.Truncate(20) @user.Surname.Truncate(30)</div>
-                                <div class="mm-text-xs mm-text-gray-500">@user.DisplayNickname</div>
-                            </td>
-                            <td class="mm-px-6 mm-py-4 mm-whitespace-nowrap mm-text-sm mm-font-mono mm-text-gray-600">@user.UserName</td>
-                            <td class="mm-px-6 mm-py-4 mm-whitespace-nowrap mm-text-sm">
-                                @if (user.IsLockedOut)
-                                {
-                                    <span class="mm-px-2 mm-inline-flex mm-text-xs mm-leading-5 mm-font-semibold mm-rounded-full mm-bg-red-100 mm-text-red-800">Locked</span>
-                                }
-                                else
-                                {
-                                    <span class="mm-px-2 mm-inline-flex mm-text-xs mm-leading-5 mm-font-semibold mm-rounded-full mm-bg-green-100 mm-text-green-800">Active</span>
-                                }
-                            </td>
-                            <td class="mm-px-6 mm-py-4 mm-whitespace-nowrap mm-text-right mm-text-sm mm-font-medium mm-space-x-2">
-                                <a href="/Main/Profile/Index?userName=@user.UserName" class="mm-inline-flex mm-items-center mm-text-indigo-600 hover:mm-text-indigo-900 ajax-link">
-                                    <i class="fa-solid fa-user-shield"></i>
-                                </a>
-                                <button data-user-id="@user.UserName" data-action="@(user.IsLockedOut ? "unlock" : "lockout")" class="action-btn mm-text-indigo-600 hover:mm-text-indigo-900">
-                                    <i class="fa-solid @(user.IsLockedOut ? "fa-unlock" : "fa-lock")"></i>
-                                </button>
-                                <button type="button" data-user-id="@user.UserName" class="mm-text-red-600 hover:mm-text-red-900 action-btn" data-action="delete">
-                                    <i class="fa-solid fa-trash"></i>
-                                </button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    </div>
+    <div class="aux">@Model.Users.Count users shown, @Model.TotalCount in total</div>
+    <table class="t">
+        <thead>
+            <tr><th>Name / Nickname</th><th>User ID</th><th>Status</th><th style="text-align:right">Actions</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var user in Model.Users)
+            {
+                <tr>
+                    <td>@user.Name.Truncate(20) @user.Surname.Truncate(30) <span class="aux">@user.DisplayNickname</span></td>
+                    <td class="mono">@user.UserName</td>
+                    <td>@if (user.IsLockedOut) { <span class="badge bad">Locked</span> } else { <span class="badge ok">Active</span> }</td>
+                    <td class="nowrap" style="text-align:right">
+                        <a href="/Main/Profile/Index?userName=@user.UserName" class="icon-btn ajax-link" title="Profile"><i class="fa-solid fa-user-shield"></i></a>
+                        <button data-user-id="@user.UserName" data-action="@(user.IsLockedOut ? "unlock" : "lockout")" class="icon-btn action-btn" title="@(user.IsLockedOut ? "Unlock" : "Lock out")">
+                            <i class="fa-solid @(user.IsLockedOut ? "fa-unlock" : "fa-lock")"></i>
+                        </button>
+                        <button type="button" data-user-id="@user.UserName" class="icon-btn bad action-btn" data-action="delete" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
 </div>

@@ -1,159 +1,91 @@
-﻿@model FileTransferModule.Models.CatalogPageResponse
+@model FileTransferModule.Models.CatalogPageResponse
 @{
-    ViewData["Title"] = "Network File Catalog";
+    ViewData["Title"] = "File Catalog";
     var isAjax = Context.Request.Headers["X-Requested-With"] == "XMLHttpRequest";
-    if (isAjax)
-    {
-        Layout = null;
-    }
+    if (isAjax) { Layout = null; }
 }
-
-@section Styles {
-    <link rel="stylesheet" href="/FileTransfer/css/ftt.min.css" asp-append-version="true" />
-}
-
-<link rel="stylesheet" href="/FileTransfer/css/ftt.min.css" asp-append-version="true" />
 
 <div id="file-catalog-wrapper" data-script-id="ftt-catalog">
-    <div class="ftt-container ftt-mx-auto ftt-py-6 ftt-px-4">
-        <div class="ftt-flex ftt-flex-col md:ftt-flex-row ftt-justify-between ftt-items-start md:ftt-items-center ftt-mb-6 ftt-pb-4 ftt-border-b ftt-border-gray-200">
-            <div>
-                <h1 class="ftt-text-2xl ftt-font-extrabold ftt-text-slate-900 ftt-tracking-tight">Swarm File Catalog</h1>
-                <p class="ftt-text-xs ftt-text-slate-500 ftt-mt-1">Local knowledge only - own hosted files plus everything learned via consensus relay or a direct probe. Nothing is fetched live just by viewing this page.</p>
-            </div>
-            <div class="ftt-mt-4 md:ftt-mt-0 ftt-flex ftt-gap-2">
-                <button type="button" id="btn-sync-now" class="ftt-px-3 ftt-py-2 ftt-bg-slate-800 hover:ftt-bg-slate-900 ftt-text-white ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-flex ftt-items-center ftt-gap-1.5 transition">
-                    <i class="fa-solid fa-diagram-project"></i> Sync Now
-                </button>
-                <button type="button" id="btn-refresh-catalog" class="ftt-px-3 ftt-py-2 ftt-bg-slate-100 hover:ftt-bg-slate-200 ftt-text-slate-700 ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-flex ftt-items-center ftt-gap-1.5 transition">
-                    <i class="fa-solid fa-rotate"></i> Refresh
-                </button>
-            </div>
-        </div>
-
-        @* MODULE STATUS & ANNOUNCE - read-only role/capability readout plus manual triggers (moved here from Settings) *@
-        <div class="ftt-bg-slate-900 ftt-text-white ftt-rounded-xl ftt-shadow-md ftt-p-6 ftt-mb-4">
-            <div class="ftt-flex ftt-justify-between ftt-items-center ftt-mb-4">
-                <h2 class="ftt-text-sm ftt-font-bold ftt-text-slate-200">Module Status</h2>
-                <button type="button" id="btn-refresh-status" class="ftt-text-[11px] ftt-text-slate-400 hover:ftt-text-white transition">
-                    <i class="fa-solid fa-arrows-rotate"></i> Refresh
-                </button>
-            </div>
-
-            <div class="ftt-grid ftt-grid-cols-1 sm:ftt-grid-cols-2 ftt-gap-4 ftt-text-xs ftt-mb-5">
-                <div>
-                    <span class="ftt-text-slate-400 ftt-block">Node Identifier</span>
-                    <strong id="status-node-id" class="ftt-font-mono ftt-text-white ftt-break-all">-</strong>
+    <div class="grid">
+        <div class="card">
+            <h2>Module Status <span class="tip" tabindex="0" data-tip="Neither file_tracker nor file_node is a toggle here: both are gossiped roles set in the P2P settings (Node Roles). This panel only shows their effect."></span>
+                <button type="button" id="btn-refresh-status" class="icon-btn" style="float:right" title="Refresh"><i class="fa-solid fa-arrows-rotate"></i></button>
+            </h2>
+            <div class="body">
+                <div class="cols">
+                    <div class="f"><label>Node ID</label><span id="status-node-id" class="mono wrap">-</span></div>
+                    <div class="f"><label>Roles Advertised</label><span id="status-roles">-</span></div>
+                    <div class="f"><label>Catalogue Walk</label><span id="status-walk">-</span></div>
+                    <div class="f"><label>Known file_tracker Peers</label><span id="status-trackers">-</span></div>
                 </div>
-                <div>
-                    <span class="ftt-text-slate-400 ftt-block">Roles Advertised</span>
-                    <strong id="status-roles" class="ftt-text-white">-</strong>
+                <div class="actions">
+                    <button type="button" id="btn-trigger-announce" class="btn sm"><i class="fa-solid fa-bullhorn"></i> Announce Now</button>
+                    <button type="button" id="btn-ensure-walk" class="btn sm"><i class="fa-solid fa-diagram-project"></i> Start Catalogue Sync</button>
                 </div>
-                <div>
-                    <span class="ftt-text-slate-400 ftt-block">Catalogue Epidemic Walk</span>
-                    <strong id="status-walk" class="ftt-text-white">-</strong>
-                </div>
-                <div>
-                    <span class="ftt-text-slate-400 ftt-block">Known file_tracker Peers</span>
-                    <strong id="status-trackers" class="ftt-text-white">-</strong>
-                </div>
-            </div>
-
-            <p class="ftt-text-[11px] ftt-text-slate-500 ftt-mb-4">
-                Neither "file_tracker" nor "file_node" is a toggle here - both are gossiped roles set via
-                <code class="ftt-bg-slate-800 ftt-px-1 ftt-rounded">P2PSettings.NodeRoles</code> in the P2P module's own settings. This panel only shows their current effect.
-            </p>
-
-            <div class="ftt-flex ftt-flex-wrap ftt-gap-3">
-                <button type="button" id="btn-trigger-announce" class="ftt-px-4 ftt-py-2 ftt-bg-amber-600 hover:ftt-bg-amber-700 ftt-text-white ftt-text-xs ftt-font-bold ftt-rounded-lg transition">
-                    <i class="fa-solid fa-bullhorn"></i> Announce Now
-                </button>
-                <button type="button" id="btn-ensure-walk" class="ftt-px-4 ftt-py-2 ftt-bg-slate-700 hover:ftt-bg-slate-600 ftt-text-white ftt-text-xs ftt-font-bold ftt-rounded-lg transition">
-                    <i class="fa-solid fa-diagram-project"></i> Start Catalogue Sync
-                </button>
-            </div>
-
-            <div id="status-action-message" class="ftt-hidden ftt-mt-4 ftt-text-xs"></div>
-        </div>
-
-        <div class="ftt-bg-slate-50 ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-p-4 ftt-mb-4 ftt-shadow-sm">
-            <h3 class="ftt-text-xs ftt-font-bold ftt-text-slate-800 ftt-uppercase ftt-tracking-wider ftt-mb-2">Query A Specific Node Directly</h3>
-            <p class="ftt-text-[10px] ftt-text-slate-400 ftt-mb-2">Bypasses epidemic convergence - probes that one node right now and saves what it reports back into local storage (subject to the per-host cap).</p>
-            <form id="form-query-node" class="ftt-flex ftt-gap-2">
-                <input type="text" id="input-target-node-id" placeholder="Enter target Node ID..." class="ftt-flex-1 ftt-text-xs ftt-border ftt-border-gray-300 ftt-rounded-lg ftt-px-3 ftt-py-2 focus:ftt-ring-1 focus:ftt-ring-indigo-500" required />
-                <button type="submit" class="ftt-px-4 ftt-py-2 ftt-bg-slate-800 hover:ftt-bg-slate-900 ftt-text-white ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-flex ftt-items-center ftt-gap-1.5">
-                    <i class="fa-solid fa-magnifying-glass"></i> Probe Node
-                </button>
-            </form>
-        </div>
-
-        <div class="ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-p-4 ftt-mb-6 ftt-shadow-sm">
-            <div class="ftt-flex ftt-flex-col sm:ftt-flex-row ftt-gap-2">
-                <input type="text" id="filter-search" placeholder="Filter by file name..." class="ftt-flex-1 ftt-text-xs ftt-border ftt-border-gray-300 ftt-rounded-lg ftt-px-3 ftt-py-2" />
-                <input type="text" id="filter-host" placeholder="Filter by host node id..." class="ftt-flex-1 ftt-text-xs ftt-border ftt-border-gray-300 ftt-rounded-lg ftt-px-3 ftt-py-2" />
-                <button type="button" id="btn-apply-filters" class="ftt-px-4 ftt-py-2 ftt-bg-slate-100 hover:ftt-bg-slate-200 ftt-text-slate-700 ftt-rounded-lg ftt-text-xs ftt-font-semibold">Apply</button>
-                <button type="button" id="btn-clear-filters" class="ftt-px-4 ftt-py-2 ftt-text-slate-400 hover:ftt-text-slate-600 ftt-text-xs ftt-font-semibold">Clear</button>
+                <div id="status-action-message" class="info is-hidden"></div>
             </div>
         </div>
-
-        <div id="catalog-status-message" class="ftt-hidden ftt-mb-4 ftt-p-3 ftt-rounded-lg ftt-text-xs ftt-font-medium"></div>
-
-        <div id="batch-download-bar" class="ftt-hidden ftt-mb-4 ftt-p-3 ftt-bg-indigo-50 ftt-border ftt-border-indigo-200 ftt-rounded-lg ftt-flex ftt-justify-between ftt-items-center">
-            <span class="ftt-text-xs ftt-text-indigo-700 ftt-font-semibold"><span id="batch-selected-count">0</span> file(s) selected</span>
-            <button type="button" id="btn-batch-download" class="ftt-px-4 ftt-py-2 ftt-bg-indigo-600 hover:ftt-bg-indigo-700 ftt-text-white ftt-rounded-lg ftt-text-xs ftt-font-semibold">
-                <i class="fa-solid fa-download"></i> Download Selected
-            </button>
+        <div class="card">
+            <h2>Probe a Node <span class="tip" tabindex="0" data-tip="Bypasses epidemic convergence: asks that one node right now and saves what it reports into local storage (subject to the per-host cap)."></span></h2>
+            <div class="body">
+                <form id="form-query-node" class="actions">
+                    <input type="text" id="input-target-node-id" class="mono" placeholder="Target node ID..." required style="flex:1" />
+                    <button type="submit" class="btn"><i class="fa-solid fa-magnifying-glass"></i> Probe</button>
+                </form>
+            </div>
         </div>
+    </div>
 
-        <div id="catalog-grid-container">
-            @await Html.PartialAsync("_CatalogGridPartial", Model)
+    <div class="card">
+        <h2>Files <span class="tip" tabindex="0" data-tip="Local knowledge only: own hosted files plus everything learned via consensus relay or a direct probe. Nothing is fetched live just by viewing this page."></span>
+            <span style="float:right">
+                <button type="button" id="btn-sync-now" class="btn sm"><i class="fa-solid fa-diagram-project"></i> Sync Now</button>
+                <button type="button" id="btn-refresh-catalog" class="btn sm"><i class="fa-solid fa-rotate"></i> Refresh</button>
+            </span>
+        </h2>
+        <div class="body">
+            <div class="actions">
+                <input type="text" id="filter-search" placeholder="Filter by file name..." style="flex:1" />
+                <input type="text" id="filter-host" class="mono" placeholder="Filter by host node ID..." style="flex:1" />
+                <button type="button" id="btn-apply-filters" class="btn sm">Apply</button>
+                <button type="button" id="btn-clear-filters" class="btn sm">Clear</button>
+            </div>
+            <div id="catalog-status-message" class="msg is-hidden"></div>
+            <div id="batch-download-bar" class="actions is-hidden">
+                <span class="info"><b id="batch-selected-count">0</b> file(s) selected</span>
+                <button type="button" id="btn-batch-download" class="btn sm"><i class="fa-solid fa-download"></i> Download Selected</button>
+            </div>
+            <div id="catalog-grid-container">
+                @await Html.PartialAsync("_CatalogGridPartial", Model)
+            </div>
         </div>
     </div>
 </div>
 
-<div id="download-prompt-modal" class="ftt-fixed ftt-inset-0 ftt-bg-slate-900/60 ftt-backdrop-blur-sm ftt-z-50 ftt-flex ftt-items-center ftt-justify-center ftt-hidden">
-    <div class="ftt-bg-white ftt-rounded-xl ftt-shadow-2xl ftt-border ftt-border-gray-100 ftt-max-w-md ftt-w-full ftt-mx-4 ftt-overflow-hidden">
-        <div class="ftt-px-6 ftt-py-4 ftt-bg-slate-50 ftt-border-b ftt-border-gray-100 ftt-flex ftt-justify-between ftt-items-center">
-            <h3 class="ftt-text-sm ftt-font-bold ftt-text-slate-800 ftt-flex ftt-items-center ftt-gap-2">
-                <i class="fa-solid fa-download ftt-text-indigo-600"></i> Download File From Swarm
-            </h3>
-            <button type="button" id="btn-close-download-modal" class="ftt-text-gray-400 hover:ftt-text-gray-600">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
-        </div>
-
-        <form id="form-start-download" class="ftt-p-6 ftt-space-y-4">
+<div id="download-prompt-modal" class="modal is-hidden">
+    <div class="card">
+        <h2><i class="fa-solid fa-download"></i> Download From Swarm
+            <button type="button" id="btn-close-download-modal" class="icon-btn" style="float:right" title="Close"><i class="fa-solid fa-xmark"></i></button>
+        </h2>
+        <form id="form-start-download" class="body">
             @Html.AntiForgeryToken()
             <input type="hidden" id="modal-host-node-id" name="hostNodeId" />
             <input type="hidden" id="modal-content-hash" name="contentHash" />
-
-            <div>
-                <label class="ftt-block ftt-text-xs ftt-font-semibold ftt-text-slate-500">File Selected</label>
-                <div id="modal-display-filename" class="ftt-text-sm ftt-font-bold ftt-text-slate-800 ftt-mt-0.5"></div>
+            <div class="f"><label>File</label><b id="modal-display-filename"></b></div>
+            <div class="f">
+                <label for="modal-input-filename">Custom File Name (optional)</label>
+                <input type="text" name="customFileName" id="modal-input-filename" placeholder="Keep default if empty..." />
             </div>
-
-            <div>
-                <label class="ftt-block ftt-text-xs ftt-font-semibold ftt-text-slate-700 ftt-mb-1">Custom File Name (Optional)</label>
-                <input type="text" name="customFileName" id="modal-input-filename" placeholder="Keep default if empty..." class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" />
-            </div>
-
             @if (User.IsInRole("Admin"))
             {
-                <div>
-                    <label class="ftt-block ftt-text-xs ftt-font-semibold ftt-text-slate-700 ftt-mb-1">
-                        Directed Directory <span class="ftt-text-indigo-600 ftt-font-bold">(Admin Mode)</span>
-                    </label>
-                    <input type="text" name="customDirectory" id="modal-input-directory" placeholder="Leave empty for sandboxed StorageRootPath..." class="ftt-w-full ftt-text-xs ftt-border ftt-border-gray-200 ftt-rounded-lg ftt-px-3 ftt-py-2" />
-                    <p class="ftt-text-[10px] ftt-text-slate-400 ftt-mt-1">If blank, defaults to sandboxed <code>./Module_Data/FileSharing/Storage/{taskId}/files/</code></p>
+                <div class="f">
+                    <div><label for="modal-input-directory">Target Folder (admin)</label> <span class="tip" tabindex="0" data-tip="If blank, the file goes to the sandboxed ./Module_Data/FileSharing/Storage/{taskId}/files/"></span></div>
+                    <input type="text" name="customDirectory" id="modal-input-directory" class="mono" placeholder="Empty = sandboxed storage root" />
                 </div>
             }
-
-            <div class="ftt-pt-4 ftt-border-t ftt-border-gray-100 ftt-flex ftt-justify-end ftt-gap-2">
-                <button type="button" id="btn-cancel-download" class="ftt-px-4 ftt-py-2 ftt-bg-gray-100 hover:ftt-bg-gray-200 ftt-text-slate-600 ftt-rounded-lg ftt-text-xs ftt-font-semibold">Cancel</button>
-                <button type="submit" id="btn-confirm-download" class="ftt-px-4 ftt-py-2 ftt-bg-indigo-600 hover:ftt-bg-indigo-700 ftt-text-white ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-flex ftt-items-center ftt-gap-1.5">
-                    <span id="download-spinner" class="ftt-hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
-                    <span>Start Swarm Download</span>
-                </button>
+            <div class="actions">
+                <button type="submit" id="btn-confirm-download" class="btn"><span id="download-spinner" class="is-hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span> Start Download</button>
+                <button type="button" id="btn-cancel-download" class="btn">Cancel</button>
             </div>
         </form>
     </div>

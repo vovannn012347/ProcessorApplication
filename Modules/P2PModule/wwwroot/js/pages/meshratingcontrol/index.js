@@ -6,7 +6,7 @@
     const SCRIPT_ID = "p2p-mesh-control";
     const WRAPPER_ID = "p2p-control-wrapper";
 
-    root = {}
+    let root = {}; // local to this script (was an implicit global shared by all page scripts)
     window.ModuleRegistry = window.ModuleRegistry || {};
 
     window.ModuleRegistry[SCRIPT_ID] = {
@@ -74,7 +74,7 @@
             formData.append('blacklist', policyVal === 'blacklist');
 
             btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin p2p-mr-2"></i> Injecting...';
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving...';
 
             fetch(form.action, {
                 method: 'POST',
@@ -137,7 +137,8 @@
             })
                 .then(res => res.text())
                 .then(html => {
-                    root.innerHTML = html;
+                    const fresh = new DOMParser().parseFromString(html, 'text/html').getElementById(WRAPPER_ID);
+                    root.innerHTML = fresh ? fresh.innerHTML : html;
                     this.init(root);
                 })
                 .catch(err => console.error(`[${SCRIPT_ID}] UI re-indexing lookup collapsed:`, err));

@@ -1,94 +1,55 @@
 ﻿@model List<FileTransferModule.Models.FileArchiveItemRecord>
 
-<div class="ftt-overflow-x-auto">
-    <table class="ftt-w-full ftt-text-left ftt-border-collapse ftt-text-xs">
-        <thead>
-            <tr class="ftt-bg-slate-50 ftt-border-b ftt-border-gray-200 ftt-text-slate-500 ftt-uppercase ftt-tracking-wider ftt-text-[10px]">
-                <th class="ftt-py-3 ftt-px-4 ftt-font-semibold">File Name</th>
-                <th class="ftt-py-3 ftt-px-4 ftt-font-semibold">Content Hash</th>
-                <th class="ftt-py-3 ftt-px-4 ftt-font-semibold">Size</th>
-                <th class="ftt-py-3 ftt-px-4 ftt-font-semibold">Visibility</th>
-                <th class="ftt-py-3 ftt-px-4 ftt-font-semibold">Downloadable</th>
-                <th class="ftt-py-3 ftt-px-4 ftt-font-semibold">Uploaded</th>
-                <th class="ftt-py-3 ftt-px-4 ftt-font-semibold ftt-text-right">Actions</th>
-            </tr>
-        </thead>
-        <tbody class="ftt-divide-y ftt-divide-gray-100 ftt-text-slate-700">
-            @if (Model == null || Model.Count == 0)
+<table class="t">
+    <thead>
+        <tr><th>File</th><th>Hash</th><th>Size</th><th>Visibility</th><th>Download</th><th>Added</th><th></th></tr>
+    </thead>
+    <tbody>
+        @if (Model == null || Model.Count == 0)
+        {
+            <tr><td colspan="7" class="aux"><i class="fa-solid fa-box-open"></i> No files tracked or seeded on this node.</td></tr>
+        }
+        else
+        {
+            foreach (var item in Model)
             {
-                <tr>
-                    <td colspan="7" class="ftt-py-8 ftt-text-center ftt-text-slate-400">
-                        <i class="fa-solid fa-box-open ftt-text-2xl ftt-mb-2 ftt-block"></i>
-                        No files currently tracked or seeded on this node.
+                <tr data-hash="@item.Manifest.ContentHash"
+                    data-filename="@item.Manifest.FileName"
+                    data-hidden="@item.IsHidden.ToString().ToLowerInvariant()"
+                    data-allow-download="@item.AllowDownload.ToString().ToLowerInvariant()"
+                    data-description="@item.Description"
+                    data-custom-fields="@(item.CustomFields != null ? System.Text.Json.JsonSerializer.Serialize(item.CustomFields) : "{}")">
+                    <td><b class="wrap">@item.Manifest.FileName</b></td>
+                    <td class="mono aux" title="@item.Manifest.ContentHash">@item.Manifest.ContentHash.Substring(0, Math.Min(12, item.Manifest.ContentHash.Length))…</td>
+                    <td class="nowrap">@((item.Manifest.TotalSizeBytes / 1024.0 / 1024.0).ToString("F2")) <span class="aux">MB</span></td>
+                    <td>
+                        @if (item.IsHidden)
+                        {
+                            <span class="badge warn"><i class="fa-solid fa-eye-slash"></i> Hidden</span>
+                        }
+                        else
+                        {
+                            <span class="badge ok"><i class="fa-solid fa-globe"></i> Public</span>
+                        }
+                    </td>
+                    <td>
+                        @if (item.AllowDownload)
+                        {
+                            <span class="badge ok"><i class="fa-solid fa-play"></i> Seeding</span>
+                        }
+                        else
+                        {
+                            <span class="badge"><i class="fa-solid fa-pause"></i> Paused</span>
+                        }
+                    </td>
+                    <td class="mono nowrap aux">@item.RegisteredUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                    <td class="nowrap">
+                        <a href="@Url.Action("DownloadManifest", "FileArchive", new { contentHash = item.Manifest.ContentHash })" class="icon-btn" title="Download .ptorrent"><i class="fa-solid fa-download"></i></a>
+                        <button type="button" data-action="edit-info" class="icon-btn" title="Edit settings"><i class="fa-solid fa-pen-to-square"></i></button>
+                        <button type="button" data-action="delete-file" class="icon-btn bad" title="Stop &amp; delete"><i class="fa-solid fa-trash-can"></i></button>
                     </td>
                 </tr>
             }
-            else
-            {
-                @foreach (var item in Model)
-                {
-                    <tr class="hover:ftt-bg-slate-50/70 transition"
-                        data-hash="@item.Manifest.ContentHash"
-                        data-filename="@item.Manifest.FileName"
-                        data-hidden="@item.IsHidden.ToString().ToLowerInvariant()"
-                        data-allow-download="@item.AllowDownload.ToString().ToLowerInvariant()"
-                        data-description="@item.Description"
-                        data-custom-fields="@(item.CustomFields != null ? System.Text.Json.JsonSerializer.Serialize(item.CustomFields) : "{}")">
-                        <td class="ftt-py-3 ftt-px-4 ftt-font-semibold ftt-text-slate-900">
-                            <i class="fa-regular fa-file-zipper ftt-text-indigo-500 ftt-mr-1"></i>
-                            @item.Manifest.FileName
-                        </td>
-                        <td class="ftt-py-3 ftt-px-4 ftt-font-mono ftt-text-[11px] ftt-text-slate-500" title="@item.Manifest.ContentHash">
-                            @item.Manifest.ContentHash.Substring(0, Math.Min(12, item.Manifest.ContentHash.Length))...
-                        </td>
-                        <td class="ftt-py-3 ftt-px-4 ftt-text-slate-600">
-                            @((item.Manifest.TotalSizeBytes / 1024.0 / 1024.0).ToString("F2")) MB
-                        </td>
-                        <td class="ftt-py-3 ftt-px-4">
-                            @if (item.IsHidden)
-                            {
-                                <span class="ftt-inline-flex ftt-items-center ftt-px-2 ftt-py-0.5 ftt-rounded ftt-text-[10px] ftt-font-medium ftt-bg-amber-100 ftt-text-amber-800">
-                                    <i class="fa-solid fa-eye-slash ftt-mr-1"></i> Hidden
-                                </span>
-                            }
-                            else
-                            {
-                                <span class="ftt-inline-flex ftt-items-center ftt-px-2 ftt-py-0.5 ftt-rounded ftt-text-[10px] ftt-font-medium ftt-bg-emerald-100 ftt-text-emerald-800">
-                                    <i class="fa-solid fa-globe ftt-mr-1"></i> Public
-                                </span>
-                            }
-                        </td>
-                        <td class="ftt-py-3 ftt-px-4">
-                            @if (item.AllowDownload)
-                            {
-                                <span class="ftt-inline-flex ftt-items-center ftt-px-2 ftt-py-0.5 ftt-rounded ftt-text-[10px] ftt-font-medium ftt-bg-blue-100 ftt-text-blue-800">
-                                    <i class="fa-solid fa-play ftt-mr-1"></i> Seeding
-                                </span>
-                            }
-                            else
-                            {
-                                <span class="ftt-inline-flex ftt-items-center ftt-px-2 ftt-py-0.5 ftt-rounded ftt-text-[10px] ftt-font-medium ftt-bg-gray-100 ftt-text-gray-500">
-                                    <i class="fa-solid fa-pause ftt-mr-1"></i> Paused
-                                </span>
-                            }
-                        </td>
-                        <td class="ftt-py-3 ftt-px-4 ftt-text-slate-500 ftt-text-[11px]">
-                            @item.RegisteredUtc.ToString("yyyy-MM-dd HH:mm")
-                        </td>
-                        <td class="ftt-py-3 ftt-px-4 ftt-text-right ftt-space-x-1 ftt-whitespace-nowrap">
-                            <a href="@Url.Action("DownloadManifest", "FileArchive", new { contentHash = item.Manifest.ContentHash })" class="ftt-px-2 ftt-py-1 ftt-bg-slate-100 hover:ftt-bg-slate-200 ftt-text-slate-700 ftt-rounded ftt-text-[11px] ftt-font-medium ftt-inline-block" title="Download .ptorrent">
-                                <i class="fa-solid fa-download"></i>
-                            </a>
-                            <button type="button" data-action="edit-info" class="ftt-px-2 ftt-py-1 ftt-bg-slate-100 hover:ftt-bg-slate-200 ftt-text-slate-700 ftt-rounded ftt-text-[11px] ftt-font-medium" title="Edit settings">
-                                <i class="fa-solid fa-pen-to-square"></i>
-                            </button>
-                            <button type="button" data-action="delete-file" class="ftt-px-2 ftt-py-1 ftt-bg-red-50 hover:ftt-bg-red-100 ftt-text-red-600 ftt-rounded ftt-text-[11px] ftt-font-medium" title="Stop &amp; delete">
-                                <i class="fa-solid fa-trash-can"></i>
-                            </button>
-                        </td>
-                    </tr>
-                }
-            }
-        </tbody>
-    </table>
-</div>
+        }
+    </tbody>
+</table>

@@ -67,7 +67,8 @@
         document.addEventListener('click', e => { if (tipOf(e)) e.preventDefault(); });
 
         // --- Module Initialization ---
-        fetch('/Main/Navigation/GetModules')
+        // (pages without the module bar, e.g. the sign-in layout, skip this)
+        if (document.getElementById('desktop-module-nav-container')) fetch('/Main/Navigation/GetModules')
             .then(res => res.json())
             .then(modules => buildModuleNav(modules));
 

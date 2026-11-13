@@ -4,45 +4,23 @@
     Layout = "_LayoutLogin";
 }
 
-<div class="tabs-container mm-flex mm-flex-wrap mm-justify-center mm-mb-6">
-
-    <div asp-validation-summary="All" class="mm-w-full mm-order-2 mm-rounded-md mm-bg-red-50 mm-text-sm mm-text-red-700 mm-empty:hidden mm-mb-4"></div>
-
-    <input type="radio" id="tab-manual" name="register-mode" checked class="hidden-radio-tab">
-
-    <label for="tab-manual" class="tab-label style-indigo mm-order-1 mm-px-4 mm-py-2 mm-rounded-lg mm-text-sm mm-font-medium mm-text-gray-600 hover:mm-bg-gray-50 mm-cursor-pointer mm-mr-4 mm-mb-4">
-        Manual Register
-    </label>
-
-    <div class="tab-content mm-order-3 mm-w-full">
-        <div class="mm-border-t mm-pt-4">
-            <h3 class="mm-text-xl mm-font-semibold mm-mb-4 mm-border-b mm-pb-2">Manual Entry</h3>
-            <form asp-area="Main" asp-controller="Account" asp-action="Register" method="post" class="mm-space-y-4">
-                <partial name="_RegisterFormPartial" model="Model" />
-                <button type="submit" class="mm-w-full mm-flex mm-justify-center mm-py-2 mm-px-4 mm-border mm-border-transparent mm-rounded-md mm-shadow-sm mm-text-sm mm-font-medium mm-text-white mm-bg-indigo-600 hover:mm-bg-indigo-700">
-                    Register Secure Account
-                </button>
-            </form>
-        </div>
+<div asp-validation-summary="All" class="msg warn"></div>
+<div class="rtabs">
+    <input type="radio" id="tab-manual" name="register-mode" checked>
+    <label for="tab-manual" class="btn sm">Manual Register</label>
+    <div>
+        <form asp-area="Main" asp-controller="Account" asp-action="Register" method="post">
+            <partial name="_RegisterFormPartial" model="Model" />
+            <div class="actions"><button type="submit" class="btn">Register Secure Account</button></div>
+        </form>
     </div>
 
-
-    <input type="radio" id="tab-file" name="register-mode" class="hidden-radio-tab">
-
-    <label for="tab-file" class="tab-label style-green mm-order-1 mm-px-4 mm-py-2 mm-rounded-lg mm-text-sm mm-font-medium mm-text-gray-600 hover:mm-bg-gray-50 mm-cursor-pointer mm-mb-4">
-        Import from File
-    </label>
-
-    <div class="tab-content mm-order-3 mm-w-full">
-        <div class="mm-border-t mm-pt-4">
-            <h3 class="mm-text-xl mm-font-semibold mm-mb-4 mm-border-b mm-pb-2">Import Secure Identity</h3>
-            <form asp-area="Main" asp-controller="Account" asp-action="RegisterFromFile" method="post" enctype="multipart/form-data" class="mm-space-y-4">
-                <partial name="_FileRegisterFormPartial" model="Model" />
-                <button type="submit" class="mm-w-full mm-flex mm-justify-center mm-py-2 mm-px-4 mm-border mm-border-transparent mm-rounded-md mm-shadow-sm mm-text-sm mm-font-medium mm-text-white mm-bg-green-600 hover:mm-bg-green-700">
-                    Import and Set Password
-                </button>
-            </form>
-        </div>
+    <input type="radio" id="tab-file" name="register-mode">
+    <label for="tab-file" class="btn sm">Import from File</label>
+    <div>
+        <form asp-area="Main" asp-controller="Account" asp-action="RegisterFromFile" method="post" enctype="multipart/form-data">
+            <partial name="_FileRegisterFormPartial" model="Model" />
+            <div class="actions"><button type="submit" class="btn">Import and Set Password</button></div>
+        </form>
     </div>
-
 </div>

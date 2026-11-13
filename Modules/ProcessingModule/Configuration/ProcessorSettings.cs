@@ -46,13 +46,14 @@ public class ProcessorSettings
     public SandboxType SandboxingType { get; set; } = SandboxType.OSUser;
 
     /// <summary>
-    /// If true, application startup fails when sandboxing is not none and is unavailable.
+    /// OS User mode: while the last sandbox check (startup or Check Status) failed, script steps end in Error instead of
+    /// starting (SandboxProvider + SandboxReadiness). Never-checked doesn't block. Doesn't stop the app.
     /// </summary>
     [Display(Name = "Require Sandboxing")]
     public bool RequireSandboxing { get; set; } = true;
 
     /// <summary>
-    /// Perform sandbox readiness validation on application startup.
+    /// OS User mode: a few seconds after startup run the Check Status check, log it and record it (SandboxStartupCheck).
     /// </summary>
     [Display(Name = "Validate Sandbox On Startup")]
     public bool ValidateSandboxOnStartup { get; set; } = true;

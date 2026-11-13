@@ -1,190 +1,122 @@
 ﻿@model P2PModule.Controllers.ViewModels.P2PSettingsViewModel
 
-<div class="p2p-space-y-4">
-    <h3 class="p2p-text-sm p2p-font-bold p2p-text-slate-800 p2p-border-b p2p-border-gray-100 p2p-pb-2">Identity & Topology</h3>
-    <div class="p2p-grid p2p-grid-cols-1 md:p2p-grid-cols-2 p2p-gap-4">
-        <div>
-            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Data Storage Path</label>
-            <input type="text" name="General.DataStoragePath" value="@Model.General.DataStoragePath" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
-        </div>
-        <div>
-            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Target Outbound Connections</label>
-            <input type="number" name="General.TargetOutboundConnections" value="@Model.General.TargetOutboundConnections" min="1" max="50" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
-        </div>
+<h3>Identity &amp; Topology</h3>
+<div class="grid">
+    <div class="f">
+        <div><label for="General_DataStoragePath">Data Storage Path</label> <span class="tip" tabindex="0" data-tip="Folder where the P2P module keeps its data."></span></div>
+        <input type="text" id="General_DataStoragePath" name="General.DataStoragePath" value="@Model.General.DataStoragePath" class="mono" />
     </div>
-
-    <!-- Temporary Tracker Promotion Toggle -->
-    <div class="p2p-mt-3 p2p-p-3 p2p-bg-gray-50 p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-flex p2p-items-center p2p-justify-between">
-        <div>
-            <label class="p2p-text-sm p2p-font-bold p2p-text-slate-700 p2p-block">Temporary Tracker Promotion</label>
-            <span class="p2p-text-xs p2p-text-gray-500 p2p-block">Maintains promoted tracker state. Disable to permit post-consensus demotion back to regular peer.</span>
-        </div>
-        <label class="p2p-relative p2p-inline-flex p2p-items-center p2p-cursor-pointer">
-            <input type="checkbox"
-                   name="General.IsTemporarilyPromotedTracker"
-                   value="true"
-                   @(Model.General.IsTemporarilyPromotedTracker ? "checked" : "")
-                   class="p2p-sr-only p2p-peer" />
-            <input type="hidden" name="General.IsTemporarilyPromotedTracker" value="false" />
-            <div class="p2p-w-11 p2p-h-6 p2p-bg-gray-300 peer-focus:p2p-outline-none p2p-rounded-full peer peer-checked:after:p2p-translate-x-full peer-checked:after:p2p-border-white after:p2p-content-[''] after:p2p-absolute after:p2p-top-[2px] after:p2p-left-[2px] after:p2p-bg-white after:p2p-border-gray-300 after:p2p-border after:p2p-rounded-full after:p2p-h-5 after:p2p-w-5 after:p2p-transition-all peer-checked:p2p-bg-blue-600"></div>
-        </label>
+    <div class="f">
+        <div><label for="General_TargetOutboundConnections">Target Outbound Connections</label> <span class="tip" tabindex="0" data-tip="How many outgoing peer connections the node tries to keep."></span></div>
+        <input type="number" id="General_TargetOutboundConnections" name="General.TargetOutboundConnections" value="@Model.General.TargetOutboundConnections" min="1" max="50" />
     </div>
-
-    <div class="p2p-mt-4">
-        <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest p2p-block p2p-mb-2">Node Role Capabilities</label>
-        <div class="p2p-grid p2p-grid-cols-2 sm:p2p-grid-cols-4 p2p-gap-4 p2p-p-3 p2p-bg-gray-50 p2p-border p2p-border-gray-200 p2p-rounded-lg">
-            @foreach (var role in Model.AvailableRoles)
-            {
-                <label class="p2p-flex p2p-items-center p2p-gap-2.5 p2p-text-sm p2p-text-slate-700 p2p-cursor-pointer">
-                    <input type="checkbox" name="General.NodeRoles" value="@role" @(Model.General.NodeRoles.Contains(role) ? "checked" : "") class="p2p-rounded p2p-border-gray-300 p2p-text-blue-600 focus:p2p-ring-blue-500" />
-                    @role
-                </label>
-            }
-        </div>
+</div>
+<div class="f row">
+    <input type="hidden" name="General.IsTemporarilyPromotedTracker" value="false" />
+    <input type="checkbox" id="General_IsTemporarilyPromotedTracker" name="General.IsTemporarilyPromotedTracker" value="true" @(Model.General.IsTemporarilyPromotedTracker ? "checked" : "") />
+    <label for="General_IsTemporarilyPromotedTracker">Temporary Tracker Promotion</label>
+    <span class="tip" tabindex="0" data-tip="Keeps the promoted tracker state. Untick to allow demotion back to a regular peer after consensus."></span>
+</div>
+<div class="f">
+    <div><label>Node Role Capabilities</label></div>
+    <div class="actions">
+        @foreach (var role in Model.AvailableRoles)
+        {
+            <label class="f row"><input type="checkbox" name="General.NodeRoles" value="@role" @(Model.General.NodeRoles.Contains(role) ? "checked" : "") /> @role</label>
+        }
     </div>
-
-    <div class="p2p-mt-4">
-        <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest p2p-block p2p-mb-1">Advertised Consensus Channels</label>
-        <span class="p2p-text-xs p2p-text-gray-500 p2p-block p2p-mb-2">Datasets this node syncs with peers. Only installed channels can be advertised; changes are announced to the network once, shortly after saving.</span>
-        <div class="p2p-grid p2p-grid-cols-1 sm:p2p-grid-cols-3 p2p-gap-4 p2p-p-3 p2p-bg-gray-50 p2p-border p2p-border-gray-200 p2p-rounded-lg">
-            @if (Model.InstalledConsensusChannels == null || !Model.InstalledConsensusChannels.Any())
+</div>
+<div class="f">
+    <div><label>Advertised Consensus Channels</label> <span class="tip" tabindex="0" data-tip="Datasets this node syncs with peers. Only installed channels can be advertised; changes are announced to the network once, shortly after saving."></span></div>
+    <div class="actions">
+        @if (Model.InstalledConsensusChannels == null || !Model.InstalledConsensusChannels.Any())
+        {
+            <span class="aux">No consensus channels installed.</span>
+        }
+        else
+        {
+            var advertised = Model.General.AdvertisedConsensusChannels ?? new List<string>();
+            foreach (var channelId in Model.InstalledConsensusChannels)
             {
-                <span class="p2p-text-xs p2p-text-gray-400 p2p-italic">No consensus channels installed.</span>
+                <label class="f row"><input type="checkbox" name="General.AdvertisedConsensusChannels" value="@channelId" @(advertised.Contains(channelId, StringComparer.OrdinalIgnoreCase) ? "checked" : "") /> <span class="mono">@channelId</span></label>
             }
-            else
+        }
+        @if (Model.UnavailableConsensusChannels != null)
+        {
+            foreach (var channelId in Model.UnavailableConsensusChannels)
             {
-                var advertised = Model.General.AdvertisedConsensusChannels ?? new List<string>();
-                foreach (var channelId in Model.InstalledConsensusChannels)
-                {
-                    <label class="p2p-flex p2p-items-center p2p-gap-2.5 p2p-text-sm p2p-text-slate-700 p2p-cursor-pointer">
-                        <input type="checkbox" name="General.AdvertisedConsensusChannels" value="@channelId" @(advertised.Contains(channelId, StringComparer.OrdinalIgnoreCase) ? "checked" : "") class="p2p-rounded p2p-border-gray-300 p2p-text-blue-600 focus:p2p-ring-blue-500" />
-                        <span class="p2p-font-mono p2p-text-xs">@channelId</span>
-                    </label>
-                }
+                <label class="f row aux" title="Opted in, but the module providing this channel isn't loaded. Kept, and advertised again once the module is back."><input type="checkbox" checked disabled /> <span class="mono">@channelId</span> (module not loaded)</label>
             }
-            @if (Model.UnavailableConsensusChannels != null)
-            {
-                foreach (var channelId in Model.UnavailableConsensusChannels)
-                {
-                    <label class="p2p-flex p2p-items-center p2p-gap-2.5 p2p-text-sm p2p-text-gray-400" title="Opted in, but the module providing this channel isn't loaded. Kept, and advertised again once the module is back.">
-                        <input type="checkbox" checked disabled class="p2p-rounded p2p-border-gray-300" />
-                        <span class="p2p-font-mono p2p-text-xs">@channelId</span>
-                        <span class="p2p-text-[10px] p2p-italic">(module not loaded)</span>
-                    </label>
-                }
-            }
-        </div>
+        }
     </div>
 </div>
 
-<div class="p2p-border-t p2p-border-gray-100 p2p-pt-6 p2p-mt-6 p2p-space-y-4">
-    <h3 class="p2p-text-sm p2p-font-bold p2p-text-slate-800 p2p-border-b p2p-border-gray-100 p2p-pb-2">Discovery & Infrastructure Nodes</h3>
-
-    <div class="p2p-space-y-2">
-        <div class="p2p-flex p2p-items-center p2p-justify-between">
-            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Advertised Node Access Endpoints (One per line)</label>
-
-            <div class="p2p-relative p2p-inline-block p2p-text-left" id="p2pAutoDiscoverDropdownContainer">
-                <button type="button" id="p2pDropdownToggleBtn" class="p2p-inline-flex p2p-justify-center p2p-rounded-md p2p-border p2p-border-gray-300 p2p-bg-white p2p-px-3 p2p-py-1.5 p2p-text-xs p2p-font-medium p2p-text-gray-700 p2p-shadow-sm hover:p2p-bg-gray-50 focus:p2p-outline-none">
-                    Add Endpoints
-                    <i class="fa-solid fa-chevron-down p2p-ml-1.5 p2p-text-[10px] p2p-text-gray-400"></i>
-                </button>
-                <div id="p2pDropdownMenu" class="p2p-hidden p2p-absolute p2p-right-0 p2p-z-50 p2p-mt-2 p2p-w-56 p2p-origin-top-right p2p-rounded-md p2p-bg-white p2p-shadow-lg p2p-ring-1 p2p-ring-black p2p-ring-opacity-5 focus:p2p-outline-none">
-                    <div class="p2p-py-1 p2p-max-h-60 p2p-overflow-y-auto" role="menu" id="p2pDropdownItemsList">
-
-                        @if (Model.EndpointProvisions == null || !Model.EndpointProvisions.Any())
-                        {
-                            <div class="p2p-px-4 p2p-py-3 p2p-text-center p2p-text-xs p2p-text-gray-400 p2p-italic">
-                                No active endpoints found
-                            </div>
-                        }
-                        else
-                        {
-                            <div id="p2pDynamicItemsContainer">
-                                @foreach (var source in Model.EndpointProvisions)
-                                {
-                                    <button type="button"
-                                            data-action="@source"
-                                            class="p2p-text-gray-700 p2p-block p2p-w-full p2p-text-left p2p-px-4 p2p-py-2 p2p-text-xs hover:p2p-bg-gray-100 hover:p2p-text-gray-900"
-                                            role="menuitem">
-                                        @source
-                                    </button>
-                                }
-                            </div>
-                        }
-
-                    </div>
-                </div>
-            </div>
-        </div>
-        <textarea id="p2pNodeAccessTextArea"
-                  name="General.Endpoints"
-                  rows="3"
-                  placeholder="Local endpoints advertised to mesh, one per line"
-                  class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm p2p-resize-y focus:p2p-border-blue-500">@(Model.General.Endpoints != null ? string.Join("\n", Model.General.Endpoints) : "")</textarea>
-    </div>
-
+<h3>Discovery &amp; Infrastructure Nodes</h3>
+<div class="f">
     <div>
-        <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Seed Trackers List (One per line)</label>
-        <textarea name="General.SeedEndpoints"
-                  rows="3"
-                  placeholder="One per line, e.g. https://tracker1.domain.xyz"
-                  class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm p2p-resize-y focus:p2p-border-blue-500">@(Model.General.SeedEndpoints != null ? string.Join("\n", Model.General.SeedEndpoints) : "")</textarea>
+        <label for="p2pNodeAccessTextArea">Advertised Node Access Endpoints</label> <span class="tip" tabindex="0" data-tip="Local endpoints advertised to the mesh, one per line. Pick a source and press Add to fill one in automatically."></span>
+        @if (Model.EndpointProvisions != null && Model.EndpointProvisions.Any())
+        {
+            <select id="p2pEndpointSource" style="width:auto">
+                @foreach (var source in Model.EndpointProvisions)
+                {
+                    <option value="@source">@source</option>
+                }
+            </select>
+            <button type="button" id="p2pAddEndpointBtn" class="btn sm"><i class="fa-solid fa-plus"></i> Add</button>
+        }
+        else
+        {
+            <span class="aux">(no endpoint sources)</span>
+        }
     </div>
-
-    <div>
-        <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">STUN Infrastructure Servers (One per line)</label>
-        <textarea name="General.StunServers"
-                  rows="3"
-                  placeholder="e.g., stun:stun.l.google.com:19302"
-                  class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm p2p-resize-y focus:p2p-border-blue-500">@(Model.General.StunServers != null ? string.Join("\n", Model.General.StunServers) : "")</textarea>
-    </div>
+    <textarea id="p2pNodeAccessTextArea" name="General.Endpoints" rows="3" class="mono" placeholder="One per line">@(Model.General.Endpoints != null ? string.Join("\n", Model.General.Endpoints) : "")</textarea>
+</div>
+<div class="f">
+    <div><label for="General_SeedEndpoints">Seed Trackers</label> <span class="tip" tabindex="0" data-tip="Trackers contacted first, one per line, e.g. https://tracker1.domain.xyz"></span></div>
+    <textarea id="General_SeedEndpoints" name="General.SeedEndpoints" rows="3" class="mono" placeholder="One per line">@(Model.General.SeedEndpoints != null ? string.Join("\n", Model.General.SeedEndpoints) : "")</textarea>
+</div>
+<div class="f">
+    <div><label for="General_StunServers">STUN Servers</label> <span class="tip" tabindex="0" data-tip="One per line, e.g. stun:stun.l.google.com:19302"></span></div>
+    <textarea id="General_StunServers" name="General.StunServers" rows="3" class="mono" placeholder="One per line">@(Model.General.StunServers != null ? string.Join("\n", Model.General.StunServers) : "")</textarea>
 </div>
 
-<div class="p2p-border-t p2p-border-gray-100 p2p-pt-6 p2p-mt-6 p2p-space-y-4">
-    <h3 class="p2p-text-sm p2p-font-bold p2p-text-slate-800 p2p-border-b p2p-border-gray-100 p2p-pb-2">Liveness & Network Timeouts</h3>
-    <div class="p2p-grid p2p-grid-cols-1 sm:p2p-grid-cols-2 md:p2p-grid-cols-3 p2p-gap-4">
-        <div>
-            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Startup Delay (Sec)</label>
-            <input type="number" name="General.StartupDelaySeconds" value="@Model.General.StartupDelaySeconds" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
-        </div>
-        <div>
-            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Backup Dump Period (Sec)</label>
-            <input type="number" name="General.ActiveNodeSecondsBackupPeriod" value="@Model.General.ActiveNodeSecondsBackupPeriod" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
-        </div>
-        <div>
-            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Connection Heartbeat Keepalives (Milliseconds)</label>
-            <input type="number" name="General.KeepAlivePeriodMs" value="@Model.General.KeepAlivePeriodMs" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
-        </div>
-        <div>
-            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Topology Update Period (Ms)</label>
-            <input type="number" name="General.TopologyMaintenannceIntervalMs" value="@Model.General.TopologyMaintenannceIntervalMs" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
-        </div>
+<h3>Liveness &amp; Network Timeouts</h3>
+<div class="grid">
+    <div class="f">
+        <div><label for="General_StartupDelaySeconds">Startup Delay (s)</label> <span class="tip" tabindex="0" data-tip="Wait before the P2P services start."></span></div>
+        <input type="number" id="General_StartupDelaySeconds" name="General.StartupDelaySeconds" value="@Model.General.StartupDelaySeconds" />
     </div>
-
-    <div class="p2p-grid p2p-grid-cols-1 sm:p2p-grid-cols-2 md:p2p-grid-cols-3 p2p-gap-4">
-        <div>
-            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">HTTP Requests Timeout (Sec)</label>
-            <input type="number" name="General.HttpTimeoutSeconds" value="@Model.General.HttpTimeoutSeconds" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
-        </div>
-        <div>
-            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Default Handshake Timeout (Sec)</label>
-            <input type="number" name="General.DefaultHandshakeTimeoutSeconds" value="@Model.General.DefaultHandshakeTimeoutSeconds" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
-        </div>
-        <div>
-            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Unhandshaked Connection Timeout (Sec)</label>
-            <input type="number" name="General.MaxRelayInactivitySeconds" value="@Model.General.MaxRelayInactivitySeconds" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
-        </div>
+    <div class="f">
+        <div><label for="General_ActiveNodeSecondsBackupPeriod">Backup Dump Period (s)</label> <span class="tip" tabindex="0" data-tip="How often active node state is saved."></span></div>
+        <input type="number" id="General_ActiveNodeSecondsBackupPeriod" name="General.ActiveNodeSecondsBackupPeriod" value="@Model.General.ActiveNodeSecondsBackupPeriod" />
     </div>
-
-    <div class="p2p-grid p2p-grid-cols-1 sm:p2p-grid-cols-2 p2p-gap-4">
-        <div>
-            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">General P2P Request Timeout (Sec)</label>
-            <input type="number" name="General.DefaultRequestTimeoutSeconds" value="@Model.General.DefaultRequestTimeoutSeconds" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
-        </div>
-        <div>
-            <label class="p2p-text-[10px] p2p-font-black p2p-text-gray-400 p2p-uppercase p2p-tracking-widest">Time Synchronization Interval (Sec)</label>
-            <input type="number" name="General.TimeSyncIntervalSeconds" value="@Model.General.TimeSyncIntervalSeconds" class="p2p-w-full p2p-mt-1 p2p-p-2.5 p2p-bg-white p2p-border p2p-border-gray-200 p2p-rounded-lg p2p-text-sm focus:p2p-border-blue-500" />
-        </div>
+    <div class="f">
+        <div><label for="General_KeepAlivePeriodMs">Heartbeat Keepalive (ms)</label> <span class="tip" tabindex="0" data-tip="Interval of keepalive messages on open connections."></span></div>
+        <input type="number" id="General_KeepAlivePeriodMs" name="General.KeepAlivePeriodMs" value="@Model.General.KeepAlivePeriodMs" />
+    </div>
+    <div class="f">
+        <div><label for="General_TopologyMaintenannceIntervalMs">Topology Update Period (ms)</label> <span class="tip" tabindex="0" data-tip="How often connections are rebalanced."></span></div>
+        <input type="number" id="General_TopologyMaintenannceIntervalMs" name="General.TopologyMaintenannceIntervalMs" value="@Model.General.TopologyMaintenannceIntervalMs" />
+    </div>
+    <div class="f">
+        <div><label for="General_HttpTimeoutSeconds">HTTP Request Timeout (s)</label></div>
+        <input type="number" id="General_HttpTimeoutSeconds" name="General.HttpTimeoutSeconds" value="@Model.General.HttpTimeoutSeconds" />
+    </div>
+    <div class="f">
+        <div><label for="General_DefaultHandshakeTimeoutSeconds">Handshake Timeout (s)</label></div>
+        <input type="number" id="General_DefaultHandshakeTimeoutSeconds" name="General.DefaultHandshakeTimeoutSeconds" value="@Model.General.DefaultHandshakeTimeoutSeconds" />
+    </div>
+    <div class="f">
+        <div><label for="General_MaxRelayInactivitySeconds">Unhandshaked Connection Timeout (s)</label> <span class="tip" tabindex="0" data-tip="Connections that never complete a handshake are closed after this."></span></div>
+        <input type="number" id="General_MaxRelayInactivitySeconds" name="General.MaxRelayInactivitySeconds" value="@Model.General.MaxRelayInactivitySeconds" />
+    </div>
+    <div class="f">
+        <div><label for="General_DefaultRequestTimeoutSeconds">P2P Request Timeout (s)</label></div>
+        <input type="number" id="General_DefaultRequestTimeoutSeconds" name="General.DefaultRequestTimeoutSeconds" value="@Model.General.DefaultRequestTimeoutSeconds" />
+    </div>
+    <div class="f">
+        <div><label for="General_TimeSyncIntervalSeconds">Time Sync Interval (s)</label></div>
+        <input type="number" id="General_TimeSyncIntervalSeconds" name="General.TimeSyncIntervalSeconds" value="@Model.General.TimeSyncIntervalSeconds" />
     </div>
 </div>

@@ -23,7 +23,7 @@ window.WidgetLibrary["process-status"] = {
     refresh: async function () {
         const blings = this.shell.querySelectorAll('.status-bling');
         blings.forEach(b => {
-            b.className = 'status-bling mm-w-1.5 mm-h-1.5 mm-rounded-full mm-bg-slate-400 mm-scale-125 mm-transition-all mm-duration-75';
+            b.className = 'dot status-bling busy';
         });
 
         try {
@@ -51,10 +51,10 @@ window.WidgetLibrary["process-status"] = {
         updateText('#stat-today', data.today);
         updateText('#process-sync-time', data.sync || '--:--:--');
 
-        const colors = ['mm-bg-green-500', 'mm-bg-amber-500', 'mm-bg-red-500'];
+        const colors = ['ok', 'warn', 'bad'];
         const setBling = (sel, s) => {
             const el = this.shell.querySelector(sel);
-            if (el) el.className = `status-bling mm-w-1.5 mm-h-1.5 mm-rounded-full mm-transition-colors mm-duration-500 ${colors[s] || colors[2]}`;
+            if (el) el.className = `dot status-bling ${colors[s] || colors[2]}`;
         };
 
         setBling('#bling-eng', data.eng);

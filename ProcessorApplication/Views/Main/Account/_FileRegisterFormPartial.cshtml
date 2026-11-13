@@ -1,23 +1,10 @@
 ﻿@model ProcessorApplication.ViewModels.Account.RegisterViewModel
 
-<div class="mm-space-y-4">
-    <p class="mm-text-sm mm-text-gray-600">Please select your exported profile file (e.g., from a medical system) and set a new password to secure your imported identity in this application.</p>
-
-    <!-- File Input -->
-    <div>
-        <label for="profileFile" class="mm-block mm-text-sm mm-font-medium mm-text-gray-700">Profile Export File (.json)</label>
-        <input type="file" id="profileFile" name="profileFile" required class="mm-mt-1 mm-block mm-w-full mm-text-sm mm-text-gray-500 mm-p-2 mm-border mm-border-gray-300 mm-rounded-md" />
-    </div>
-
-    <!-- Password Inputs -->
-    <div>
-        <label for="password" class="mm-block mm-text-sm mm-font-medium mm-text-gray-700">Password</label>
-        <input type="password" id="password" name="password" required class="mm-mt-1 mm-block mm-w-full mm-rounded-md mm-border mm-border-gray-300 mm-shadow-sm mm-p-2" />
-    </div>
-    <div>
-        <label for="confirmPassword" class="mm-block mm-text-sm mm-font-medium mm-text-gray-700">Confirm Password</label>
-        <input type="password" id="confirmPassword" name="confirmPassword" required class="mm-mt-1 mm-block mm-w-full mm-rounded-md mm-border mm-border-gray-300 mm-shadow-sm mm-p-2" />
-    </div>
-
-    <p class="mm-text-xs mm-text-red-600">INFO: The imported user signature hash key will be encrypted by new password. Do not lose/forget password.</p>
+<div class="f">
+    <label for="profileFile">Profile Export File (.json) <span class="tip" tabindex="0" data-tip="Your exported profile file (for example from a medical system). Set a new password below to secure the imported identity here."></span></label>
+    <input type="file" id="profileFile" name="profileFile" required />
+</div>
+<div class="cols">
+    <div class="f"><label for="password">Password <span class="tip" tabindex="0" data-tip="The imported signature key is encrypted with this password: don't lose or forget it."></span></label><input type="password" id="password" name="password" required /></div>
+    <div class="f"><label for="confirmPassword">Confirm Password</label><input type="password" id="confirmPassword" name="confirmPassword" required /></div>
 </div>

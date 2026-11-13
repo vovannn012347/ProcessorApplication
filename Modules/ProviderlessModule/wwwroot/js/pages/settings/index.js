@@ -6,7 +6,7 @@
     const SCRIPT_ID = "providerless-settings";
     const WRAPPER_ID = "providerless-settings-wrapper";
 
-    root = {};
+    let root = {}; // local to this script (was an implicit global shared by all page scripts)
 
     window.ModuleRegistry = window.ModuleRegistry || {};
 

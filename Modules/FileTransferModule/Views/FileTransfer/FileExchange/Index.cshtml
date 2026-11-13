@@ -1,51 +1,27 @@
-﻿@model FileTransferModule.Models.ExchangeTelemetryViewModel
+@model FileTransferModule.Models.ExchangeTelemetryViewModel
 @{
-    ViewData["Title"] = "Active File Swarm & Transfers";
+    ViewData["Title"] = "File Transfers";
     var isAjax = Context.Request.Headers["X-Requested-With"] == "XMLHttpRequest";
-    if (isAjax)
-    {
-        Layout = null;
-    }
+    if (isAjax) { Layout = null; }
 }
-
-@section Styles {
-    <link rel="stylesheet" href="/FileTransfer/css/ftt.min.css" asp-append-version="true" />
-}
-
-<link rel="stylesheet" href="/FileTransfer/css/ftt.min.css" asp-append-version="true" />
 
 <div id="file-exchange-wrapper" data-script-id="ftt-exchange">
-    <div class="ftt-container ftt-mx-auto ftt-py-6 ftt-px-4">
-        @Html.AntiForgeryToken()
-        <div class="ftt-flex ftt-flex-col md:ftt-flex-row ftt-justify-between ftt-items-start md:ftt-items-center ftt-mb-6 ftt-pb-4 ftt-border-b ftt-border-gray-200">
-            <div>
-                <h1 class="ftt-text-2xl ftt-font-extrabold ftt-text-slate-900 ftt-tracking-tight">Active File Transfers &amp; Swarm</h1>
-                <p class="ftt-text-xs ftt-text-slate-500 ftt-mt-1">Real-time WebRTC slice exchange monitoring, bitfield piece state, and transfer controls.</p>
-            </div>
-            <div class="ftt-mt-4 md:ftt-mt-0 ftt-flex ftt-gap-2">
-                <button type="button" id="btn-refresh-exchange" class="ftt-px-3 ftt-py-2 ftt-bg-slate-100 hover:ftt-bg-slate-200 ftt-text-slate-700 ftt-rounded-lg ftt-text-xs ftt-font-semibold ftt-flex ftt-items-center ftt-gap-1.5 transition">
-                    <i class="fa-solid fa-rotate"></i> Refresh State
-                </button>
-            </div>
-        </div>
-
-        <div id="exchange-telemetry-container">
-            @await Html.PartialAsync("_ActiveTransfersPartial", Model)
-        </div>
+    @Html.AntiForgeryToken()
+    <div class="actions">
+        <button type="button" id="btn-refresh-exchange" class="btn"><i class="fa-solid fa-rotate"></i> Refresh</button>
+        <span class="tip" tabindex="0" data-tip="Live slice exchange: node traffic, files served to peers, download tasks with their block map and controls."></span>
+    </div>
+    <div id="exchange-telemetry-container">
+        @await Html.PartialAsync("_ActiveTransfersPartial", Model)
     </div>
 </div>
 
-<div id="bitfield-modal" class="ftt-fixed ftt-inset-0 ftt-bg-slate-900/60 ftt-backdrop-blur-sm ftt-z-50 ftt-flex ftt-items-center ftt-justify-center ftt-hidden">
-    <div class="ftt-bg-white ftt-rounded-xl ftt-shadow-2xl ftt-border ftt-border-gray-100 ftt-max-w-2xl ftt-w-full ftt-mx-4 ftt-overflow-hidden">
-        <div class="ftt-px-6 ftt-py-4 ftt-bg-slate-50 ftt-border-b ftt-border-gray-100 ftt-flex ftt-justify-between ftt-items-center">
-            <h3 class="ftt-text-sm ftt-font-bold ftt-text-slate-800 ftt-flex ftt-items-center ftt-gap-2">
-                <i class="fa-solid fa-cubes-stacked ftt-text-indigo-600"></i> Block Bitfield Visualizer
-            </h3>
-            <button type="button" id="btn-close-bitfield-modal" class="ftt-text-gray-400 hover:ftt-text-gray-600">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
-        </div>
-        <div id="bitfield-modal-content" class="ftt-p-6"></div>
+<div id="bitfield-modal" class="modal is-hidden">
+    <div class="card" style="width:min(680px,95vw)">
+        <h2><i class="fa-solid fa-cubes-stacked"></i> Block Map
+            <button type="button" id="btn-close-bitfield-modal" class="icon-btn" style="float:right" title="Close"><i class="fa-solid fa-xmark"></i></button>
+        </h2>
+        <div id="bitfield-modal-content" class="body"></div>
     </div>
 </div>
 

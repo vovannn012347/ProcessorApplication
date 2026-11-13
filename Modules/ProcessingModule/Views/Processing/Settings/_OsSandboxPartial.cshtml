@@ -3,54 +3,48 @@
 @using ProcessingModule.Models
 @model OsSandboxSettings
 
-<div class="pm-space-y-4">
-    <!-- Identity Fields -->
-    <div class="pm-grid pm-grid-cols-1 md:pm-grid-cols-2 pm-gap-4">
-        <div>
-            <label asp-for="UserName" class="pm-block pm-text-[10px] pm-font-bold pm-text-slate-400 pm-uppercase pm-mb-1"></label>
-            <input asp-for="UserName" class="pm-w-full pm-rounded-lg pm-border-slate-300 pm-text-sm pm-font-mono" />
+<div class="grid">
+    <div>
+        <div class="cols">
+            <div class="f">
+                <div><label asp-for="UserName"></label> <span class="tip" tabindex="0" data-tip="The worker account scripts run as. 1-13 characters (Windows adds -rights for a second account)."></span></div>
+                <input asp-for="UserName" />
+                <span asp-validation-for="UserName" class="warn-t"></span>
+            </div>
+            <div class="f">
+                <div><label asp-for="GroupName"></label> <span class="tip" tabindex="0" data-tip="Linux: the sandbox group shared by the app and the worker. Windows: only checked."></span></div>
+                <input asp-for="GroupName" />
+            </div>
         </div>
-        <div>
-            <label asp-for="GroupName" class="pm-block pm-text-[10px] pm-font-bold pm-text-slate-400 pm-uppercase pm-mb-1"></label>
-            <input asp-for="GroupName" class="pm-w-full pm-rounded-lg pm-border-slate-300 pm-text-sm pm-font-mono" />
+        <div class="f row">
+            <input asp-for="AllowNetwork" type="checkbox" />
+            <label asp-for="AllowNetwork"></label> <span class="tip" tabindex="0" data-tip="Off: Setup User blocks all network traffic of the worker (Linux: loopback too; Windows doesn't filter loopback). Run Setup User again after changing it."></span>
+        </div>
+        <div class="f row">
+            <input asp-for="ProtectNodeHome" type="checkbox" />
+            <label asp-for="ProtectNodeHome"></label> <span class="tip" tabindex="0" data-tip="Windows: Setup User denies the worker reading the node's folder (databases, node.key, settings); the script, results and executor folders stay readable. Check Status tries to read node.key as the worker. Run Setup User again after changing it. Linux: the node home is protected by its own permissions (keep it 750)."></span>
+        </div>
+        <div class="cols">
+            <div class="f">
+                <div><label asp-for="MemoryLimitMb"></label> <span class="tip" tabindex="0" data-tip="Memory for one step, all its processes together. 0 = no limit. Windows only for now."></span></div>
+                <input asp-for="MemoryLimitMb" type="number" min="0" />
+                <span asp-validation-for="MemoryLimitMb" class="warn-t"></span>
+            </div>
+            <div class="f">
+                <div><label asp-for="CpuLimitPercent"></label> <span class="tip" tabindex="0" data-tip="Hard CPU cap for one step, in percent of the whole machine. 0 = no limit. Windows only for now."></span></div>
+                <input asp-for="CpuLimitPercent" type="number" min="0" max="100" />
+                <span asp-validation-for="CpuLimitPercent" class="warn-t"></span>
+            </div>
+        </div>
+        <div class="actions">
+            <button type="button" class="btn sm" onclick="launchStream('/Processing/Settings/StreamOsStatusCheck')"><i class="fa-solid fa-stethoscope"></i> Check Status</button>
+            <button type="button" class="btn sm" onclick="launchStream('/Processing/Settings/StreamOsProvisioning')"><i class="fa-solid fa-user-gear"></i> Setup User</button>
+            <span class="tip" tabindex="0" data-tip="@(OperatingSystem.IsWindows() ? "Windows: Setup User creates the worker and a NAME-rights account (UAC prompts), sets folder permissions and the firewall rules. Passwords are random and stored encrypted for the account the app runs as." : "Linux: names are used in lower case. Setup User needs root once: it runs the setup directly if the app may use sudo without a password, otherwise it prints the exact sudo bash ... command to run in a terminal. Restart the app afterwards. No passwords are stored.")"></span>
         </div>
     </div>
-
-    @* <div class="pm-flex pm-items-center pm-gap-2">
-        <input asp-for="AutoCreateProcessingUser" type="checkbox" class="pm-rounded pm-border-slate-300 pm-text-indigo-600" />
-        <label asp-for="AutoCreateProcessingUser" class="pm-text-xs pm-text-slate-600"></label>
-    </div> *@
-
-    <!-- Action Buttons -->
-    <div class="pm-flex pm-gap-2 pm-mt-2">
-        <button type="button" onclick="launchStream('/Processing/Settings/StreamOsStatusCheck')"
-                class="pm-flex-1 pm-px-3 pm-py-2 pm-bg-slate-100 pm-text-slate-700 pm-text-[10px] pm-font-bold pm-uppercase pm-rounded-lg hover:pm-bg-indigo-600 pm-transition-colors shadow-sm">
-            <i class="fa-solid fa-magnifying-glass pm-mr-1"></i> Check Status
-        </button>
-        <button type="button" onclick="launchStream('/Processing/Settings/StreamOsProvisioning')"
-                class="pm-flex-1 pm-px-3 pm-py-2 pm-bg-slate-100 pm-text-slate-700 pm-text-[10px] pm-font-bold pm-uppercase pm-rounded-lg hover:pm-bg-indigo-600 pm-transition-colors shadow-sm">
-            <i class="fa-solid fa-user-plus pm-mr-1"></i> Setup User
-        </button>
-    </div>
-
-    @if (!OperatingSystem.IsWindows())
-    {
-        <p class="pm-text-[10px] pm-text-slate-400">
-            Linux: names are used in lower case. "Setup User" needs root once: it runs the setup directly if the app may use sudo
-            without a password, otherwise it prints the exact <span class="pm-font-mono">sudo bash ...</span> command to run in a
-            terminal. Restart the app afterwards. No passwords are stored; scripts run as the worker without network access.
-        </p>
-    }
-
-    <!-- Integrated Log Window -->
-    <div id="osLogWrapper" class="pm-hidden pm-mt-4 pm-animate-in pm-fade-in pm-slide-in-from-top-1">
-        <div class="pm-flex pm-items-center pm-justify-between pm-mb-1 pm-px-1">
-            <span class="pm-text-[9px] pm-font-bold pm-text-slate-400 pm-uppercase tracking-wider">System Setup Log</span>
-            <span id="osLogStatus" class="pm-text-[9px] pm-font-bold pm-text-indigo-500 pm-animate-pulse">Active</span>
-        </div>
-        <textarea id="osLogOutput" readonly
-                  class="pm-w-full pm-h-40 pm-bg-slate-900 pm-text-emerald-400 pm-font-mono pm-text-[10px] pm-p-4 pm-rounded-xl pm-border pm-border-slate-800 pm-shadow-inner pm-resize-none focus:pm-outline-none"
-                  placeholder="Logs will appear here..."></textarea>
+    <div id="osLogWrapper" class="is-hidden">
+        <div class="actions"><span class="lbl" style="flex:1">Setup log</span><span id="osLogStatus" class="aux">Active</span></div>
+        <textarea id="osLogOutput" readonly rows="12" class="mono" style="width:100%;font-size:11px" placeholder="Logs will appear here..."></textarea>
     </div>
 </div>
 
@@ -62,21 +56,18 @@
         const output = document.getElementById('osLogOutput');
         const status = document.getElementById('osLogStatus');
 
-        // Close existing if open
         if (currentEventSource) currentEventSource.close();
 
-        // UI Prep
-        wrapper.classList.remove('pm-hidden');
+        wrapper.classList.remove('is-hidden');
         output.value = `[${new Date().toLocaleTimeString()}] Establishing connection...\n`;
         status.innerText = "Processing...";
-        status.className = "pm-text-[9px] pm-font-bold pm-text-indigo-500 pm-animate-pulse";
+        status.className = "info";
 
         currentEventSource = new EventSource(url);
-
-        currentEventSource.onmessage = function(event) {
+        currentEventSource.onmessage = function (event) {
             if (event.data === "[DONE]") {
                 status.innerText = "Complete";
-                status.className = "pm-text-[9px] pm-font-bold pm-text-green-600 pm-uppercase";
+                status.className = "badge ok";
                 output.value += "\n>>> OPERATION FINISHED.";
                 currentEventSource.close();
             } else {
@@ -84,10 +75,9 @@
                 output.scrollTop = output.scrollHeight;
             }
         };
-
-        currentEventSource.onerror = function() {
+        currentEventSource.onerror = function () {
             status.innerText = "Stream Error";
-            status.className = "pm-text-[9px] pm-font-bold pm-text-red-600 pm-uppercase";
+            status.className = "badge bad";
             output.value += "\n[CRITICAL] Connection lost or access denied.";
             currentEventSource.close();
         };

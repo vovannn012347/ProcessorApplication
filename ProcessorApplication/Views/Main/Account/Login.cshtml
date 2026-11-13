@@ -3,70 +3,32 @@
     Layout = "_LayoutLogin";
     ViewData["Title"] = "Log in";
 }
-<div class="tabs-container mm-flex mm-flex-wrap mm-justify-center mm-mb-6">
-    <div asp-validation-summary="All" class="mm-w-full mm-order-2 mm-rounded-md mm-bg-red-50 mm-text-sm mm-text-red-700 mm-empty:hidden mm-mb-4"></div>
 
-    <input type="radio" id="login-std" name="login-mode" checked class="hidden-radio-tab">
-
-    <label for="login-std" class="tab-label style-green mm-order-1 mm-px-4 mm-py-2 mm-rounded-md mm-text-sm mm-font-medium mm-text-gray-600 hover:mm-bg-gray-50 mm-cursor-pointer mm-mr-4 mm-mb-4">
-        Standard
-    </label>
-
-    <div class="tab-content mm-order-3 mm-w-full">
-        <form asp-area="Main" asp-controller="Account" asp-action="Login" method="post" class="mm-space-y-6 mm-mt-2">
-
+<div asp-validation-summary="All" class="msg warn"></div>
+<div class="rtabs">
+    <input type="radio" id="login-std" name="login-mode" checked>
+    <label for="login-std" class="btn sm">Standard</label>
+    <div>
+        <form asp-area="Main" asp-controller="Account" asp-action="Login" method="post">
             <input type="hidden" asp-for="ReturnUrl" />
-            <div>
-                <label asp-for="UserName" class="mm-block mm-text-sm mm-font-medium mm-text-gray-700">Login ID (Hash)</label>
-                <input asp-for="UserName" class="mm-mt-1 mm-block mm-w-full mm-rounded-md mm-border-gray-300 mm-shadow-sm focus:mm-border-indigo-500 focus:mm-ring-indigo-500 mm-p-2 mm-border" />
-            </div>
-            <div>
-                <label asp-for="Password" class="mm-block mm-text-sm mm-font-medium mm-text-gray-700"></label>
-                <input asp-for="Password" type="password" class="mm-mt-1 mm-block mm-w-full mm-rounded-md mm-border-gray-300 mm-shadow-sm focus:mm-border-indigo-500 focus:mm-ring-indigo-500 mm-p-2 mm-border" />
-            </div>
-            <button type="submit" class="mm-w-full mm-flex mm-justify-center mm-py-2 mm-px-4 mm-border mm-border-transparent mm-rounded-md mm-shadow-sm mm-text-sm mm-font-medium mm-text-white mm-bg-indigo-600 hover:mm-bg-indigo-700">
-                Sign in
-            </button>
+            <div class="f"><label asp-for="UserName">Login ID (Hash)</label><input asp-for="UserName" class="mono" /></div>
+            <div class="f"><label asp-for="Password"></label><input asp-for="Password" type="password" /></div>
+            <div class="actions"><button type="submit" class="btn">Sign in</button></div>
         </form>
     </div>
 
-
-    <input type="radio" id="login-file" name="login-mode" class="hidden-radio-tab">
-
-    <label for="login-file" class="tab-label style-green mm-order-1 mm-px-4 mm-py-2 mm-rounded-md mm-text-sm mm-font-medium mm-text-gray-600 hover:mm-bg-gray-50 mm-cursor-pointer mm-mb-4">
-        File Login
-    </label>
-
-    <div class="tab-content mm-order-3 mm-w-full">
-        <form asp-area="Main" asp-controller="Account" asp-action="LoginFromFile" method="post" enctype="multipart/form-data" class="mm-space-y-6 mm-mt-2">
-            <p class="mm-text-sm mm-text-gray-500">Use your exported identity file to authenticate using your password.</p>
-
-            <div>
-                <label class="mm-block mm-text-sm mm-font-medium mm-text-gray-700">Profile File</label>
-                <input type="file" name="profileFile" class="mm-mt-1 mm-block mm-w-full mm-text-sm mm-text-gray-500 mm-file:mr-4 mm-file:py-2 mm-file:px-4 mm-file:rounded-md mm-file:border-0 mm-file:text-sm mm-file:font-semibold mm-file:bg-green-50 mm-file:text-green-700 hover:mm-file:bg-green-100" />
-            </div>
-            <div>
-                <label class="mm-block mm-text-sm mm-font-medium mm-text-gray-700">Password</label>
-                <input name="password" type="password" class="mm-mt-1 mm-block mm-w-full mm-rounded-md mm-border-gray-300 mm-shadow-sm focus:mm-border-indigo-500 focus:mm-ring-indigo-500 mm-p-2 mm-border" />
-            </div>
-
+    <input type="radio" id="login-file" name="login-mode">
+    <label for="login-file" class="btn sm">File Login</label>
+    <div>
+        <form asp-area="Main" asp-controller="Account" asp-action="LoginFromFile" method="post" enctype="multipart/form-data">
+            <div class="f"><label>Profile File <span class="tip" tabindex="0" data-tip="Your exported identity file; it is unlocked with your password."></span></label><input type="file" name="profileFile" /></div>
+            <div class="f"><label>Password</label><input name="password" type="password" /></div>
             @if (!string.IsNullOrEmpty(Model.ReturnUrl))
             {
                 <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
             }
-
-            <button type="submit" class="mm-w-full mm-flex mm-justify-center mm-py-2 mm-px-4 mm-border mm-border-transparent mm-rounded-md mm-shadow-sm mm-text-sm mm-font-medium mm-text-white mm-bg-green-600 hover:mm-bg-green-700 focus:mm-outline-none focus:mm-ring-2 focus:mm-ring-offset-2 focus:mm-ring-green-500">
-                Unlock with File Key
-            </button>
+            <div class="actions"><button type="submit" class="btn">Unlock with File Key</button></div>
         </form>
     </div>
-
-    <div class="mm-order-4 mm-w-full mm-mt-8 mm-pt-6 mm-border-t mm-border-gray-200 mm-text-center">
-        <p class="mm-text-sm mm-text-gray-600">
-            Don't have an identity yet?
-            <a href="/Main/Account/Register" class="mm-font-medium mm-text-indigo-600 hover:mm-text-indigo-500 mm-transition-colors">
-                Create a new secure account
-            </a>
-        </p>
-    </div>
 </div>
+<div class="aux">No identity yet? <a href="/Main/Account/Register">Create a new secure account</a></div>

@@ -47,13 +47,6 @@
     <None Remove="medicalsystem.db-shm" />
     <None Remove="medicalsystem.db-wal" />
   </ItemGroup>
-  <ItemGroup>
-    <Content Include="package-lock.json" />
-    <Content Include="package.json" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="tailwind.config.js" />
-  </ItemGroup>
   
   <Target Name="CopyWwwRootToOutput" AfterTargets="Build">
     <ItemGroup>

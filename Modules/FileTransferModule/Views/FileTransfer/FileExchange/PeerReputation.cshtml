@@ -2,104 +2,79 @@
 @{
     ViewData["Title"] = "Peer File Reputation";
     var isAjax = Context.Request.Headers["X-Requested-With"] == "XMLHttpRequest";
-    if (isAjax)
-    {
-        Layout = null;
-    }
+    if (isAjax) { Layout = null; }
     var now = DateTime.UtcNow;
     int bannedCount = Model.Count(r => r.IsBanned(now));
 }
 
-@section Styles {
-    <link rel="stylesheet" href="/FileTransfer/css/ftt.min.css" asp-append-version="true" />
+@if (TempData["ReputationMessage"] is string message)
+{
+    <div class="msg ok">@message</div>
 }
 
-<link rel="stylesheet" href="/FileTransfer/css/ftt.min.css" asp-append-version="true" />
-
-<div class="ftt-container ftt-mx-auto ftt-py-6 ftt-px-4">
-    <div class="ftt-flex ftt-flex-col md:ftt-flex-row ftt-justify-between ftt-items-start md:ftt-items-center ftt-mb-6 ftt-pb-4 ftt-border-b ftt-border-gray-200">
-        <div>
-            <h1 class="ftt-text-2xl ftt-font-extrabold ftt-text-slate-900 ftt-tracking-tight">Peer File Reputation</h1>
-            <p class="ftt-text-xs ftt-text-slate-500 ftt-mt-1">
-                How each peer has behaved as a source of file data for this node, across all files.
-                Separate from the P2P node rating. A peer is banned as a file source after repeatedly
-                sending blocks that fail verification (see Settings).
-            </p>
-        </div>
-        <div class="ftt-mt-4 md:ftt-mt-0 ftt-text-xs ftt-text-slate-600">
-            @Model.Count peer(s) known &middot; @bannedCount banned
-        </div>
-    </div>
-
-    @if (TempData["ReputationMessage"] is string message)
-    {
-        <div class="ftt-mb-4 ftt-px-4 ftt-py-2 ftt-bg-emerald-50 ftt-text-emerald-700 ftt-rounded-lg ftt-text-xs">@message</div>
-    }
-
-    @if (Model.Count == 0)
-    {
-        <div class="ftt-py-12 ftt-text-center ftt-text-slate-400 ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-shadow-sm">
-            <i class="fa-solid fa-users ftt-text-3xl ftt-mb-2 ftt-block"></i>
-            No peer has supplied file data to this node yet.
-        </div>
-    }
-    else
-    {
-        <div class="ftt-bg-white ftt-border ftt-border-gray-200 ftt-rounded-xl ftt-shadow-sm ftt-overflow-x-auto">
-            <table class="ftt-min-w-full ftt-text-xs">
-                <thead class="ftt-bg-slate-50 ftt-text-slate-500 ftt-uppercase ftt-tracking-wider ftt-text-[10px]">
+<div class="card">
+    <h2>Peers <span class="aux">@Model.Count known &middot; @bannedCount banned</span>
+        <span class="tip" tabindex="0" data-tip="How each peer behaved as a source of file data for this node, across all files. Separate from the P2P node rating. A peer is banned as a file source after repeatedly sending blocks that fail verification (see Settings)."></span>
+    </h2>
+    <div class="body">
+        @if (Model.Count == 0)
+        {
+            <span class="aux"><i class="fa-solid fa-users"></i> No peer has supplied file data to this node yet.</span>
+        }
+        else
+        {
+            <table class="t">
+                <thead>
                     <tr>
-                        <th class="ftt-px-4 ftt-py-3 ftt-text-left">Peer</th>
-                        <th class="ftt-px-4 ftt-py-3 ftt-text-right" title="Ranking used to pick seeders: verified blocks minus penalties.">Score</th>
-                        <th class="ftt-px-4 ftt-py-3 ftt-text-right">Verified blocks</th>
-                        <th class="ftt-px-4 ftt-py-3 ftt-text-right">Verified data</th>
-                        <th class="ftt-px-4 ftt-py-3 ftt-text-right" title="Blocks that failed verification where this peer sent every slice - provably bad data.">Bad (sole)</th>
-                        <th class="ftt-px-4 ftt-py-3 ftt-text-right" title="Blocks that failed verification where this peer was one of several sources - suspect only.">Bad (shared)</th>
-                        <th class="ftt-px-4 ftt-py-3 ftt-text-right">Timeouts</th>
-                        <th class="ftt-px-4 ftt-py-3 ftt-text-left">Status</th>
-                        <th class="ftt-px-4 ftt-py-3 ftt-text-left">Last update</th>
-                        <th class="ftt-px-4 ftt-py-3"></th>
+                        <th>Peer</th>
+                        <th title="Ranking used to pick seeders: verified blocks minus penalties.">Score</th>
+                        <th>Verified Blocks</th>
+                        <th>Verified Data</th>
+                        <th title="Blocks that failed verification where this peer sent every slice: provably bad data.">Bad (sole)</th>
+                        <th title="Blocks that failed verification where this peer was one of several sources: suspect only.">Bad (shared)</th>
+                        <th>Timeouts</th>
+                        <th>Status</th>
+                        <th>Updated (UTC)</th>
+                        <th></th>
                     </tr>
                 </thead>
-                <tbody class="ftt-divide-y ftt-divide-gray-100 ftt-text-slate-700">
+                <tbody>
                     @foreach (var r in Model)
                     {
                         bool banned = r.IsBanned(now);
                         string confirmText = banned ? "Forget everything about this peer and lift the ban?" : "Forget everything about this peer?";
                         <tr>
-                            <td class="ftt-px-4 ftt-py-2 ftt-font-mono" title="@r.NodeId">@(r.NodeId.Length > 20 ? r.NodeId.Substring(0, 20) + "…" : r.NodeId)</td>
-                            <td class="ftt-px-4 ftt-py-2 ftt-text-right ftt-font-semibold @(r.Score < 0 ? "ftt-text-red-600" : "")">@r.Score.ToString("F1")</td>
-                            <td class="ftt-px-4 ftt-py-2 ftt-text-right">@r.BlocksVerified</td>
-                            <td class="ftt-px-4 ftt-py-2 ftt-text-right">@FormatBytes(r.BytesVerified)</td>
-                            <td class="ftt-px-4 ftt-py-2 ftt-text-right @(r.BadBlocksSoleSource > 0 ? "ftt-text-red-600 ftt-font-semibold" : "")">@r.BadBlocksSoleSource</td>
-                            <td class="ftt-px-4 ftt-py-2 ftt-text-right">@r.BadBlocksSharedSource</td>
-                            <td class="ftt-px-4 ftt-py-2 ftt-text-right">@r.SliceTimeouts</td>
-                            <td class="ftt-px-4 ftt-py-2">
+                            <td class="mono" title="@r.NodeId">@(r.NodeId.Length > 20 ? r.NodeId.Substring(0, 20) + "…" : r.NodeId)</td>
+                            <td class="@(r.Score < 0 ? "bad-t" : "")"><b>@r.Score.ToString("F1")</b></td>
+                            <td>@r.BlocksVerified</td>
+                            <td class="nowrap">@FormatBytes(r.BytesVerified)</td>
+                            <td class="@(r.BadBlocksSoleSource > 0 ? "bad-t" : "")">@r.BadBlocksSoleSource</td>
+                            <td>@r.BadBlocksSharedSource</td>
+                            <td>@r.SliceTimeouts</td>
+                            <td>
                                 @if (banned)
                                 {
-                                    <span class="ftt-px-2 ftt-py-0.5 ftt-bg-red-50 ftt-text-red-600 ftt-rounded ftt-font-semibold" title="Banned until @r.BannedUntilUtc?.ToString("u")">Banned</span>
+                                    <span class="badge bad" title="Banned until @r.BannedUntilUtc?.ToString("u")">Banned</span>
                                 }
                                 else
                                 {
-                                    <span class="ftt-px-2 ftt-py-0.5 ftt-bg-emerald-50 ftt-text-emerald-700 ftt-rounded ftt-font-semibold">OK</span>
+                                    <span class="badge ok">OK</span>
                                 }
                             </td>
-                            <td class="ftt-px-4 ftt-py-2 ftt-text-slate-500">@r.LastUpdatedUtc.ToString("yyyy-MM-dd HH:mm") UTC</td>
-                            <td class="ftt-px-4 ftt-py-2 ftt-text-right">
+                            <td class="mono nowrap aux">@r.LastUpdatedUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>
                                 <form method="post" action="/@FileTransferModule.FileTransferModuleEntryPoint.MODULE_ID/FileExchange/ResetPeerReputationAndReturn" onsubmit="return confirm('@confirmText');">
                                     @Html.AntiForgeryToken()
                                     <input type="hidden" name="nodeId" value="@r.NodeId" />
-                                    <button type="submit" class="ftt-px-2.5 ftt-py-1 ftt-bg-slate-100 hover:ftt-bg-slate-200 ftt-text-slate-700 ftt-rounded ftt-text-xs ftt-font-medium">
-                                        @(banned ? "Unban & reset" : "Reset")
-                                    </button>
+                                    <button type="submit" class="btn sm">@(banned ? "Unban & reset" : "Reset")</button>
                                 </form>
                             </td>
                         </tr>
                     }
                 </tbody>
             </table>
-        </div>
-    }
+        }
+    </div>
 </div>
 
 @functions {

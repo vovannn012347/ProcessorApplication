@@ -165,18 +165,23 @@ public class ProcessorModuleEntryPoint : IModule
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             services.AddSingleton<ISandboxProcessing, WindowsOsSandboxPython>();
-            services.AddSingleton<ISandboxProcessing, WindowsDockerSandboxPython>();
+            // Docker runner commented out (WindowsDockerSandboxPython.cs): Docker gives UnavailableSandbox, like on Linux.
+            //services.AddSingleton<ISandboxProcessing, WindowsDockerSandboxPython>();
             services.AddScoped<IOsUserManagementService, WindowsOsUserManagementService>();
         }
         else
         {
             // Linux: OS-user sandbox via a worker user + sudo rule (Sandboxing/linux/processor-sandbox-setup.sh).
-            // Docker isn't implemented here: SandboxProvider returns UnavailableSandbox, so such steps end in Error.
+            // Docker isn't implemented (on any OS): SandboxProvider returns UnavailableSandbox, so such steps end in Error.
             services.AddSingleton<ISandboxProcessing, LinuxOsSandboxPython>();
             services.AddScoped<IOsUserManagementService, LinuxOsUserManagementService>();
         }
 
         //services.AddHostedService<OsUserProvisioningTask>();
+
+        // Last sandbox check result (startup / Check Status), used by Require Sandboxing; startup check = Validate Sandbox On Startup
+        services.AddSingleton<SandboxReadiness>();
+        services.AddHostedService<SandboxStartupCheck>();
 
         services.AddSingleton<ISandboxProvider, SandboxProvider>();
 

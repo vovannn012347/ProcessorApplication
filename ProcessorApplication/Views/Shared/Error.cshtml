@@ -3,19 +3,9 @@
     ViewData["Title"] = "Error";
 }
 
-<h1 class="mm-text-red-600 mm-text-2xl mm-font-black">Fault Detected.</h1>
-<h2 class="mm-text-red-500 mm-font-bold">An error occurred while processing your request.</h2>
-
+<div class="msg warn">An error occurred while processing your request.</div>
 @if (Model.ShowRequestId)
 {
-    <p class="mm-mt-4 mm-text-sm">
-        <strong class="mm-font-black">Request ID:</strong> <code class="mm-bg-slate-100 mm-px-1 mm-rounded">@Model.RequestId</code>
-    </p>
+    <div class="f"><span class="aux">Request ID</span><span class="mono">@Model.RequestId</span></div>
 }
-
-<div class="mm-mt-6 mm-p-4 mm-border mm-border-slate-200 mm-rounded-xl mm-bg-slate-50">
-    <h3 class="mm-text-xs mm-font-black mm-uppercase mm-tracking-widest mm-text-slate-400 mm-mb-2">System Diagnostic</h3>
-    <p class="mm-text-xs mm-text-slate-600">
-        Swapping to <strong>Development</strong> environment will display more detailed information.
-    </p>
-</div>
+<div class="aux">The Development environment shows more detail.</div>

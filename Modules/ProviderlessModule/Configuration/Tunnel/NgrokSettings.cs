@@ -10,7 +10,7 @@ namespace ProviderlessModule.Configuration.Tunnel;
 //{
 //    public string ProviderKey => "ngrok";
 
-//    public string ProviderName => "NgrokSettings_key";
+//    public string ProviderName => "ngrok";
 //    public string SettingsViewPath => "~/Views/Providerless/Settings/_Settings_Tun_ngrok.cshtml";
 //    /// <summary>
 //    /// Mandatory Authtoken from the Ngrok Dashboard.

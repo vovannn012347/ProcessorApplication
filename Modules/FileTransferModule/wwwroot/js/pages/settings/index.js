@@ -127,9 +127,9 @@
         showInlineMessage: function (el, ok, text) {
             if (!el) return;
             el.textContent = text;
-            el.classList.remove('ftt-hidden', 'ftt-bg-emerald-50', 'ftt-border-emerald-200', 'ftt-text-emerald-700', 'ftt-bg-red-50', 'ftt-border-red-200', 'ftt-text-red-700');
-            el.classList.add('ftt-border', ok ? 'ftt-bg-emerald-50' : 'ftt-bg-red-50', ok ? 'ftt-border-emerald-200' : 'ftt-border-red-200', ok ? 'ftt-text-emerald-700' : 'ftt-text-red-700');
-            setTimeout(() => el.classList.add('ftt-hidden'), 6000);
+            el.className = 'msg ' + (ok ? 'ok' : 'warn');
+            
+            setTimeout(() => el.classList.add('is-hidden'), 6000);
         },
 
         // ---------------------------------------------------------------------------------

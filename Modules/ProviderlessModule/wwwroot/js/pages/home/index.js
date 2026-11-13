@@ -12,7 +12,7 @@
         }
     };
 
-    root = {};
+    let root = {}; // local to this script (was an implicit global shared by all page scripts)
 
     window.ModuleRegistry = window.ModuleRegistry || {};
 
@@ -23,10 +23,10 @@
 
         /**
          * Lifecycle Init
-         * @param {HTMLElement} el - The script-page-wrapper hooked via data-script-id
+         * @param {HTMLElement} el - The providerless-home-wrapper hooked via data-script-id
          */
         init: function (el) {
-            root = el || document.getElementById('script-page-wrapper');
+            root = el || document.getElementById('providerless-home-wrapper');
             if (!root) return;
 
             console.log(`[${SCRIPT_ID}] Initializing gateway orchestrator...`);
@@ -71,8 +71,8 @@
                     const isOnline = data.tunnelActive && data.registyActive;
                     badge.innerText = isOnline ? "Online & Discovery Active" : (data.tunnelActive ? "Tunneling Active" : "Offline");
                     badge.className = isOnline
-                        ? "plss-px-4 plss-py-1.5 plss-rounded-full plss-text-sm plss-font-bold plss-uppercase plss-bg-green-100 plss-text-green-700"
-                        : "plss-px-4 plss-py-1.5 plss-rounded-full plss-text-sm plss-font-bold plss-uppercase plss-bg-amber-100 plss-text-amber-700";
+                        ? "badge ok"
+                        : "badge warn";
                 }
 
                 // 2. Update Stats
@@ -80,19 +80,19 @@
                     const target = root.querySelector(`#${id}`);
                     if (target) {
                         target.innerText = text || "--";
-                        if (colorClass) target.className = `plss-text-sm plss-font-bold ${colorClass}`;
+                        if (colorClass) target.className = colorClass;
                     }
                 };
 
                 updateText('stat-provider', data.providerName);
                 updateText('stat-start', data.startTime);
                 updateText('stat-tunnel', data.tunnelActive ? "RUNNING" : "STOPPED",
-                    data.tunnelActive ? "plss-text-green-600" : "plss-text-red-600");
+                    data.tunnelActive ? "ok-t" : "bad-t");
                 if (!data.registryEnabled) {
-                    updateText('stat-registry', "OFF", "plss-text-gray-500");
+                    updateText('stat-registry', "OFF", "aux");
                 } else {
                     updateText('stat-registry', data.registyActive ? "SYNCED" : "PENDING",
-                        data.registyActive ? "plss-text-green-600" : "plss-text-amber-600");
+                        data.registyActive ? "ok-t" : "warn-t");
                 }
 
                 // URLs: tunnel, resolver link, what the registry holds, the registry entry itself
@@ -112,7 +112,7 @@
                 const errText = root.querySelector('#error-text');
                 if (errBox && errText) {
                     errText.innerText = data.lastError || "";
-                    errBox.classList.toggle('plss-hidden', !data.lastError);
+                    errBox.classList.toggle('is-hidden', !data.lastError);
                 }
 
                 // 3. Visibility Logic: QR = public URL once registered, the tunnel URL until then
@@ -120,8 +120,8 @@
                 const inactiveSec = root.querySelector('#inactive-section');
 
                 if (data.tunnelActive && data.url) {
-                    activeSec?.classList.remove('plss-hidden');
-                    inactiveSec?.classList.add('plss-hidden');
+                    activeSec?.classList.remove('is-hidden');
+                    inactiveSec?.classList.add('is-hidden');
 
                     const caption = root.querySelector('#qr-caption');
                     if (caption) caption.innerText = data.publicUrl ? "QR: Public URL" : "QR: Tunnel URL (no public URL yet)";
@@ -132,8 +132,8 @@
                         this.qrcode.makeCode(data.url);
                     }
                 } else {
-                    activeSec?.classList.add('plss-hidden');
-                    inactiveSec?.classList.remove('plss-hidden');
+                    activeSec?.classList.add('is-hidden');
+                    inactiveSec?.classList.remove('is-hidden');
                 }
 
             } catch (e) {
@@ -152,7 +152,7 @@
 
             btn.disabled = true;
             const originalText = btn.innerHTML;
-            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mm-mr-2"></i> Signaling...';
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Signaling...';
 
             try {
                 const res = await fetch(CONFIG.endpoints.reestablish, {
@@ -202,7 +202,7 @@
                             <style>
                                 body { background: white; padding: 20px; }
                                 #patient-print-template { display: block !important; visibility: visible !important; transform: scale(1.25); transform-origin: top center; margin-top: 20mm; }
-                                .plss-hidden { display: block !important; visibility: visible !important; }
+                                .is-hidden { display: block !important; visibility: visible !important; }
                                 #print-qr-target img { margin: 0 auto; display: block; }
                             </style>
                         </head>

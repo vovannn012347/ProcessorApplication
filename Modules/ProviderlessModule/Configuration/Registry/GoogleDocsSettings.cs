@@ -10,7 +10,7 @@ namespace ProviderlessModule.Configuration.Registry;
 //{
 //    public string ProviderKey => "googledocs";
 
-//    public string ProviderName => "GoogleDocsSettings_key";
+//    public string ProviderName => "Google Docs";
 //    public string SettingsViewPath => "~/Views/Providerless/Settings/_Settings_Reg_googledocs.cshtml";
 
 //    [Required]

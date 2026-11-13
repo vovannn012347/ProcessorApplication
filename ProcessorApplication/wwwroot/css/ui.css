@@ -1,4 +1,4 @@
-/* ui.css - the whole shared UI in plain CSS (no Tailwind). Loaded by _Layout after output.min.css.
+/* ui.css - the whole shared UI in plain CSS (no Tailwind). The only stylesheet besides Font Awesome.
    Colors: change ONLY the variables below; every element uses a role, never a raw color.
    A complete scheme can also be a block like  [data-scheme="night"] { --text: ...; }  set on <html>. */
 :root {
@@ -11,23 +11,44 @@
     /* text roles */
     --text: #111827;   /* meaningful text: content, values */
     --info: #2563eb;   /* information text: notes, statuses, tooltips' accent */
+    --link: #2563eb;   /* links in text */
     --label: #475569;  /* headings and field labels */
     --aux: #6b7280;    /* auxiliary: captions, hints, placeholders, small print */
     /* user-typed text: inputs, selects, textareas */
     --input-fg: #111827; --input-bg: #fff; --input-ro-bg: #f3f4f6; --input-line: #d1d5db;
     /* surfaces */
     --page: #fff; --card: #fff; --card-head: #f8fafc; --line: #e2e8f0; --accent: #6366f1;
-    --ok-bg: #ecfdf5; --ok-fg: #047857; --warn-bg: #fefce8; --warn-fg: #a16207;
+    --ok-bg: #ecfdf5; --ok-fg: #047857; --warn-bg: #fefce8; --warn-fg: #a16207; --bad-bg: #fef2f2; --bad-fg: #b91c1c;
+    --dot-idle: #cbd5e1; --dot-busy: #94a3b8; --dot-ok: #22c55e; --dot-warn: #f59e0b; --dot-bad: #ef4444;
     --tip-bg: rgb(31 41 55); --tip-fg: #f9fafb;
     /* sidebar */
     --side-bg: #1f2937; --side-head: #111827; --side-fg: #d1d5db; --side-aux: #6b7280; --side-hover: #374151;
 }
 
-/* ---------- base */
-*, ::before, ::after { box-sizing: border-box; }
+/* ---------- base: a small reset (does what Tailwind's base styles did, so no Tailwind file is needed) */
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 100 900; font-display: swap; src: url('/fonts/Inter-VariableFont.ttf') format('truetype'); }
+*, ::before, ::after { box-sizing: border-box; border: 0 solid var(--line); }
+html { line-height: 1.5; -webkit-text-size-adjust: 100%; tab-size: 4; }
 html, body { height: 100%; margin: 0; }
+h1, h2, h3, h4, h5, h6 { font-size: inherit; font-weight: inherit; }
+h1, h2, h3, h4, h5, h6, p, blockquote, dl, dd, figure, pre, fieldset, ol, ul, menu, hr { margin: 0; }
+ol, ul, menu, fieldset, legend { padding: 0; } ol, ul, menu { list-style: none; }
+hr { height: 0; color: inherit; border-top-width: 1px; }
+a { color: inherit; text-decoration: inherit; }
+b, strong { font-weight: bolder; } small { font-size: 80%; }
+code, kbd, samp, pre { font-family: ui-monospace, Consolas, monospace; font-size: 1em; }
+table { text-indent: 0; border-color: inherit; border-collapse: collapse; }
+button, input, optgroup, select, textarea { font: inherit; font-feature-settings: inherit; letter-spacing: inherit; color: inherit; margin: 0; padding: 0; }
+::-webkit-file-upload-button { -webkit-appearance: button; font: inherit; } ::-webkit-inner-spin-button, ::-webkit-outer-spin-button { height: auto; }
+button, select { text-transform: none; }
+button, [type=button], [type=reset], [type=submit] { -webkit-appearance: button; background: transparent; }
+button, [role=button] { cursor: pointer; } :disabled { cursor: default; }
+textarea { resize: vertical; } summary { display: list-item; } [hidden] { display: none; }
+img, svg, video, canvas, audio, iframe, embed, object { display: block; vertical-align: middle; }
+img, video { max-width: 100%; height: auto; }
 body { font: 13px/1.35 Inter, "Segoe UI", system-ui, sans-serif; color: var(--text); background: var(--page); }
 .is-hidden { display: none !important; }
+a:not([class]) { color: var(--link); text-decoration: underline; }   /* plain text links (the reset above removes link styling) */
 .mono { font-family: ui-monospace, Consolas, monospace; }
 .info { color: var(--info); }
 .aux { color: var(--aux); font-size: 11px; }
@@ -61,6 +82,21 @@ main { flex: 1; overflow-y: auto; position: relative; }
 .user-menu .menu a:hover, .user-menu .menu button:hover { background: var(--card-head); }
 @media (min-width: 768px) { .mob-only { display: none !important; } }
 @media (max-width: 767px) { .desk-only { display: none !important; } }
+/* sidebar: slides in over the page on phones (.mm-sidebar-open on #app-container), collapses on desktop (.mm-sidebar-collapsed) */
+#sidebar { transition: width .3s ease-in-out, transform .3s ease-in-out; }
+#sidebar-backdrop { display: none; position: fixed; inset: 0; z-index: 40; background: rgba(17,24,39,.5); }
+@media (max-width: 767px) {
+    #sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: 50; }
+    .sidebar-hidden-mobile { transform: translateX(-100%); }
+    .mm-sidebar-open #sidebar { transform: translateX(0); }
+    .mm-sidebar-open #sidebar-backdrop { display: block; }
+}
+@media (min-width: 768px) {
+    .mm-sidebar-collapsed #sidebar { width: 0 !important; overflow: hidden !important; }
+    .mm-sidebar-collapsed #sidebar > * { display: none; }
+}
+#mm-content-loader-spinner { width: 32px; height: 32px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- content blocks */
 .card { margin: 0 0 4px; background: var(--card); border: 1px solid var(--line); border-radius: 3px; }
@@ -81,17 +117,38 @@ main { flex: 1; overflow-y: auto; position: relative; }
 .msg.ok { background: var(--ok-bg); color: var(--ok-fg); }
 .msg.warn { background: var(--warn-bg); color: var(--warn-fg); }
 .msg ul { margin: 0; padding-left: 18px; }
+.validation-summary-valid { display: none; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 2px 0; }
 .t { width: 100%; border-collapse: collapse; }
 .t th, .t td { padding: 1px 4px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
 .t th { color: var(--label); font-size: 11px; font-weight: 600; }
 .wrap { word-break: break-all; white-space: pre-wrap; }
 .nowrap { white-space: nowrap; }
-.warn-t { color: var(--warn-fg); }
+.warn-t { color: var(--warn-fg); } .ok-t { color: var(--ok-fg); } .bad-t { color: var(--bad-fg); }
 tr.grp > th { padding-top: 4px; background: var(--card-head); text-transform: uppercase; letter-spacing: .04em; }
 tr.sub > td { color: var(--label); font-size: 11px; font-weight: 600; padding-left: 8px; }
 .t td > input:not([type=checkbox]):not([type=radio]) { width: 100%; }
 .t tr.hit > td { background: var(--warn-bg); }
+
+/* ---------- status: dots, badges, numbers */
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--dot-idle); transition: background .3s; }
+.dot.busy { background: var(--dot-busy); } .dot.ok { background: var(--dot-ok); } .dot.warn { background: var(--dot-warn); } .dot.bad { background: var(--dot-bad); }
+.badge { display: inline-block; padding: 0 4px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+.badge.ok { background: var(--ok-bg); color: var(--ok-fg); } .badge.warn { background: var(--warn-bg); color: var(--warn-fg); } .badge.bad { background: var(--bad-bg); color: var(--bad-fg); }
+.stat { padding: 2px 6px; border: 1px solid var(--line); border-radius: 3px; }
+.stat > b { display: block; font-size: 16px; color: var(--text); }
+.span-2 { grid-column: span 2; } .span-3 { grid-column: span 3; }
+.flip { transform: rotate(180deg); }
+.icon-btn { background: none; border: 0; padding: 0 3px; cursor: pointer; color: var(--aux); font: inherit; }
+.icon-btn:hover { color: var(--text); } .icon-btn.bad { color: var(--bad-fg); }
+
+/* ---------- radio tabs (no JS): <div class="rtabs"><input type=radio id=a checked><label for=a class=btn>A</label><div>...</div> ... */
+.rtabs { display: flex; flex-wrap: wrap; gap: 2px; }
+.rtabs > input[type=radio] { display: none; }
+.rtabs > div { display: none; order: 9; width: 100%; padding-top: 4px; }
+.rtabs > input:checked + label { color: var(--btn-on-fg); background: var(--btn-on-bg); border-color: var(--btn-on-bg); }
+.rtabs > input:checked + label + div { display: block; }
+.narrow { max-width: 420px; margin: 24px auto; }
 
 /* ---------- user-typed text */
 input, select, textarea { font: inherit; color: var(--input-fg); background: var(--input-bg); border: 1px solid var(--input-line);
@@ -115,4 +172,18 @@ input[type=checkbox], input[type=radio] { margin: 0; }
 .tip::before { content: "i"; }
 .tip:focus { outline: none; background: var(--info); color: var(--tip-fg); }
 #tip-box { position: fixed; z-index: 100; display: none; max-width: min(280px, 70vw); padding: 3px 6px; border-radius: 3px;
-           background: var(--tip-bg); color: var(--tip-fg); font-size: 11px; line-height: 1.35; pointer-events: none; }
+           background: var(--tip-bg); color: var(--tip-fg); font-size: 11px; line-height: 1.35; pointer-events: none; white-space: pre-line; }
+
+/* ---------- modal: <div class="modal is-hidden"><div class="card">...</div></div> */
+.modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgb(0 0 0 / .45); }
+.modal > .card { width: min(440px, 95vw); max-height: 90vh; overflow-y: auto; }
+
+/* ---------- progress bar <div class="bar"><i style="width:40%"></i></div>; block map <div class="blocks"><b class="on">0</b>...</div> */
+.bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--accent); transition: width .3s; }
+.blocks { display: grid; grid-template-columns: repeat(auto-fill, minmax(24px, 1fr)); gap: 2px; max-height: 220px; overflow-y: auto; }
+.blocks > b { font: 9px/16px monospace; text-align: center; border-radius: 2px; background: var(--line); color: var(--aux); }
+.blocks > b.on { background: var(--accent); color: var(--btn-on-fg); }
+.drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 90px; padding: 6px;
+        border: 1px dashed var(--line); border-radius: 3px; cursor: pointer; text-align: center; }
+.drop:hover, .drop.hit { border-color: var(--accent); }

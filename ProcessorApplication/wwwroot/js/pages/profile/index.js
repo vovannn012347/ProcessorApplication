@@ -40,11 +40,11 @@
 
                 checkBtn.disabled = true;
                 const originalHtml = checkBtn.innerHTML;
-                checkBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mm-mr-2"></i> Checking...';
+                checkBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Checking...';
 
-                resultP.classList.add('mm-hidden');
+                resultP.classList.add('is-hidden');
                 // Reset classes while keeping core styles
-                resultP.className = 'mm-text-xs mm-mt-2 mm-text-center';
+                resultP.className = 'msg';
 
                 fetch('/Main/Profile/CheckConnectivity', {
                     method: 'POST',
@@ -53,18 +53,18 @@
                     .then(r => r.json())
                     .then(data => {
                         resultP.textContent = data.message;
-                        resultP.classList.remove('mm-hidden');
+                        resultP.classList.remove('is-hidden');
 
                         if (data.success) {
-                            resultP.classList.add('mm-text-green-700', 'mm-font-bold');
+                            resultP.classList.add('ok');
                         } else {
-                            resultP.classList.add('mm-text-red-600');
+                            resultP.classList.add('warn');
                         }
                     })
                     .catch(err => {
                         resultP.textContent = "Error: Failed to contact server.";
-                        resultP.classList.remove('mm-hidden');
-                        resultP.classList.add('mm-text-red-600');
+                        resultP.classList.remove('is-hidden');
+                        resultP.classList.add('warn');
                         console.error(`[${SCRIPT_ID}] Connectivity check failed:`, err);
                     })
                     .finally(() => {

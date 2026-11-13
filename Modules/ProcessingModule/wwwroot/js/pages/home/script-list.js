@@ -5,7 +5,7 @@
 (function () {
     const SCRIPT_ID = "processor-scriptlist";
 
-    root = {}
+    let root = {}; // local to this script (was an implicit global shared by all page scripts)
 
     window.ModuleRegistry = window.ModuleRegistry || {};
 
@@ -55,11 +55,9 @@
             if (!btn) return;
 
             // Visual feedback for selection
-            if (this.selectedScriptIds.length > 0) {
-                btn.classList.replace('pm-bg-indigo-600', 'pm-bg-indigo-700');
-            } else {
-                btn.classList.replace('pm-bg-indigo-700', 'pm-bg-indigo-600');
-            }
+            btn.classList.toggle('on', this.selectedScriptIds.length > 0);
+            const count = btn.querySelector('#launchCount');
+            if (count) count.textContent = this.selectedScriptIds.length ? `(${this.selectedScriptIds.length})` : '';
         },
 
         submitSelection: function () {
@@ -84,9 +82,9 @@
 
             if (!row || !content || !icon) return;
 
-            if (row.classList.contains('pm-hidden')) {
-                row.classList.remove('pm-hidden');
-                icon.classList.add('pm-text-indigo-500');
+            if (row.classList.contains('is-hidden')) {
+                row.classList.remove('is-hidden');
+                icon.classList.add('ok-t');
 
                 try {
                     const response = await fetch(`/processing/Home/GetScriptDetails?buildId=${encodeURIComponent(id)}`, {
@@ -95,11 +93,11 @@
                     if (!response.ok) throw new Error();
                     content.innerHTML = await response.text();
                 } catch (err) {
-                    content.innerHTML = '<span class="pm-text-[9px] pm-text-red-400"><i class="fa-solid fa-circle-exclamation mr-1"></i> Error loading details.</span>';
+                    content.innerHTML = '<span class="bad-t"><i class="fa-solid fa-circle-exclamation"></i> Error loading details.</span>';
                 }
             } else {
-                row.classList.add('pm-hidden');
-                icon.classList.remove('pm-text-indigo-500');
+                row.classList.add('is-hidden');
+                icon.classList.remove('ok-t');
             }
         },
 
@@ -114,7 +112,6 @@
 
             // Disable button to prevent double-clicks during redirection
             btn.disabled = true;
-            btn.classList.add('mm-opacity-50');
 
             console.log("[Processor] Initiating library reindex...");
             window.location.href = '/Processing/Admin/ReindexLogs';

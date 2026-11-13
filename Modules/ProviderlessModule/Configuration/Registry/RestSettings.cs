@@ -11,7 +11,7 @@ namespace ProviderlessModule.Configuration.Registry;
 //{
 //    public string ProviderKey => "rest";
 
-//    public string ProviderName => "RestSettings_key";
+//    public string ProviderName => "REST endpoint";
 //    public string SettingsViewPath => "~/Views/Providerless/Settings/_Settings_Reg_rest.cshtml";
 
 //    [Required]

@@ -7,7 +7,7 @@ public class StaticUrlSettings : ITunnelSettings
 {
     public string ProviderKey => "static";
 
-    public string ProviderName => "StaticUrlSettings_key";
+    public string ProviderName => "Static URL";
     public string SettingsViewPath => "~/Views/Providerless/Settings/_Settings_Tun_static.cshtml";
 
     [Required]

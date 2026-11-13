@@ -1,28 +1,19 @@
 ﻿<!DOCTYPE html>
-<html lang="en" class="mm-h-full mm-bg-gray-50">
+<html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - ProcessorApplication</title>
-    <link rel="stylesheet" href="~/css/output.min.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/ui.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/lib/font-awesome/css/all.min.css" />
 </head>
-<body class="mm-h-full mm-font-sans mm-antialiased mm-text-gray-900">
-    <div class="mm-min-h-full mm-flex mm-flex-col mm-justify-center mm-py-12 sm:mm-px-6 lg:mm-px-8">
-        <div class="sm:mm-mx-auto mm-w-full sm:mm-max-w-md">
-            <h2 class="mm-mt-6 mm-text-center mm-text-3xl mm-font-extrabold mm-text-gray-900">
-                @ViewData["Title"]
-            </h2>
-            <p class="mm-mt-2 mm-text-center mm-text-sm mm-text-gray-600">
-                ProcessorApplication
-            </p>
-        </div>
-
-        <div class="mm-mt-8 sm:mm-mx-auto mm-w-full sm:mm-max-w-md">
-            <div class="mm-bg-white mm-py-8 mm-px-4 mm-shadow mm-rounded-lg sm:mm-px-10">
-                @RenderBody()
-            </div>
+<body>
+    <div class="topbar"><div style="padding:0 6px;font-weight:700;text-transform:uppercase;letter-spacing:.05em">@ViewData["Title"]</div><div class="aux" style="color:inherit;padding:0 6px">ProcessorApplication</div></div>
+    <div class="narrow card">
+        <div class="body">
+            @RenderBody()
         </div>
     </div>
+    <script src="/js/shared/_layout.js" asp-append-version="true"></script>
 </body>
 </html>

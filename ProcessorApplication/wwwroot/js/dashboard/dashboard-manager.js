@@ -7,7 +7,7 @@
     const WRAPPER_ID = "dashboard-hub-wrapper";
     const HEARTBEAT_INTERVAL = 20000; // 20s server-side session keep-alive
 
-    root = {};
+    let root = {}; // local to this script (was an implicit global shared by all page scripts)
 
     window.ModuleRegistry = window.ModuleRegistry || {};
 
@@ -178,17 +178,17 @@
             const icon = shell.querySelector('#chevron-icon');
 
             if (isCollapsed) {
-                // Minimized Tray Styles
-                shell.classList.add('mm-w-64', 'mm-opacity-70', 'mm-cursor-default');
-                shell.classList.remove('lg:mm-col-span-1', 'lg:mm-col-span-2', 'lg:mm-col-span-3');
-                body.classList.add('mm-hidden');
-                if (icon) icon.classList.add('mm-rotate-180');
+                // minimized tray: narrow, body hidden
+                shell.style.width = '240px';
+                shell.classList.remove('span-2', 'span-3');
+                body.classList.add('is-hidden');
+                if (icon) icon.classList.add('flip');
             } else {
-                // Expanded Grid Styles
-                shell.classList.remove('mm-w-64', 'mm-opacity-70');
-                if (width > 1) shell.classList.add(`lg:mm-col-span-${width}`);
-                body.classList.remove('mm-hidden');
-                if (icon) icon.classList.remove('mm-rotate-180');
+                shell.style.width = '';
+                shell.classList.remove('span-2', 'span-3');
+                if (width > 1) shell.classList.add(`span-${Math.min(width, 3)}`);
+                body.classList.remove('is-hidden');
+                if (icon) icon.classList.remove('flip');
             }
         },
 

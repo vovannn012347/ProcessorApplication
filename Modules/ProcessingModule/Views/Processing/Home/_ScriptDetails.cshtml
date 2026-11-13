@@ -3,57 +3,36 @@
 @using ProcessingModule.Models.Views
 @model ScriptDetailsViewModel
 
-<div class="pm-grid pm-grid-cols-2 pm-gap-8 pm-text-[10px]">
+<div class="cols">
     <div>
-        <h4 class="pm-text-slate-400 pm-font-black pm-uppercase pm-tracking-widest pm-mb-3 pm-flex pm-items-center pm-gap-2">
-            <i class="fa-solid fa-right-to-bracket pm-text-indigo-400"></i>
-            User Parameters
-        </h4>
+        <h3><i class="fa-solid fa-right-to-bracket"></i> Inputs</h3>
         @if (Model.Inputs.Any())
         {
-            <div class="pm-space-y-2">
+            <table class="t">
                 @foreach (var input in Model.Inputs)
                 {
-                    <div class="pm-border-b pm-border-slate-100 pm-pb-1">
-                        <div class="pm-flex pm-items-center pm-justify-between">
-                            <span class="pm-text-slate-600 pm-font-semibold">@input.DisplayName</span>
-                            <span class="pm-text-slate-400 pm-font-mono pm-text-[8px] pm-bg-slate-50 pm-px-1 pm-rounded pm-border">@input.Type</span>
-                        </div>
-                        @if (!string.IsNullOrEmpty(input.Description))
-                        {
-                            <p class="pm-text-slate-400 pm-leading-tight">@input.Description</p>
-                        }
-                    </div>
+                    <tr>
+                        <td><b>@input.DisplayName</b>@if (!string.IsNullOrEmpty(input.Description)) { <div class="aux">@input.Description</div> }</td>
+                        <td><span class="badge mono">@input.Type</span></td>
+                    </tr>
                 }
-            </div>
+            </table>
         }
         else
         {
-            <p class="pm-text-slate-300 pm-italic">No user inputs required.</p>
+            <span class="aux">No user inputs required.</span>
         }
     </div>
-
     <div>
-        <h4 class="pm-text-slate-400 pm-font-black pm-uppercase pm-tracking-widest pm-mb-3 pm-flex pm-items-center pm-gap-2">
-            <i class="fa-solid fa-right-from-bracket pm-text-emerald-400"></i>
-            Generated Outputs
-        </h4>
-        <div class="pm-space-y-2">
+        <h3><i class="fa-solid fa-right-from-bracket"></i> Outputs</h3>
+        <table class="t">
             @foreach (var output in Model.Outputs)
             {
-                <div class="pm-border-b pm-border-slate-100 pm-pb-1">
-                    <div class="pm-flex pm-items-center pm-justify-between">
-                        <span class="pm-text-slate-600 pm-font-semibold">@output.DisplayName</span>
-                        <span class="pm-text-slate-400 pm-font-mono pm-text-[8px] pm-bg-slate-50 pm-px-1 pm-rounded pm-border">@output.Type</span>
-                    </div>
-                    @if (!string.IsNullOrEmpty(output.Description))
-                    {
-                        <p class="pm-text-slate-400 pm-leading-tight">@output.Description</p>
-                    }
-                </div>
+                <tr>
+                    <td><b>@output.DisplayName</b>@if (!string.IsNullOrEmpty(output.Description)) { <div class="aux">@output.Description</div> }</td>
+                    <td><span class="badge mono">@output.Type</span></td>
+                </tr>
             }
-        </div>
+        </table>
     </div>
-
-
 </div>

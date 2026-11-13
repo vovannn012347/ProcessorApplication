@@ -48,11 +48,11 @@
 
             ['dragenter', 'dragover'].forEach(evt => this.el.dropZone.addEventListener(evt, (e) => {
                 e.preventDefault();
-                this.el.dropZone.classList.add('pm-border-indigo-400', 'pm-bg-indigo-50');
+                this.el.dropZone.classList.add('hit');
             }));
             ['dragleave', 'drop'].forEach(evt => this.el.dropZone.addEventListener(evt, (e) => {
                 e.preventDefault();
-                this.el.dropZone.classList.remove('pm-border-indigo-400', 'pm-bg-indigo-50');
+                this.el.dropZone.classList.remove('hit');
             }));
             this.el.dropZone.addEventListener('drop', (e) => {
                 if (e.dataTransfer && e.dataTransfer.files.length) this.selectFile(e.dataTransfer.files[0]);
@@ -89,7 +89,6 @@
 
         setUploadEnabled: function (enabled) {
             this.el.uploadBtn.disabled = !enabled;
-            this.el.uploadBtn.classList.toggle('pm-opacity-50', !enabled);
         },
 
         upload: function () {
@@ -102,10 +101,10 @@
             this.xhr = xhr;
             this.busy = true;
 
-            this.el.pickPanel.classList.add('pm-hidden');
-            this.el.resultPanel.classList.add('pm-hidden');
-            this.el.progressPanel.classList.remove('pm-hidden');
-            this.el.cancelBtn.classList.remove('pm-hidden');
+            this.el.pickPanel.classList.add('is-hidden');
+            this.el.resultPanel.classList.add('is-hidden');
+            this.el.progressPanel.classList.remove('is-hidden');
+            this.el.cancelBtn.classList.remove('is-hidden');
             this.setProgress(0, 'Uploading…');
 
             xhr.upload.addEventListener('progress', (e) => {
@@ -117,9 +116,9 @@
             xhr.upload.addEventListener('load', () => {
                 // Bytes are sent; the server is now extracting, validating and indexing.
                 this.setProgress(100, 'Checking package…', '');
-                this.el.progressBar.classList.add('pm-animate-pulse');
+                this.el.progressBar.classList.add('busy');
                 this.el.progressHint.textContent = 'Extracting, validating and hashing. Large packages take a little while.';
-                this.el.cancelBtn.classList.add('pm-hidden');
+                this.el.cancelBtn.classList.add('is-hidden');
             });
 
             xhr.addEventListener('load', () => this.handleResponse(xhr));
@@ -145,11 +144,11 @@
             this.el.overwriteBtn.disabled = true;
             this.el.discardBtn.disabled = true;
 
-            this.el.resultPanel.classList.add('pm-hidden');
-            this.el.progressPanel.classList.remove('pm-hidden');
-            this.el.cancelBtn.classList.add('pm-hidden');
+            this.el.resultPanel.classList.add('is-hidden');
+            this.el.progressPanel.classList.remove('is-hidden');
+            this.el.cancelBtn.classList.add('is-hidden');
             this.setProgress(100, 'Installing…', '');
-            this.el.progressBar.classList.add('pm-animate-pulse');
+            this.el.progressBar.classList.add('busy');
 
             try {
                 const body = new URLSearchParams({ stageId: this.stageId, overwrite: overwrite ? 'true' : 'false' });
@@ -190,7 +189,7 @@
         handleResponse: function (xhr) {
             this.busy = false;
             this.xhr = null;
-            this.el.progressBar.classList.remove('pm-animate-pulse');
+            this.el.progressBar.classList.remove('busy');
 
             let result = null;
             try { result = JSON.parse(xhr.responseText); } catch (e) { /* not JSON */ }
@@ -211,27 +210,27 @@
             const report = result.report || { items: [] };
             this.stageId = status === 'NeedsConfirmation' ? result.stage_id : null;
 
-            this.el.progressPanel.classList.add('pm-hidden');
-            this.el.resultPanel.classList.remove('pm-hidden');
+            this.el.progressPanel.classList.add('is-hidden');
+            this.el.resultPanel.classList.remove('is-hidden');
 
             const styles = {
-                Installed: ['fa-circle-check', 'pm-text-green-600'],
-                NeedsConfirmation: ['fa-triangle-exclamation', 'pm-text-amber-500'],
-                Ready: ['fa-circle-check', 'pm-text-indigo-500'],
-                Rejected: ['fa-circle-xmark', 'pm-text-red-500'],
-                Failed: ['fa-circle-xmark', 'pm-text-red-500']
-            }[status] || ['fa-circle-info', 'pm-text-slate-400'];
+                Installed: ['fa-circle-check', 'ok-t'],
+                NeedsConfirmation: ['fa-triangle-exclamation', 'warn-t'],
+                Ready: ['fa-circle-check', 'info'],
+                Rejected: ['fa-circle-xmark', 'bad-t'],
+                Failed: ['fa-circle-xmark', 'bad-t']
+            }[status] || ['fa-circle-info', 'aux'];
 
-            this.el.resultIcon.className = `fa-solid ${styles[0]} pm-text-xl ${styles[1]}`;
+            this.el.resultIcon.className = `fa-solid ${styles[0]} ${styles[1]}`;
             this.el.resultMessage.textContent = result.message || status;
 
             const idLine = [report.script_id, report.version ? 'v' + report.version : null].filter(Boolean).join(' · ');
             this.el.resultSubline.textContent = result.installed_folder ? `${idLine} → ${result.installed_folder}` : idLine;
 
-            this.el.confirmBox.classList.toggle('pm-hidden', status !== 'NeedsConfirmation');
+            this.el.confirmBox.classList.toggle('is-hidden', status !== 'NeedsConfirmation');
             this.el.overwriteBtn.disabled = false;
             this.el.discardBtn.disabled = false;
-            this.el.libraryLink.classList.toggle('pm-hidden', status !== 'Installed');
+            this.el.libraryLink.classList.toggle('is-hidden', status !== 'Installed');
 
             // Facts
             this.el.facts.innerHTML = '';
@@ -244,51 +243,51 @@
             ];
             facts.filter(f => f[1]).forEach(([label, value, title]) => {
                 const box = document.createElement('div');
-                const dt = document.createElement('dt');
-                dt.className = 'pm-text-[9px] pm-font-black pm-text-slate-400 pm-uppercase pm-tracking-widest';
+                box.className = 'f';
+                const dt = document.createElement('label');
                 dt.textContent = label;
-                const dd = document.createElement('dd');
-                dd.className = 'pm-text-xs pm-font-mono pm-text-slate-700 pm-mt-1 pm-m-0 pm-break-all';
+                const dd = document.createElement('span');
+                dd.className = 'mono wrap';
                 dd.textContent = value;
                 if (title) dd.title = title;
                 box.append(dt, dd);
                 this.el.facts.appendChild(box);
             });
-            this.el.facts.classList.toggle('pm-hidden', this.el.facts.children.length === 0);
+            this.el.facts.classList.toggle('is-hidden', this.el.facts.children.length === 0);
 
             // Report items: errors first, then warnings, then info
             const order = { Error: 0, Warning: 1, Info: 2 };
             const items = (report.items || []).slice().sort((a, b) => order[a.level] - order[b.level]);
             this.el.reportList.innerHTML = '';
             const itemStyle = {
-                Error: ['fa-circle-xmark', 'pm-text-red-500', 'pm-bg-red-50 pm-border-red-100'],
-                Warning: ['fa-triangle-exclamation', 'pm-text-amber-500', 'pm-bg-amber-50 pm-border-amber-200'],
-                Info: ['fa-circle-info', 'pm-text-slate-400', 'pm-bg-slate-50 pm-border-slate-100']
+                Error: ['fa-circle-xmark', 'bad-t', 'msg warn'],
+                Warning: ['fa-triangle-exclamation', 'warn-t', 'msg warn'],
+                Info: ['fa-circle-info', 'aux', 'note']
             };
             if (items.length === 0) {
                 const li = document.createElement('li');
-                li.className = 'pm-text-xs pm-text-slate-400 pm-italic';
+                li.className = 'aux';
                 li.textContent = 'No findings.';
                 this.el.reportList.appendChild(li);
             }
             items.forEach(item => {
                 const s = itemStyle[item.level] || itemStyle.Info;
                 const li = document.createElement('li');
-                li.className = `pm-flex pm-items-start pm-gap-2 pm-p-2 pm-border pm-rounded-md ${s[2]}`;
+                li.className = s[2];
                 const icon = document.createElement('i');
-                icon.className = `fa-solid ${s[0]} ${s[1]} pm-text-[11px] pm-mt-0.5`;
+                icon.className = `fa-solid ${s[0]} ${s[1]}`;
                 const area = document.createElement('span');
-                area.className = 'pm-text-[9px] pm-font-black pm-text-slate-400 pm-uppercase pm-tracking-widest pm-w-24';
+                area.className = 'lbl';
                 area.textContent = item.area;
                 const msg = document.createElement('span');
-                msg.className = 'pm-text-xs pm-text-slate-700 pm-flex-1 pm-break-all';
+                msg.className = 'wrap';
                 msg.textContent = item.message;
-                li.append(icon, area, msg);
+                li.append(icon, ' ', area, ' ', msg);
                 this.el.reportList.appendChild(li);
             });
 
             const log = result.index_log || [];
-            this.el.indexLogBox.classList.toggle('pm-hidden', log.length === 0);
+            this.el.indexLogBox.classList.toggle('is-hidden', log.length === 0);
             this.el.indexLog.textContent = log.join('\n');
         },
 
@@ -310,11 +309,11 @@
             this.el.input.value = '';
             this.el.selected.textContent = '';
             this.setUploadEnabled(false);
-            this.el.progressBar.classList.remove('pm-animate-pulse');
+            this.el.progressBar.classList.remove('busy');
             this.el.progressHint.textContent = 'You can keep using the app in another tab while this runs.';
-            this.el.progressPanel.classList.add('pm-hidden');
-            this.el.resultPanel.classList.add('pm-hidden');
-            this.el.pickPanel.classList.remove('pm-hidden');
+            this.el.progressPanel.classList.add('is-hidden');
+            this.el.resultPanel.classList.add('is-hidden');
+            this.el.pickPanel.classList.remove('is-hidden');
         },
 
         formatBytes: function (bytes) {

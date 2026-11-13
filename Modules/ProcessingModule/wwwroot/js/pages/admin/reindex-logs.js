@@ -5,7 +5,7 @@
 (function () {
     const SCRIPT_ID = "processor-reindex-logs";
 
-    root = {}
+    let root = {}; // local to this script (was an implicit global shared by all page scripts)
 
     window.ModuleRegistry = window.ModuleRegistry || {};
 
@@ -36,8 +36,8 @@
 
                 if (event.data === "[DONE]") {
                     statusParagraph.innerText = "Indexing Complete";
-                    statusParagraph.classList.remove('pm-animate-pulse', 'pm-text-indigo-600');
-                    statusParagraph.classList.add('pm-text-green-600');
+                    statusParagraph.classList.remove('info');
+                    statusParagraph.classList.add('ok-t');
                     output.value += "\n\r>>> REINDEXING PROCESS FINISHED SUCCESSFULLY.";
                     this.dispose(); // Close naturally when finished
                 } else {
@@ -51,7 +51,7 @@
                 if (!statusParagraph || !output) return;
 
                 statusParagraph.innerText = "Connection Lost / Error";
-                statusParagraph.classList.add('pm-text-red-600');
+                statusParagraph.classList.add('bad-t');
                 output.value += "\n\r[CRITICAL ERROR] The stream was interrupted. Check server logs.";
                 this.dispose();
             };

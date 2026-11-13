@@ -1,187 +1,104 @@
 ﻿@model ProcessorApplication.ViewModels.User.ProfileViewModel
+@{
+    ViewData["Title"] = Model.IsAuditView ? "Audit View: " + Model.User.UserName : "Your Profile";
+}
 
 <form asp-controller="Profile" asp-action="Update" method="post" data-script-id="user-profile">
-    <!-- Hidden ID is crucial for the update logic -->
     <input type="hidden" asp-for="User.Id" />
 
-    <div class="mm-flex mm-justify-between mm-items-center mm-mb-6 mm-border-b mm-pb-3">
-        <h2 class="mm-text-3xl mm-font-bold mm-text-gray-900">
-            @if (Model.IsAuditView)
-            {
-                <span class="mm-text-red-600 mm-flex mm-items-center">
-                    <i class="fa-solid fa-user-secret mm-mr-2"></i> AUDIT VIEW
-                </span>
-            }
-            else
-            {
-                <span>Your Profile</span>
-            }
-        </h2>
-        @if (!Model.IsAuditView)
+    <div class="actions">
+        @if (Model.IsAuditView)
         {
-            <a href="/Main/Profile/Download?userName=@Model.User.UserName" class="mm-inline-flex mm-items-center mm-px-4 mm-py-2 mm-border mm-border-transparent mm-text-sm mm-font-medium mm-rounded-md mm-shadow-sm mm-text-white mm-bg-green-600 hover:mm-bg-green-700 mm-transition mm-duration-150">
-                <i class="fa-solid fa-download mm-mr-2"></i> Export Identity
-            </a>
+            <span class="badge warn"><i class="fa-solid fa-user-secret"></i> AUDIT VIEW</span> <span class="aux">viewing data via the master audit key</span>
+        }
+        else
+        {
+            <a href="/Main/Profile/Download?userName=@Model.User.UserName" class="btn sm"><i class="fa-solid fa-download"></i> Export Identity</a>
         }
     </div>
 
-    <!-- Global Status Messages -->
     @if (TempData["StatusMessage"] != null)
     {
-        <div class="mm-rounded-md mm-bg-green-50 mm-p-4 mm-mb-6">
-            <div class="mm-flex">
-                <div class="mm-flex-shrink-0 mm-text-green-400"><i class="fa-solid fa-check-circle"></i></div>
-                <div class="mm-ml-3"><p class="mm-text-sm mm-font-medium mm-text-green-800">@TempData["StatusMessage"]</p></div>
-            </div>
-        </div>
+        <div class="msg ok"><i class="fa-solid fa-check-circle"></i> @TempData["StatusMessage"]</div>
     }
-
     @if (!ViewData.ModelState.IsValid)
     {
-        <div asp-validation-summary="All" class="mm-rounded-md mm-bg-red-50 mm-p-3 mm-text-sm mm-text-red-700 mm-mb-6 mm-border mm-border-red-300"></div>
+        <div asp-validation-summary="All" class="msg warn"></div>
     }
 
-    <div class="mm-grid mm-grid-cols-1 lg:mm-grid-cols-3 mm-gap-8">
-
-        <!-- Left Column: Personal Information -->
-        <div class="lg:mm-col-span-2 mm-space-y-6">
-
-            <!-- Core Info Card -->
-            <div class="mm-bg-white mm-rounded-xl mm-shadow-lg mm-p-6">
-                <h3 class="mm-text-xl mm-font-semibold mm-border-b mm-pb-3 mm-mb-4">Personal & Identity</h3>
-
-                <!-- Read-Only Login ID -->
-                <div class="mm-bg-indigo-50 mm-p-3 mm-rounded-md mm-border mm-border-indigo-100 mm-mb-4">
-                    <label class="mm-block mm-text-xs mm-font-medium mm-text-gray-500">Secure Username (Login ID)</label>
-                    <p class="mm-font-mono mm-text-sm mm-text-indigo-700">@Model.User.UserName</p>
-                    <p class="mm-text-xs mm-text-gray-500 mm-mt-1">Your unique, secure identity string. Unchangeable.</p>
+    <div class="grid">
+        <div class="card">
+            <h2>Personal & Identity</h2>
+            <div class="body">
+                <div class="f">
+                    <label>Secure Username (Login ID) <span class="tip" tabindex="0" data-tip="Your unique, secure identity string. It can't be changed."></span></label>
+                    <span class="mono">@Model.User.UserName</span>
                 </div>
-
-                <!-- Editable Fields -->
-                <div class="mm-space-y-4">
-                    <div>
-                        <label asp-for="User.DisplayNickname" class="mm-block mm-text-sm mm-font-medium mm-text-gray-700">Display Nickname</label>
-                        <input asp-for="User.DisplayNickname" class="mm-mt-1 mm-block mm-w-full mm-rounded-md mm-border-gray-300 mm-shadow-sm mm-p-2 focus:mm-ring-indigo-500 focus:mm-border-indigo-500" />
-                    </div>
-                    <div>
-                        <label asp-for="User.Email" class="mm-block mm-text-sm mm-font-medium mm-text-gray-700">Email Address (Optional)</label>
-                        <div class="mm-mt-1 mm-flex mm-rounded-md mm-shadow-sm">
-                            <input asp-for="User.Email" type="email" class="mm-flex-1 mm-block mm-w-full mm-rounded-none mm-rounded-l-md mm-border-gray-300 mm-shadow-sm mm-p-2 focus:mm-ring-indigo-500 focus:mm-border-indigo-500 sm:mm-text-sm" />
-                            <span class="mm-inline-flex mm-items-center mm-px-3 mm-rounded-r-md mm-border mm-border-l-0 mm-border-gray-300 mm-bg-gray-50 mm-text-gray-500 mm-text-sm">
-                                <i class="fa-solid fa-envelope"></i>
-                            </span>
-                        </div>
-                        <p class="mm-mt-1 mm-text-xs mm-text-gray-500">Used for audit notifications (encrypted).</p>
-                    </div>
-                    <div class="mm-grid mm-grid-cols-2 mm-gap-4">
-                        <div>
-                            <label asp-for="User.Name" class="mm-block mm-text-sm mm-font-medium mm-text-gray-700">Name</label>
-                            <input asp-for="User.Name" class="mm-mt-1 mm-block mm-w-full mm-rounded-md mm-border-gray-300 mm-shadow-sm mm-p-2 focus:mm-ring-indigo-500 focus:mm-border-indigo-500" />
-                        </div>
-                        <div>
-                            <label asp-for="User.Surname" class="mm-block mm-text-sm mm-font-medium mm-text-gray-700">Surname</label>
-                            <input asp-for="User.Surname" class="mm-mt-1 mm-block mm-w-full mm-rounded-md mm-border-gray-300 mm-shadow-sm mm-p-2 focus:mm-ring-indigo-500 focus:mm-border-indigo-500" />
-                        </div>
-                    </div>
+                <div class="f"><label asp-for="User.DisplayNickname">Display Nickname</label><input asp-for="User.DisplayNickname" /></div>
+                <div class="f">
+                    <label asp-for="User.Email">Email Address (optional) <span class="tip" tabindex="0" data-tip="Used for audit notifications; stored encrypted."></span></label>
+                    <input asp-for="User.Email" type="email" />
                 </div>
-            </div>
-
-            <!-- Password Change Card -->
-            <div class="mm-bg-white mm-rounded-xl mm-shadow-lg mm-p-6">
-                <h3 class="mm-text-xl mm-font-semibold mm-border-b mm-pb-3 mm-mb-4">Security Credentials</h3>
-                <p class="mm-text-sm mm-text-gray-500 mm-mb-4">Leave these fields blank unless you want to change the password.</p>
-
-                <div class="mm-space-y-4">
-                    @if (!Model.IsAuditView)
-                    {
-                        <div>
-                            <label asp-for="CurrentPassword" class="mm-block mm-text-sm mm-font-medium mm-text-gray-700"></label>
-                            <input asp-for="CurrentPassword" class="mm-mt-1 mm-block mm-w-full mm-rounded-md mm-border-gray-300 mm-shadow-sm mm-p-2 focus:mm-ring-indigo-500" autocomplete="off" />
-                        </div>
-                    }
-
-                    <div class="mm-grid mm-grid-cols-1 md:mm-grid-cols-2 mm-gap-4">
-                        <div>
-                            <label asp-for="NewPassword" class="mm-block mm-text-sm mm-font-medium mm-text-gray-700"></label>
-                            <input asp-for="NewPassword" class="mm-mt-1 mm-block mm-w-full mm-rounded-md mm-border-gray-300 mm-shadow-sm mm-p-2 focus:mm-ring-indigo-500" autocomplete="new-password" />
-                        </div>
-                        <div>
-                            <label asp-for="ConfirmPassword" class="mm-block mm-text-sm mm-font-medium mm-text-gray-700"></label>
-                            <input asp-for="ConfirmPassword" class="mm-mt-1 mm-block mm-w-full mm-rounded-md mm-border-gray-300 mm-shadow-sm mm-p-2 focus:mm-ring-indigo-500" autocomplete="new-password" />
-                        </div>
-                    </div>
+                <div class="cols">
+                    <div class="f"><label asp-for="User.Name">Name</label><input asp-for="User.Name" /></div>
+                    <div class="f"><label asp-for="User.Surname">Surname</label><input asp-for="User.Surname" /></div>
                 </div>
             </div>
         </div>
 
-        <div class="lg:mm-col-span-1 mm-space-y-6">
-            <div class="mm-bg-yellow-50 mm-rounded-xl mm-shadow-lg mm-p-6 mm-border mm-border-yellow-200">
-                <h3 class="mm-text-lg mm-font-semibold mm-text-yellow-800 mm-border-b mm-border-yellow-300 mm-pb-3 mm-mb-3">Security & Audit</h3>
-
+        <div class="card">
+            <h2>Security Credentials <span class="tip" tabindex="0" data-tip="Leave these empty unless you want to change the password."></span></h2>
+            <div class="body">
                 @if (!Model.IsAuditView)
                 {
-                    <div class="mm-mb-4">
-                        <button type="button" id="check-connectivity-btn" class="mm-w-full mm-inline-flex mm-justify-center mm-items-center mm-px-4 mm-py-2 mm-border mm-border-yellow-300 mm-shadow-sm mm-text-xs mm-font-medium mm-rounded-md mm-text-yellow-700 mm-bg-yellow-100 hover:mm-bg-yellow-200">
-                            <i class="fa-solid fa-wifi mm-mr-2"></i> Check Email Connectivity
-                        </button>
-                        <p class="mm-text-[10px] mm-text-yellow-800 mm-mt-1 mm-text-center mm-opacity-75">Ensures audit emails can be delivered.</p>
-                        <p id="connectivity-result" class="mm-text-xs mm-mt-2 mm-text-center mm-hidden"></p>
-                    </div>
+                    <div class="f"><label asp-for="CurrentPassword"></label><input asp-for="CurrentPassword" autocomplete="off" /></div>
                 }
-
-                @if (Model.IsAuditView)
-                {
-                    <div class="mm-mt-4 mm-p-3 mm-bg-red-100 mm-border-l-4 mm-border-red-500 mm-rounded-r">
-                        <p class="mm-text-sm mm-font-bold mm-text-red-800">AUDIT ACTIVE</p>
-                        <p class="mm-text-xs mm-text-red-700 mm-mt-1">Viewing data via Master Audit Key.</p>
-                    </div>
-                }
+                <div class="cols">
+                    <div class="f"><label asp-for="NewPassword"></label><input asp-for="NewPassword" autocomplete="new-password" /></div>
+                    <div class="f"><label asp-for="ConfirmPassword"></label><input asp-for="ConfirmPassword" autocomplete="new-password" /></div>
+                </div>
             </div>
+        </div>
 
-            <div class="mm-bg-gray-100 mm-rounded-xl mm-shadow-md mm-p-6">
-                <h3 class="mm-text-lg mm-font-semibold mm-border-b mm-pb-3 mm-mb-3">
-                    @(Model.CanEditRoles ? "Manage Access (Roles)" : "Assigned Roles")
-                </h3>
-
+        <div class="card">
+            <h2>@(Model.CanEditRoles ? "Manage Access (Roles)" : "Assigned Roles")</h2>
+            <div class="body">
                 @if (Model.CanEditRoles)
                 {
-                    <div class="mm-space-y-3 mm-max-h-60 mm-overflow-y-auto mm-pr-2">
-                        @for (int i = 0; i < Model.RoleSelections.Count; i++)
-                        {
-                            <div class="mm-flex mm-items-start">
-                                <div class="mm-flex mm-items-center mm-h-5">
-                                    <input type="hidden" asp-for="RoleSelections[i].RoleName" />
-                                    <input asp-for="RoleSelections[i].IsSelected" type="checkbox" class="focus:mm-ring-indigo-500 mm-h-4 mm-w-4 mm-text-indigo-600 mm-border-gray-300 mm-rounded mm-cursor-pointer">
-                                </div>
-                                <div class="mm-ml-3 mm-text-sm">
-                                    <label asp-for="RoleSelections[i].IsSelected" class="mm-font-medium mm-text-gray-700 mm-select-none mm-cursor-pointer">
-                                        @Model.RoleSelections[i].RoleName
-                                    </label>
-                                </div>
-                            </div>
-                        }
-                    </div>
+                    for (int i = 0; i < Model.RoleSelections.Count; i++)
+                    {
+                        <div class="f row">
+                            <input type="hidden" asp-for="RoleSelections[i].RoleName" />
+                            <input asp-for="RoleSelections[i].IsSelected" type="checkbox">
+                            <label asp-for="RoleSelections[i].IsSelected">@Model.RoleSelections[i].RoleName</label>
+                        </div>
+                    }
                 }
                 else
                 {
-                    <div class="mm-flex mm-flex-wrap mm-gap-2">
-                        @foreach (var role in Model.RoleSelections.Where(r => r.IsSelected))
-                        {
-                            <span class="mm-inline-flex mm-items-center mm-px-3 mm-py-1 mm-text-xs mm-font-semibold mm-rounded-full mm-bg-indigo-100 mm-text-indigo-800 mm-border mm-border-indigo-200">@role.RoleName</span>
-                        }
-                        @if (!Model.RoleSelections.Any(r => r.IsSelected))
-                        {
-                            <p class="mm-text-sm mm-text-gray-500 mm-italic">No roles assigned.</p>
-                        }
+                    foreach (var role in Model.RoleSelections.Where(r => r.IsSelected))
+                    {
+                        <span class="badge ok">@role.RoleName</span>
+                    }
+                    if (!Model.RoleSelections.Any(r => r.IsSelected))
+                    {
+                        <span class="aux">No roles assigned.</span>
+                    }
+                }
+                @if (!Model.IsAuditView)
+                {
+                    <div class="actions">
+                        <button type="button" id="check-connectivity-btn" class="btn sm"><i class="fa-solid fa-wifi"></i> Check Email Connectivity</button>
+                        <span class="tip" tabindex="0" data-tip="Checks that audit emails can be delivered."></span>
                     </div>
+                    <div id="connectivity-result" class="is-hidden"></div>
                 }
             </div>
         </div>
     </div>
-    <div class="mm-mt-8 mm-pt-5 mm-border-t mm-border-gray-200 mm-flex mm-justify-end">
-        <button type="submit" class="mm-w-full md:mm-w-auto mm-inline-flex mm-justify-center mm-items-center mm-rounded-md mm-border mm-border-transparent mm-bg-indigo-600 mm-py-3 mm-px-8 mm-text-sm mm-font-medium mm-text-white mm-shadow-lg hover:mm-bg-indigo-700 focus:mm-outline-none focus:mm-ring-2 focus:mm-ring-offset-2 focus:mm-ring-indigo-500 mm-transition-colors">
-            <i class="fa-solid fa-save mm-mr-2"></i> Save Changes & Update Profile
-        </button>
+
+    <div class="actions">
+        <button type="submit" class="btn"><i class="fa-solid fa-save"></i> Save Changes</button>
     </div>
 </form>
 

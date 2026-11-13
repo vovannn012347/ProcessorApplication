@@ -31,15 +31,15 @@
                 btn.onclick = (e) => {
                     const targetTab = e.currentTarget.dataset.tab;
                     rootElement.querySelectorAll('.nav-tab-btn').forEach(t => {
-                        t.classList.remove('p2p-border-blue-600', 'p2p-text-blue-600');
-                        t.classList.add('p2p-border-transparent', 'p2p-text-slate-500');
+                        t.classList.remove('on');
+                        
                     });
-                    e.currentTarget.classList.remove('p2p-border-transparent', 'p2p-text-slate-500');
-                    e.currentTarget.classList.add('p2p-border-blue-600', 'p2p-text-blue-600');
+                    
+                    e.currentTarget.classList.add('on');
 
-                    rootElement.querySelectorAll('.tab-content').forEach(c => c.classList.add('p2p-hidden'));
+                    rootElement.querySelectorAll('.tab-content').forEach(c => c.classList.add('is-hidden'));
                     const targetContent = rootElement.querySelector(`#tab-${targetTab}`);
-                    if (targetContent) targetContent.classList.remove('p2p-hidden');
+                    if (targetContent) targetContent.classList.remove('is-hidden');
 
                     if (targetTab === 'active-session') {
                         this.startLiveSessionPolling(rootElement);
@@ -83,15 +83,15 @@
                 item.onclick = (e) => {
                     const dateKey = e.currentTarget.dataset.dateKey;
 
-                    rootElement.querySelectorAll('.partition-date-item').forEach(i => i.classList.remove('p2p-bg-slate-100', 'p2p-border-blue-500'));
-                    e.currentTarget.classList.add('p2p-bg-slate-100', 'p2p-border-blue-500');
+                    rootElement.querySelectorAll('.partition-date-item').forEach(i => i.classList.remove('hit'));
+                    e.currentTarget.classList.add('hit');
 
                     const emptyState = rootElement.querySelector('#emptyDetailsState');
                     const contentPanel = rootElement.querySelector('#detailsContentPanel');
                     const lblDate = rootElement.querySelector('#lblSelectedDate');
 
-                    if (emptyState) emptyState.classList.add('p2p-hidden');
-                    if (contentPanel) contentPanel.classList.remove('p2p-hidden');
+                    if (emptyState) emptyState.classList.add('is-hidden');
+                    if (contentPanel) contentPanel.classList.remove('is-hidden');
                     if (lblDate) lblDate.textContent = dateKey;
 
                     this.fetchPartitionNodes(rootElement, dateKey);
@@ -113,10 +113,10 @@
 
                 if (!drawer) return;
 
-                const isOpening = drawer.classList.contains('p2p-hidden');
-                drawer.classList.toggle('p2p-hidden');
+                const isOpening = drawer.classList.contains('is-hidden');
+                drawer.classList.toggle('is-hidden');
                 if (chevron) {
-                    chevron.classList.toggle('p2p-rotate-90');
+                    chevron.classList.toggle('fa-chevron-down', isOpening); chevron.classList.toggle('fa-chevron-right', !isOpening);
                 }
 
                 if (isOpening) {
@@ -157,10 +157,10 @@
                     if (statusBadge) {
                         if (data.isBusy) {
                             statusBadge.textContent = "ACTIVE MERGE SESSION";
-                            statusBadge.className = "p2p-px-2.5 p2p-py-1 p2p-text-xs p2p-font-bold p2p-rounded-full p2p-bg-emerald-100 p2p-text-emerald-700";
+                            statusBadge.className = "badge ok";
                         } else {
                             statusBadge.textContent = "IDLE / STANDBY";
-                            statusBadge.className = "p2p-px-2.5 p2p-py-1 p2p-text-xs p2p-font-bold p2p-rounded-full p2p-bg-slate-100 p2p-text-slate-600";
+                            statusBadge.className = "badge";
                         }
                     }
 
@@ -256,8 +256,8 @@
             const drawerLoading = accordionItem.querySelector('.drawer-loading');
             const drawerContent = accordionItem.querySelector('.drawer-content');
 
-            if (drawerLoading) drawerLoading.classList.remove('p2p-hidden');
-            if (drawerContent) drawerContent.classList.add('p2p-hidden');
+            if (drawerLoading) drawerLoading.classList.remove('is-hidden');
+            if (drawerContent) drawerContent.classList.add('is-hidden');
 
             const url = `${window.location.origin}/${CONTROLLER_PATH}/GetHistoricalNodeDetails?date=${encodeURIComponent(dateKey)}&nodeId=${encodeURIComponent(nodeId)}`;
             fetch(url)
@@ -276,18 +276,18 @@
                     if (badgeVerification) {
                         if (data.isVerified) {
                             badgeVerification.textContent = "VERIFIED IDENTITY";
-                            badgeVerification.className = "badge-verification p2p-font-bold p2p-text-xs p2p-px-2 p2p-py-0.5 p2p-rounded p2p-bg-emerald-50 p2p-text-emerald-700 p2p-border p2p-border-emerald-200";
+                            badgeVerification.className = "badge-verification badge ok";
                         } else {
                             badgeVerification.textContent = "UNVERIFIED IDENTITY";
-                            badgeVerification.className = "badge-verification p2p-font-bold p2p-text-xs p2p-px-2 p2p-py-0.5 p2p-rounded p2p-bg-rose-50 p2p-text-rose-700 p2p-border p2p-border-rose-200";
+                            badgeVerification.className = "badge-verification badge bad";
                         }
                     }
 
                     if (lblTrustScore) {
                         lblTrustScore.textContent = `${data.trustScore} / 100`;
-                        lblTrustScore.className = data.trustScore >= 80 ? "lbl-trust-score p2p-font-bold p2p-text-xs p2p-text-emerald-600" :
-                            data.trustScore >= 40 ? "lbl-trust-score p2p-font-bold p2p-text-xs p2p-text-amber-500" :
-                                "lbl-trust-score p2p-font-bold p2p-text-xs p2p-text-rose-600";
+                        lblTrustScore.className = data.trustScore >= 80 ? "lbl-trust-score ok-t" :
+                            data.trustScore >= 40 ? "lbl-trust-score warn-t" :
+                                "lbl-trust-score bad-t";
                     }
 
                     if (lblLastSeen) {
@@ -346,14 +346,14 @@
                         }
                     }
 
-                    if (drawerLoading) drawerLoading.classList.add('p2p-hidden');
-                    if (drawerContent) drawerContent.classList.remove('p2p-hidden');
+                    if (drawerLoading) drawerLoading.classList.add('is-hidden');
+                    if (drawerContent) drawerContent.classList.remove('is-hidden');
                 })
                 .catch(err => {
                     console.error(`[${SCRIPT_ID}] Error fetching node details:`, err);
                     if (drawerLoading) {
                         drawerLoading.textContent = 'Failed to load historical node details.';
-                        drawerLoading.className = 'drawer-loading p2p-py-4 p2p-text-xs p2p-text-rose-600 p2p-text-center';
+                        drawerLoading.className = 'drawer-loading bad-t';
                     }
                 });
         },

@@ -2,9 +2,11 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Security;
 using System.Security.Principal;
 using System.Text;
 
+using Common.Infrastructure;
 using Common.Interfaces;
 
 using Microsoft.Extensions.Options;
@@ -49,11 +51,20 @@ public class WindowsOsUserManagementService : IOsUserManagementService
             string workerUser = _settings.UserName;
             string rightsUser = $"{workerUser}-rights";
 
+            if (workerUser.Length > 13)
+                logCallback($"[FAIL] User name '{workerUser}' is too long: Windows adds '-rights' and account names are limited to 20 characters (max 13 here).");
+
             // 2. Identity & Sync Checks (Worker)
             CheckAccountSync(workerUser, _settings.UserPassword, "Worker", logCallback);
 
             // 3. Identity & Sync Checks (Rights Manager)
             CheckAccountSync(rightsUser, _settings.RightsUserPassword, "Rights Manager", logCallback);
+
+            // 4. Network: try a real connection as the worker
+            await CheckWorkerNetworkAsync(workerUser, DpapiSecret.Unprotect(_settings.UserPassword), logCallback, ct);
+
+            // 5. Node home: try to read a protected file (node.key / a database) as the worker
+            await CheckWorkerNodeHomeReadAsync(workerUser, DpapiSecret.Unprotect(_settings.UserPassword), logCallback, ct);
 
             // 4. Group Check
             if (!string.IsNullOrEmpty(_settings.GroupName))
@@ -71,19 +82,26 @@ public class WindowsOsUserManagementService : IOsUserManagementService
         }
     }
 
-    private void CheckAccountSync(string user, string pass, string desc, Action<string> log)
+    private void CheckAccountSync(string user, string? storedPass, string desc, Action<string> log)
     {
         bool exists = CheckUserExists(user);
+        string? pass = DpapiSecret.Unprotect(storedPass);
         if (exists)
         {
-            if (string.IsNullOrWhiteSpace(pass))
+            if (string.IsNullOrWhiteSpace(storedPass))
             {
                 log($"[WARN] {desc} '{user}': MISSING PASSWORD in settings.");
+            }
+            else if (string.IsNullOrWhiteSpace(pass))
+            {
+                log($"[FAIL] {desc} '{user}': the stored password can't be decrypted by the account the app runs as (Provision again).");
             }
             else
             {
                 bool authOk = TestLogon(user, pass);
                 log(authOk ? $"[OK] {desc} '{user}': IN SYNC" : $"[FAIL] {desc} '{user}': PASSWORD MISMATCH (Sync required)");
+                if (authOk && !DpapiSecret.IsProtected(storedPass))
+                    log($"[WARN] {desc} '{user}': password stored in plain text; run Provision once to encrypt it.");
             }
         }
         else
@@ -131,6 +149,12 @@ public class WindowsOsUserManagementService : IOsUserManagementService
         string workerUser = _settings.UserName;
         string rightsUser = $"{workerUser}-rights";
 
+        if (string.IsNullOrWhiteSpace(workerUser) || workerUser.Length > 13)
+        {
+            logCallback($"[ERROR] User name '{workerUser}' must have 1-13 characters (Windows adds '-rights'; account names are limited to 20). Provisioning aborted.");
+            return;
+        }
+
         // --- STEP 1: SYNC ACCOUNTS ---
         await SyncAccountAsync(workerUser, _settings.UserPassword, "Worker", logCallback, ct);
         await SyncAccountAsync(rightsUser, _settings.RightsUserPassword, "Rights Manager", logCallback, ct);
@@ -167,7 +191,30 @@ public class WindowsOsUserManagementService : IOsUserManagementService
             setupCommands.Add($"icacls \"{executorDir}\" /grant \"{workerUser}:(OI)(CI)RX\"");
         }
 
-        string setupScript = BuildStepScript("Environment Lockdown", "Applying directory ownership and restricted access rules.", setupCommands.ToArray());
+        // Node home (databases, node.key, settings): deny the worker reading it. The explicit grants above outrank this
+        // inherited deny, so script/results/executor folders inside the node home stay usable. Old deny removed first.
+        string nodeHome = NodeHome.Folder.TrimEnd('\\', '/');
+        string? skipReason = NodeHomeDenySkipReason(nodeHome, scriptPath, outputPath, executorDir);
+        setupCommands.Add($"icacls \"{nodeHome}\" /remove:d \"{workerUser}\"");
+        if (_settings.ProtectNodeHome && skipReason == null)
+            setupCommands.Add($"icacls \"{nodeHome}\" /deny \"{workerUser}:(OI)(CI)R\"");
+        else if (_settings.ProtectNodeHome)
+            logCallback($"[WARN] Node home not protected: {skipReason}");
+
+        // Network: block (or, with Allow Network, remove the block for) all traffic of the worker's user.
+        // Windows doesn't filter loopback traffic, so local services stay reachable; Check Status tests it for real.
+        string outRule = $"ProcessorSandbox-Out-{workerUser}", inRule = $"ProcessorSandbox-In-{workerUser}";
+        setupCommands.Add($"Remove-NetFirewallRule -Name '{outRule}' -ErrorAction SilentlyContinue");
+        setupCommands.Add($"Remove-NetFirewallRule -Name '{inRule}' -ErrorAction SilentlyContinue");
+        if (!_settings.AllowNetwork)
+        {
+            string sid = new NTAccount(workerUser).Translate(typeof(SecurityIdentifier)).Value;
+            string who = $"D:(A;;CC;;;{sid})";
+            setupCommands.Add($"New-NetFirewallRule -Name '{outRule}' -DisplayName 'Processor sandbox: no network for {workerUser} (out)' -Direction Outbound -Action Block -Profile Any -LocalUser '{who}' | Out-Null");
+            setupCommands.Add($"New-NetFirewallRule -Name '{inRule}' -DisplayName 'Processor sandbox: no network for {workerUser} (in)' -Direction Inbound -Action Block -Profile Any -LocalUser '{who}' | Out-Null");
+        }
+
+        string setupScript = BuildStepScript("Environment Lockdown", "Applying directory ownership, restricted access and network rules.", setupCommands.ToArray());
 
         if (await RunElevatedStepAsync(setupScript, ct))
             logCallback("[SUCCESS] Provisioning and Sync complete.");
@@ -175,14 +222,22 @@ public class WindowsOsUserManagementService : IOsUserManagementService
             logCallback("[ERROR] Environment setup failed during the elevated phase.");
     }
 
-    private async Task SyncAccountAsync(string user, string currentPass, string desc, Action<string> log, CancellationToken ct)
+    private async Task SyncAccountAsync(string user, string? storedPass, string desc, Action<string> log, CancellationToken ct)
     {
+        string field = user.EndsWith("-rights") ? nameof(_settings.RightsUserPassword) : nameof(_settings.UserPassword);
+        string? currentPass = DpapiSecret.Unprotect(storedPass);
         bool exists = CheckUserExists(user);
         bool authenticated = exists && !string.IsNullOrEmpty(currentPass) && TestLogon(user, currentPass);
 
         if (exists && authenticated)
         {
-            log($"[INFO] {desc} user '{user}' is already in sync.");
+            if (!DpapiSecret.IsProtected(storedPass))
+            {
+                // older settings kept it in plain text: store it encrypted (no UAC needed)
+                await _settingsService.SetAsync(ModuleId, $"{nameof(OsSandboxSettings)}:{field}", DpapiSecret.Protect(currentPass!));
+                log($"[INFO] {desc} user '{user}' is in sync; its password is now stored encrypted.");
+            }
+            else log($"[INFO] {desc} user '{user}' is already in sync.");
             return;
         }
 
@@ -198,9 +253,158 @@ public class WindowsOsUserManagementService : IOsUserManagementService
 
         if (await RunElevatedStepAsync(script, ct))
         {
-            string field = user.EndsWith("-rights") ? nameof(_settings.RightsUserPassword) : nameof(_settings.UserPassword);
-            await _settingsService.SetAsync(ModuleId, $"{nameof(OsSandboxSettings)}:{field}", newPass);
+            await _settingsService.SetAsync(ModuleId, $"{nameof(OsSandboxSettings)}:{field}", DpapiSecret.Protect(newPass));
             log($"[SUCCESS] {desc} credentials updated and saved.");
+        }
+    }
+
+    /// <summary>Starts PowerShell as the worker and tries an outside TCP connection; reports whether the block works.</summary>
+    private async Task CheckWorkerNetworkAsync(string workerUser, string? workerPass, Action<string> log, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(workerPass) || !CheckUserExists(workerUser) || !TestLogon(workerUser, workerPass))
+        {
+            log("[SKIP] Network test needs a working worker account.");
+            return;
+        }
+        try
+        {
+            using var secure = new SecureString();
+            foreach (char c in workerPass) secure.AppendChar(c);
+            secure.MakeReadOnly();
+            var psi = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                ArgumentList = { "-NoProfile", "-NonInteractive", "-Command",
+                    "try { $c = New-Object Net.Sockets.TcpClient; $t = $c.ConnectAsync('1.1.1.1', 443); " +
+                    "if ($t.Wait(5000) -and $c.Connected) { 'OPEN' } else { 'BLOCKED' } } catch { 'BLOCKED' }" },
+                UserName = workerUser,
+                Password = secure,
+                LoadUserProfile = false,
+                WorkingDirectory = Environment.SystemDirectory,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            using var p = Process.Start(psi)!;
+            var output = p.StandardOutput.ReadToEndAsync();
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            limit.CancelAfter(TimeSpan.FromSeconds(20));
+            try { await p.WaitForExitAsync(limit.Token); }
+            catch (OperationCanceledException) { try { p.Kill(true); } catch { } log("[WARN] Network test as the worker timed out."); return; }
+
+            bool open = (await output).Contains("OPEN");
+            if (_settings.AllowNetwork)
+                log(open ? "[OK] Network allowed for the worker (Allow Network is on)." : "[INFO] Allow Network is on, but the worker could not connect out.");
+            else
+                log(open ? "[FAIL] The worker CAN reach the internet: the firewall block isn't working (Provision again, or check that Windows Firewall is on)."
+                         : "[OK] Network blocked for the worker (outside connection refused). Loopback is not filtered on Windows.");
+        }
+        catch (Exception ex)
+        {
+            log($"[WARN] Network test as the worker failed to run: {ex.Message}");
+        }
+    }
+
+    /// <summary>Why the node-home deny must be skipped, or null. A deny on the very folder that also holds an explicit
+    /// grant would win over that grant (explicit deny comes first), and a deny on a drive root is far too broad.</summary>
+    private static string? NodeHomeDenySkipReason(string nodeHome, string scriptPath, string outputPath, string? executorDir)
+    {
+        if (string.IsNullOrWhiteSpace(nodeHome)) return "node home path is empty.";
+        string full = Path.GetFullPath(nodeHome).TrimEnd('\\', '/');
+        string? root = Path.GetPathRoot(full)?.TrimEnd('\\', '/');
+        if (string.Equals(full, root, StringComparison.OrdinalIgnoreCase)) return $"the node home is a drive root ({full}).";
+        foreach (var (path, what) in new[] { (scriptPath, "Script Source Path"), (outputPath, "Results Output Path"), (executorDir ?? "", "executor folder") })
+        {
+            if (!string.IsNullOrEmpty(path) && string.Equals(Path.GetFullPath(path).TrimEnd('\\', '/'), full, StringComparison.OrdinalIgnoreCase))
+                return $"the {what} is the node home folder itself; point it to a subfolder.";
+        }
+        return null;
+    }
+
+    /// <summary>A file the worker must not read: node.key, else a database in the node home outside the sandbox folders.</summary>
+    private string? FindProtectedSample()
+    {
+        string home = NodeHome.Folder;
+        string key = Path.Combine(home, "Module_Data", "Main", "keys", "node.key");
+        if (File.Exists(key)) return key;
+
+        var allowed = new[] { _general.ScriptSourcePath, _general.ResultsOutputPath, _python.PythonExecutablePath }
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(p => Path.GetFullPath(p!).TrimEnd('\\', '/') + Path.DirectorySeparatorChar)
+            .ToList();
+        try
+        {
+            var opts = new EnumerationOptions { RecurseSubdirectories = true, MaxRecursionDepth = 4, IgnoreInaccessible = true };
+            return Directory.EnumerateFiles(home, "*.db", opts)
+                .FirstOrDefault(f => !allowed.Any(a => f.StartsWith(a, StringComparison.OrdinalIgnoreCase)));
+        }
+        catch { return null; }
+    }
+
+    private async Task CheckWorkerNodeHomeReadAsync(string workerUser, string? workerPass, Action<string> log, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(workerPass) || !CheckUserExists(workerUser))
+        {
+            log("[INFO] Node home read test skipped: the worker account isn't set up.");
+            return;
+        }
+        string? sample = FindProtectedSample();
+        if (sample == null)
+        {
+            log("[INFO] Node home read test skipped: no node.key or database found in the node home.");
+            return;
+        }
+
+        string quoted = sample.Replace("'", "''");
+        string? result = await RunAsWorkerAsync(workerUser, workerPass,
+            $"try {{ [IO.File]::OpenRead('{quoted}').Close(); 'READ' }} catch [UnauthorizedAccessException] {{ 'DENIED' }} catch {{ 'ERR ' + $_.Exception.Message }}",
+            TimeSpan.FromSeconds(20), ct);
+
+        string name = Path.GetFileName(sample);
+        if (result == null) { log("[WARN] Node home read test as the worker did not finish."); return; }
+        if (result.Contains("DENIED"))
+            log(_settings.ProtectNodeHome ? $"[OK] The worker cannot read the node home ({name})."
+                                          : $"[INFO] The worker cannot read the node home ({name}), although Protect Node Home is off.");
+        else if (result.Contains("READ"))
+            log(_settings.ProtectNodeHome ? $"[FAIL] The worker CAN read {sample}: run Setup User again (Protect Node Home)."
+                                          : $"[WARN] The worker can read {sample} (Protect Node Home is off).");
+        else
+            log($"[WARN] Node home read test: {result.Trim()}");
+    }
+
+    /// <summary>Runs a PowerShell command as the worker and returns its output (null on timeout or start failure).</summary>
+    private static async Task<string?> RunAsWorkerAsync(string workerUser, string workerPass, string command, TimeSpan timeout, CancellationToken ct)
+    {
+        try
+        {
+            using var secure = new SecureString();
+            foreach (char c in workerPass) secure.AppendChar(c);
+            secure.MakeReadOnly();
+            var psi = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                ArgumentList = { "-NoProfile", "-NonInteractive", "-Command", command },
+                UserName = workerUser,
+                Password = secure,
+                LoadUserProfile = false,
+                WorkingDirectory = Environment.SystemDirectory,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            using var p = Process.Start(psi)!;
+            var output = p.StandardOutput.ReadToEndAsync();
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            limit.CancelAfter(timeout);
+            try { await p.WaitForExitAsync(limit.Token); }
+            catch (OperationCanceledException) { try { p.Kill(true); } catch { } return null; }
+            return await output;
+        }
+        catch (Exception ex)
+        {
+            return "ERR " + ex.Message;
         }
     }
 

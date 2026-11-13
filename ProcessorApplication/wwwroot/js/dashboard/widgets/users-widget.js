@@ -23,7 +23,7 @@ window.WidgetLibrary["main-user-stats"] = {
     refresh: async function () {
         const bling = this.shell.querySelector('.status-bling');
         if (bling) {
-            bling.className = 'status-bling mm-w-2 mm-h-2 mm-rounded-full mm-bg-slate-400 mm-scale-125 mm-transition-all mm-duration-75';
+            bling.className = 'dot status-bling busy';
         }
 
         try {
@@ -50,8 +50,8 @@ window.WidgetLibrary["main-user-stats"] = {
         if (syncEl) syncEl.innerText = data.lastChecked || '--:--:--';
 
         if (bling) {
-            const colors = ['mm-bg-green-500', 'mm-bg-amber-500', 'mm-bg-red-500'];
-            bling.className = `status-bling mm-w-2 mm-h-2 mm-rounded-full mm-transition-colors mm-duration-500 ${colors[data.state] || colors[2]}`;
+            const colors = ['ok', 'warn', 'bad'];
+            bling.className = `dot status-bling ${colors[data.state] || colors[2]}`;
         }
     },
 

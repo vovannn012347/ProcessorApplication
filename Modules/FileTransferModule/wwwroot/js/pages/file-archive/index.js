@@ -66,11 +66,11 @@
             if (!modal) return;
 
             const form = document.getElementById(formSelector.replace('#', ''));
-            const close = () => { modal.classList.add('ftt-hidden'); form?.reset(); };
+            const close = () => { modal.classList.add('is-hidden'); form?.reset(); };
 
             if (openSelector) {
                 const openBtn = rootElement.querySelector(openSelector);
-                if (openBtn) openBtn.onclick = () => modal.classList.remove('ftt-hidden');
+                if (openBtn) openBtn.onclick = () => modal.classList.remove('is-hidden');
             }
 
             const closeBtn = modal.querySelector(closeSelector);
@@ -90,7 +90,7 @@
                 e.preventDefault();
                 const spinner = form.querySelector('#ingest-spinner');
                 const submitBtn = form.querySelector('#btn-submit-ingest');
-                if (spinner) spinner.classList.remove('ftt-hidden');
+                if (spinner) spinner.classList.remove('is-hidden');
                 if (submitBtn) submitBtn.disabled = true;
 
                 try {
@@ -109,7 +109,7 @@
                     console.error(`[${SCRIPT_ID}] Ingest upload error:`, err);
                     this.showStatus(rootElement, 'Network failure during ingestion.', false);
                 } finally {
-                    if (spinner) spinner.classList.add('ftt-hidden');
+                    if (spinner) spinner.classList.add('is-hidden');
                     if (submitBtn) submitBtn.disabled = false;
                 }
             };
@@ -195,7 +195,7 @@
             }
             modal.querySelector('#edit-custom-fields').value = fieldsText;
 
-            modal.classList.remove('ftt-hidden');
+            modal.classList.remove('is-hidden');
         },
 
         bindEditInfoForm: function (rootElement, tableContainer) {
@@ -277,11 +277,9 @@
             if (!box) return;
 
             box.textContent = message;
-            box.className = isSuccess
-                ? 'ftt-mb-4 ftt-p-3 ftt-rounded-lg ftt-text-xs ftt-font-medium ftt-bg-emerald-50 ftt-text-emerald-800 ftt-border ftt-border-emerald-200 ftt-block'
-                : 'ftt-mb-4 ftt-p-3 ftt-rounded-lg ftt-text-xs ftt-font-medium ftt-bg-red-50 ftt-text-red-800 ftt-border ftt-border-red-200 ftt-block';
+            box.className = 'msg ' + (isSuccess ? 'ok' : 'warn');
 
-            setTimeout(() => box.classList.add('ftt-hidden'), 6000);
+            setTimeout(() => box.classList.add('is-hidden'), 6000);
         },
 
         dispose: function () { }

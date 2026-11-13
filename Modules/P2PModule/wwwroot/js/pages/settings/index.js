@@ -6,7 +6,7 @@
     const SCRIPT_ID = "p2p-settings";
     const WRAPPER_ID = "p2p-settings-wrapper";
 
-    root = {};
+    let root = {}; // local to this script (was an implicit global shared by all page scripts)
     window.ModuleRegistry = window.ModuleRegistry || {};
 
     window.ModuleRegistry[SCRIPT_ID] = {
@@ -40,51 +40,25 @@
          *Endpoint listerer attachment
          */
         initAutoDiscoverySubsystem: function (container) {
-            const toggleBtn = container.querySelector('#p2pDropdownToggleBtn');
-            const menu = container.querySelector('#p2pDropdownMenu');
-            const itemsList = container.querySelector('#p2pDropdownItemsList');
+            const addBtn = container.querySelector('#p2pAddEndpointBtn');
+            const source = container.querySelector('#p2pEndpointSource');
             const targetTextArea = container.querySelector('#p2pNodeAccessTextArea');
+            if (!addBtn || !source || !targetTextArea) return;
 
-            if (!toggleBtn || !menu || !itemsList || !targetTextArea) return;
-
-            // Simple Local Dropdown Toggle
-            toggleBtn.onclick = (e) => {
-                e.stopPropagation();
-                const isHidden = menu.classList.contains('p2p-hidden');
-                if (isHidden) {
-                    menu.classList.remove('p2p-hidden');
-                } else {
-                    menu.classList.add('p2p-hidden');
-                }
-            };
-
-            // Global Closer Strategy
-            document.addEventListener('click', () => menu.classList.add('p2p-hidden'));
-
-            // Click Bubbling for Actions Rendered Server-Side
-            itemsList.onclick = (e) => {
-                const targetBtn = e.target.closest('[data-action]');
-                if (!targetBtn) return;
-
-                const actionKey = targetBtn.getAttribute('data-action');
-
-                // Dispatch execution lookup to resolve target network string boundaries
+            addBtn.onclick = () => {
+                const actionKey = source.value;
+                if (!actionKey) return;
                 fetch(`/P2P/Settings/ResolveDiscoveryEndpoint?actionKey=${encodeURIComponent(actionKey)}`, {
                     headers: { 'X-Requested-With': 'XMLHttpRequest' }
                 })
                     .then(r => r.json())
                     .then(data => {
                         if (!data || !data.endpoint) return;
-
-                        // One endpoint per line (the server splits on newlines)
-                        let currentEntries = targetTextArea.value.split(/\r?\n/)
-                            .map(v => v.trim())
-                            .filter(v => v.length > 0);
-
-                        // Enforce uniqueness constraints locally
-                        if (!currentEntries.includes(data.endpoint)) {
-                            currentEntries.push(data.endpoint);
-                            targetTextArea.value = currentEntries.join('\n');
+                        // One endpoint per line (the server splits on newlines); no duplicates
+                        const entries = targetTextArea.value.split(/\r?\n/).map(v => v.trim()).filter(v => v.length > 0);
+                        if (!entries.includes(data.endpoint)) {
+                            entries.push(data.endpoint);
+                            targetTextArea.value = entries.join('\n');
                         }
                     })
                     .catch(err => console.error(`[${SCRIPT_ID}] Resolution tracking error:`, err));
@@ -102,7 +76,7 @@
             var originalHtml = "";
             if (btn) {
                 originalHtml = btn.innerHTML;
-                btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin p2p-mr-2"></i> Saving Settings...';
+                btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving...';
                 btn.disabled = true;
             }
 
@@ -117,7 +91,10 @@
                 })
                 .then(html => {
                     // Safely update live container fragment
-                    root.innerHTML = html;
+                    // The response is the whole view: take what's inside its wrapper, so wrappers don't nest
+                    const doc = new DOMParser().parseFromString(html, 'text/html');
+                    const fresh = doc.getElementById(WRAPPER_ID);
+                    root.innerHTML = fresh ? fresh.innerHTML : html;
 
                     // Re-bind lifecycle context constraints
                     this.init(root);

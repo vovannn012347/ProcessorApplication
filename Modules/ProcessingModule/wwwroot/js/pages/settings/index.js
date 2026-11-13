@@ -4,7 +4,7 @@
  */
 (function () {
     const SCRIPT_ID = "processor-settings";
-    const WRAPPER_ID = "settings-partial-wrapper";
+    const WRAPPER_ID = "processor-settings-wrapper";
 
     // Module-scoped (was an undeclared assignment, which leaked a global window.root).
     let root = null;
@@ -48,7 +48,7 @@
 
             const originalHtml = btn?.innerHTML;
             if (btn) {
-                btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin pm-mr-2"></i> Saving...';
+                btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving...';
                 btn.disabled = true;
             }
 

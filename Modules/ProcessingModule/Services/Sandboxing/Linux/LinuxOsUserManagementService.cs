@@ -1,5 +1,7 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
+
+using Common.Infrastructure;
 
 using Microsoft.Extensions.Options;
 
@@ -81,8 +83,16 @@ public class LinuxOsUserManagementService : IOsUserManagementService
         allOk &= await ExpectAsync(log, w, true, $"[OK] Worker can pass through the results folder.", $"[FAIL] Worker can't reach the results folder {results}.", "-x", results);
         allOk &= await ExpectAsync(log, w, false, $"[OK] Worker can't list the results folder (job ids stay hidden).", $"[WARN] Worker CAN list the results folder {results}.", "-r", results);
 
+        // Node home (databases, node.key, settings): protected by its own permissions on Linux (keep it 750, files 640)
+        if (FindProtectedSample(scripts, results, executor) is string sample)
+            allOk &= await ExpectAsync(log, w, false, $"[OK] Worker can't read the node home ({Path.GetFileName(sample)}).",
+                _settings.ProtectNodeHome ? $"[FAIL] Worker CAN read {sample}: make the node home folder 750 and its files 640 (chmod -R o-rwx)."
+                                          : $"[WARN] Worker CAN read {sample} (Protect Node Home is off).", "-r", sample);
+        else log("[INFO] Node home read test skipped: no node.key or database found in the node home.");
+
         // Network: loopback (could reach this app's own endpoints) and outside
-        allOk &= await CheckNetworkAsync(log, w, ct);
+        if (_settings.AllowNetwork) log("[INFO] Allow Network is on: the worker's network is not blocked (network test skipped).");
+        else allOk &= await CheckNetworkAsync(log, w, ct);
 
         log(allOk ? "[FINISH] Verification complete." : "[FINISH] Verification complete with WARNINGS/ERRORS.");
     }
@@ -128,6 +138,9 @@ public class LinuxOsUserManagementService : IOsUserManagementService
         // "others", so the worker can't open those files through a folder it may pass through.
         args.Add("--protect");
         args.Add(Path.TrimEndingDirectorySeparator(Common.Infrastructure.NodeHome.Folder));
+
+        // Allow Network (Processing settings): leave the worker's network open (removes an earlier block)
+        if (_settings.AllowNetwork) args.Add("--allow-network");
 
         string file;
         List<string> runArgs;
@@ -181,6 +194,21 @@ public class LinuxOsUserManagementService : IOsUserManagementService
     }
 
     /// <summary>Runs <c>test &lt;args&gt;</c> as the worker and compares with what is expected.</summary>
+    /// <summary>A file the worker must not read: node.key, else a database in the node home outside the sandbox folders.</summary>
+    private static string? FindProtectedSample(params string?[] sandboxPaths)
+    {
+        string home = NodeHome.Folder;
+        string key = Path.Combine(home, "Module_Data", "Main", "keys", "node.key");
+        if (File.Exists(key)) return key;
+        var allowed = sandboxPaths.Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p!.TrimEnd('/') + "/").ToList();
+        try
+        {
+            var opts = new EnumerationOptions { RecurseSubdirectories = true, MaxRecursionDepth = 4, IgnoreInaccessible = true };
+            return Directory.EnumerateFiles(home, "*.db", opts).FirstOrDefault(f => !allowed.Any(a => f.StartsWith(a, StringComparison.Ordinal)));
+        }
+        catch { return null; }
+    }
+
     private static async Task<bool> ExpectAsync(Action<string> log, string worker, bool expected, string okText, string badText, params string[] testArgs)
     {
         var args = new List<string> { "-n", "-u", worker, "test" };

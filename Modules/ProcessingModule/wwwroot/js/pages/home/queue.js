@@ -5,7 +5,7 @@
 (function () {
     const SCRIPT_ID = "processor-queue";
 
-    root = {}
+    let root = {}; // local to this script (was an implicit global shared by all page scripts)
 
     window.ModuleRegistry = window.ModuleRegistry || {};
 
@@ -26,7 +26,7 @@
          */
         toggleRow: function (id) {
             const row = root.querySelector(`#${id}`);
-            if (row) row.classList.toggle('pm-hidden');
+            if (row) row.classList.toggle('is-hidden');
         },
 
         /**
@@ -65,23 +65,25 @@
 
             if (!container || !icon) return;
 
-            if (container.classList.contains('pm-hidden')) {
-                container.classList.remove('pm-hidden');
+            if (container.classList.contains('is-hidden')) {
+                container.classList.remove('is-hidden');
                 icon.classList.replace('fa-chevron-right', 'fa-chevron-down');
 
                 // Only fetch if we still see the loader
                 if (container.querySelector('.loader')) {
+                    // The container may be a table row: the content goes into its cell
+                    const target = container.tagName === 'TR' ? container.firstElementChild : container;
                     try {
                         const response = await fetch(`/processing/Home/GetSubJobDetails?subJobId=${subId}`, {
                             headers: { 'X-Requested-With': 'XMLHttpRequest' }
                         });
-                        container.innerHTML = await response.text();
+                        target.innerHTML = await response.text();
                     } catch (err) {
-                        container.innerHTML = '<div class="pm-p-4 pm-text-[9px] pm-text-red-500">Failed to retrieve artifacts.</div>';
+                        target.innerHTML = '<div class="bad-t">Failed to retrieve artifacts.</div>';
                     }
                 }
             } else {
-                container.classList.add('pm-hidden');
+                container.classList.add('is-hidden');
                 icon.classList.replace('fa-chevron-down', 'fa-chevron-right');
             }
         },

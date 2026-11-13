@@ -36,7 +36,7 @@
             if (closeConsoleBtn) {
                 closeConsoleBtn.onclick = () => {
                     const consolePanel = rootElement.querySelector('#console-expander-panel');
-                    if (consolePanel) consolePanel.classList.add('p2p-hidden');
+                    if (consolePanel) consolePanel.classList.add('is-hidden');
 
                     if (this.activeAbortController) {
                         this.activeAbortController.abort();
@@ -66,7 +66,7 @@
             const outputArea = root.querySelector('#mesh-processing-output-area');
             const textSource = formElement.querySelector('#p2p-batch-input-source');
 
-            if (consolePanel) consolePanel.classList.remove('p2p-hidden');
+            if (consolePanel) consolePanel.classList.remove('is-hidden');
             if (outputArea) outputArea.value = "Acquiring connection request pipeline...\n";
 
             if (!textSource || !textSource.value.trim()) {

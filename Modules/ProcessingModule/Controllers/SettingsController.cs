@@ -14,6 +14,8 @@ using ProcessingModule.Configuration;
 using ProcessingModule.Infrastructure;
 using ProcessingModule.Models.Views;
 using ProcessingModule.Services.Runtime;
+using Microsoft.Extensions.DependencyInjection;
+using ProcessingModule.Services.Sandboxing;
 
 namespace ProcessingModule.Controllers;
 
@@ -154,6 +156,10 @@ public class SettingsController : Controller
         //await _settingsService.SetAsync(ModuleId, $"{nameof(OsSandboxSettings)}:{nameof(model.HomeDirectory)}", model.HomeDirectory);
         await _settingsService.SetAsync(ModuleId, $"{nameof(OsSandboxSettings)}:{nameof(model.Shell)}", model.Shell);
         await _settingsService.SetAsync(ModuleId, $"{nameof(OsSandboxSettings)}:{nameof(model.UserName)}", model.UserName);
+        await _settingsService.SetAsync(ModuleId, $"{nameof(OsSandboxSettings)}:{nameof(model.AllowNetwork)}", model.AllowNetwork);
+        await _settingsService.SetAsync(ModuleId, $"{nameof(OsSandboxSettings)}:{nameof(model.ProtectNodeHome)}", model.ProtectNodeHome);
+        await _settingsService.SetAsync(ModuleId, $"{nameof(OsSandboxSettings)}:{nameof(model.MemoryLimitMb)}", model.MemoryLimitMb);
+        await _settingsService.SetAsync(ModuleId, $"{nameof(OsSandboxSettings)}:{nameof(model.CpuLimitPercent)}", model.CpuLimitPercent);
     }
 
     private async Task SaveDockerSandbox(DockerSandboxSettings model)
@@ -180,6 +186,8 @@ public class SettingsController : Controller
         var stream = new EventStreamWriter(Response, ct);
         try
         {
+            // Accounts/permissions change now: the last check result no longer says anything
+            HttpContext.RequestServices.GetRequiredService<SandboxReadiness>().Reset();
             await _osUserService.ProvisionUserAsync(stream.Write, ct);
             await stream.DrainAsync();
 
@@ -206,8 +214,11 @@ public class SettingsController : Controller
         var stream = new EventStreamWriter(Response, ct);
         try
         {
-            await _osUserService.CheckStatusAsync(stream.Write, ct);
+            // Also record the result: with Require Sandboxing a passing check lets steps run again (no restart needed)
+            var lines = new List<string>();
+            await _osUserService.CheckStatusAsync(line => { lock (lines) lines.Add(line); stream.Write(line); }, ct);
             await stream.DrainAsync();
+            lock (lines) HttpContext.RequestServices.GetRequiredService<SandboxReadiness>().Record(lines.ToList(), "Check Status");
 
             await Response.Body.WriteAsync(Encoding.UTF8.GetBytes("data: [DONE]\n\n"), ct);
 

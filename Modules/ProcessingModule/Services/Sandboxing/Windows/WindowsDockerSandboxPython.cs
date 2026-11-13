@@ -1,4 +1,9 @@
-﻿using System.Diagnostics;
+﻿// Docker sandbox: COMMENTED OUT (2026-11-13). It was never a Docker runner: a placeholder that starts "python" as a
+// hard-coded local user with a hard-coded password. Choosing SandboxType.Docker now gives UnavailableSandbox (the step
+// ends in a clear Error) on every OS. The Linux copy (LinuxDockerSandboxPython) was already deleted on linux-sandbox.
+// DockerSandboxSettings and the (already commented-out) settings form are kept for a real implementation later.
+/*
+using System.Diagnostics;
 using System.Security;
 using System.Security.AccessControl;
 
@@ -98,3 +103,4 @@ public class WindowsDockerSandboxPython : ISandboxProcessing
         throw new NotImplementedException();
     }
 }
+*/

@@ -8,7 +8,7 @@ public class GithubSettings : IRegistrySettings
 {
     public string ProviderKey => "github";
 
-    public string ProviderName => "GithubSettings_key";
+    public string ProviderName => "GitHub";
     public string SettingsViewPath => "~/Views/Providerless/Settings/_Settings_Reg_github.cshtml";
 
 

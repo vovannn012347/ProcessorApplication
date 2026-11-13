@@ -8,6 +8,6 @@ public class NoneRegistrySettings : IRegistrySettings
 {
     public string ProviderKey => "none";
 
-    public string ProviderName => "None_key";
+    public string ProviderName => "None";
     public string SettingsViewPath => "~/Views/Providerless/Settings/_Settings_Reg_none.cshtml";
 }

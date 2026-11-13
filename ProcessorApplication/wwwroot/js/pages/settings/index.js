@@ -37,13 +37,11 @@
             this.activeTab = tabId;
             root.querySelectorAll('.tab-button').forEach(btn => {
                 const isActive = btn.getAttribute('data-tab') === tabId;
-                btn.classList.toggle('mm-bg-indigo-600', isActive);
-                btn.classList.toggle('mm-text-white', isActive);
-                btn.classList.toggle('mm-shadow-md', isActive);
+                btn.classList.toggle('on', isActive);
             });
 
             root.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.toggle('mm-hidden', content.id !== `tab-${tabId}`);
+                content.classList.toggle('is-hidden', content.id !== `tab-${tabId}`);
             });
         },
 
@@ -75,7 +73,7 @@
         handleSave: function (root, form) {
             const btn = root.querySelector('#masterSaveButton');
             const originalHtml = btn.innerHTML;
-            btn.innerHTML = '<i class="fa-solid fa-sync fa-spin mm-mr-2"></i> Saving...';
+            btn.innerHTML = '<i class="fa-solid fa-sync fa-spin"></i> Saving...';
             btn.disabled = true;
 
             fetch(form.action, {

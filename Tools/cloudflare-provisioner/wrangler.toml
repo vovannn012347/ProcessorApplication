@@ -6,8 +6,8 @@ workers_dev = true
 # Non-secret settings. Secrets (CF_API_TOKEN, JOIN_KEY, ADMIN_KEY) are set with
 # `npx wrangler secret put <NAME>` and never go into this file.
 [vars]
-ACCOUNT_ID = ""
-ZONE_ID = ""
+ACCOUNT_ID = "988d82124178348ed0d3cf23476912c5"
+ZONE_ID = "f399e2291edd34f43df9a7e13012b44d"
 ZONE_NAME = "processor-app.pp.ua"
 # Days without the owner provisioning before another node may claim its subdomain
 CLAIM_TTL_DAYS = "30"

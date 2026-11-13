@@ -34,14 +34,37 @@
         if (uBtn) {
             uBtn.onclick = (e) => {
                 e.stopPropagation();
-                const hid = uDrop.classList.toggle('mm-hidden');
+                const hid = uDrop.classList.toggle('is-hidden');
                 if (uArr) uArr.style.transform = hid ? 'rotate(0deg)' : 'rotate(180deg)';
             };
         }
         window.onclick = () => {
-            uDrop?.classList.add('mm-hidden');
+            uDrop?.classList.add('is-hidden');
             if (uArr) uArr.style.transform = 'rotate(0deg)';
         };
+
+        // --- (i) hints: <span class="tip" tabindex="0" data-tip="text">. One floating box, shown above the
+        //     hint (below when there is no room), kept inside the window. Hover, or tap/focus on touch screens.
+        const tipBox = document.createElement('div');
+        tipBox.id = 'tip-box';
+        document.body.appendChild(tipBox);
+        const tipOf = e => e.target.closest ? e.target.closest('.tip') : null;
+        const showTip = t => {
+            tipBox.textContent = t.dataset.tip || '';
+            tipBox.style.display = 'block';
+            const r = t.getBoundingClientRect(), b = tipBox.getBoundingClientRect();
+            const top = r.top - b.height - 4 < 2 ? r.bottom + 4 : r.top - b.height - 4;
+            tipBox.style.top = top + 'px';
+            tipBox.style.left = Math.max(2, Math.min(r.left - 4, window.innerWidth - b.width - 2)) + 'px';
+        };
+        const hideTip = () => { tipBox.style.display = 'none'; };
+        document.addEventListener('mouseover', e => { const t = tipOf(e); if (t) showTip(t); });
+        document.addEventListener('mouseout', e => { if (tipOf(e)) hideTip(); });
+        document.addEventListener('focusin', e => { const t = tipOf(e); if (t) showTip(t); });
+        document.addEventListener('focusout', e => { if (tipOf(e)) hideTip(); });
+        window.addEventListener('scroll', hideTip, true);
+        // a tap on a hint inside a <label> must not toggle the label's checkbox/radio
+        document.addEventListener('click', e => { if (tipOf(e)) e.preventDefault(); });
 
         // --- Module Initialization ---
         fetch('/Main/Navigation/GetModules')
@@ -56,7 +79,7 @@
      * Core content loading with asset management and element hooks
      */
     function loadContent(url, target, callback) {
-        if (target.id === 'content-container' && loader) loader.classList.remove('mm-hidden');
+        if (target.id === 'content-container' && loader) loader.classList.remove('is-hidden');
 
         // 1. DISPOSE PHASE: Trigger cleanup on elements being removed
         target.querySelectorAll('[data-script-id]').forEach(el => {
@@ -70,7 +93,7 @@
         fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(res => res.status === 401 ? window.location.reload() : res.text())
             .then(html => {
-                if (target.id === 'content-container' && loader) loader.classList.add('mm-hidden');
+                if (target.id === 'content-container' && loader) loader.classList.add('is-hidden');
 
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
@@ -131,7 +154,7 @@
             })
             .catch(err => {
                 console.error("Navigation Error:", err);
-                if (loader) loader.classList.add('mm-hidden');
+                if (loader) loader.classList.add('is-hidden');
             });
     }
 
@@ -168,16 +191,31 @@
     function switchModule(id, isInitial = false) {
         document.querySelectorAll('.module-nav-link').forEach(l => {
             const isActive = l.dataset.mid === id;
-            const isM = l.closest('#mobile-module-nav-container') !== null;
-            if (isM) {
-                l.classList.toggle('mm-bg-indigo-600', isActive);
-                l.classList.toggle('mm-text-white', isActive);
-            } else {
-                l.classList.toggle('mm-bg-indigo-50', isActive);
-                l.classList.toggle('mm-text-indigo-700', isActive);
-            }
+            l.classList.toggle('on', isActive);
         });
 
-        loadContent(`/Main/Navigation/GetModuleMenu?moduleId=${id}`, contextualMenu);
+        loadContent(`/Main/Navigation/GetModuleMenu?moduleId=${id}`, contextualMenu, markCurrentPage);
+    }
+
+    /**
+     * Marks the menu link of the current page and, when the page set no ViewData["Title"],
+     * shows that link's text as the page name in the sidebar head.
+     */
+    function markCurrentPage() {
+        const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+        let best = null, bestLen = -1;
+        contextualMenu.querySelectorAll('a[href]').forEach(a => {
+            const href = new URL(a.getAttribute('href'), window.location.origin).pathname.toLowerCase().replace(/\/+$/, '');
+            const match = path === href || path.startsWith(href + '/') || (path + '/index') === href;
+            if (match && href.length > bestLen) { best = a; bestLen = href.length; }
+            a.classList.remove('on');
+        });
+        if (!best) return;
+        best.classList.add('on');
+        const title = document.getElementById('page-title');
+        if (title && !title.textContent.trim()) {
+            title.textContent = best.textContent.trim();
+            document.title = title.textContent + ' - ProcessorApplication';
+        }
     }
 })();

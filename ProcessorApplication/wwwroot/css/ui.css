@@ -1,0 +1,118 @@
+/* ui.css - the whole shared UI in plain CSS (no Tailwind). Loaded by _Layout after output.min.css.
+   Colors: change ONLY the variables below; every element uses a role, never a raw color.
+   A complete scheme can also be a block like  [data-scheme="night"] { --text: ...; }  set on <html>. */
+:root {
+    /* top bar (and its pressed / active items: inverted) */
+    --bar-bg: rgb(31 41 55);  --bar-fg: #d4af37;
+    --bar-on-bg: #facc15;     --bar-on-fg: rgb(31 41 55);
+    /* press-able buttons (pressed / active / .on = inverted) */
+    --btn-bg: rgb(31 41 55);  --btn-fg: #d4af37;
+    --btn-on-bg: #facc15;     --btn-on-fg: rgb(31 41 55);
+    /* text roles */
+    --text: #111827;   /* meaningful text: content, values */
+    --info: #2563eb;   /* information text: notes, statuses, tooltips' accent */
+    --label: #475569;  /* headings and field labels */
+    --aux: #6b7280;    /* auxiliary: captions, hints, placeholders, small print */
+    /* user-typed text: inputs, selects, textareas */
+    --input-fg: #111827; --input-bg: #fff; --input-ro-bg: #f3f4f6; --input-line: #d1d5db;
+    /* surfaces */
+    --page: #fff; --card: #fff; --card-head: #f8fafc; --line: #e2e8f0; --accent: #6366f1;
+    --ok-bg: #ecfdf5; --ok-fg: #047857; --warn-bg: #fefce8; --warn-fg: #a16207;
+    --tip-bg: rgb(31 41 55); --tip-fg: #f9fafb;
+    /* sidebar */
+    --side-bg: #1f2937; --side-head: #111827; --side-fg: #d1d5db; --side-aux: #6b7280; --side-hover: #374151;
+}
+
+/* ---------- base */
+*, ::before, ::after { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { font: 13px/1.35 Inter, "Segoe UI", system-ui, sans-serif; color: var(--text); background: var(--page); }
+.is-hidden { display: none !important; }
+.mono { font-family: ui-monospace, Consolas, monospace; }
+.info { color: var(--info); }
+.aux { color: var(--aux); font-size: 11px; }
+h2, h3, label, .lbl { color: var(--label); font-size: 11px; font-weight: 600; margin: 0; }
+
+/* ---------- layout */
+.app { display: flex; height: 100%; overflow: hidden; }
+.side { width: 200px; flex-shrink: 0; display: flex; flex-direction: column; background: var(--side-bg); color: var(--side-fg); }
+.side-head { display: flex; align-items: flex-start; gap: 4px; padding: 6px 8px; background: var(--side-head); }
+#page-title { flex: 1; min-width: 0; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; overflow-wrap: anywhere; }
+.side nav { flex: 1; overflow-y: auto; padding: 2px; }
+.side-cap { display: block; padding: 4px 6px 1px; font-size: 10px; text-transform: uppercase; color: var(--side-aux); }
+.side nav a { display: flex; align-items: center; gap: 6px; padding: 3px 6px; color: inherit; text-decoration: none; border-radius: 3px; }
+.side nav a i { width: 14px; text-align: center; }
+.side nav a:hover { background: var(--side-hover); }
+.side nav a.on { background: var(--btn-on-bg); color: var(--btn-on-fg); }
+.work { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.topbar { position: sticky; top: 0; z-index: 40; display: flex; align-items: center; justify-content: space-between; gap: 2px;
+          min-height: 28px; padding: 0 2px; background: var(--bar-bg); color: var(--bar-fg); }
+.topbar > div { display: flex; align-items: center; gap: 1px; }
+.topbar a, .topbar button { color: inherit; background: none; border: 0; font: inherit; font-weight: 600; cursor: pointer;
+                            padding: 3px 8px; border-radius: 3px; text-decoration: none; }
+.topbar a:active, .topbar button:active, .topbar .on { background: var(--bar-on-bg); color: var(--bar-on-fg); }
+main { flex: 1; overflow-y: auto; position: relative; }
+#content-container { padding: 4px; }
+#content-loader { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.6); }
+.user-menu { position: relative; }
+.user-menu .menu { position: absolute; right: 0; top: 100%; z-index: 50; min-width: 160px; padding: 2px; background: var(--card);
+                   border: 1px solid var(--line); border-radius: 3px; color: var(--text); }
+.user-menu .menu a, .user-menu .menu button { display: flex; gap: 6px; width: 100%; color: var(--text); font-weight: 400; text-align: left; }
+.user-menu .menu a:hover, .user-menu .menu button:hover { background: var(--card-head); }
+@media (min-width: 768px) { .mob-only { display: none !important; } }
+@media (max-width: 767px) { .desk-only { display: none !important; } }
+
+/* ---------- content blocks */
+.card { margin: 0 0 4px; background: var(--card); border: 1px solid var(--line); border-radius: 3px; }
+.card > h2 { padding: 2px 6px; background: var(--card-head); border-bottom: 1px solid var(--line); text-transform: uppercase; letter-spacing: .04em; }
+.card > .body { padding: 4px 6px; }
+.grid { display: grid; gap: 4px 8px; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); align-items: start; }
+.opt { border: 1px solid var(--line); border-radius: 3px; padding: 3px 6px; }
+.opt:has(> h3 input:checked) { border-color: var(--accent); }
+.opt > h3 { display: flex; align-items: center; gap: 4px; margin-bottom: 2px; text-transform: uppercase; }
+.f { display: flex; flex-direction: column; gap: 1px; margin-bottom: 3px; }   /* field: label line, then the input */
+.f > input:not([type=checkbox]):not([type=radio]), .f > select, .f > textarea { width: 100%; }
+.f.row { flex-direction: row; align-items: center; gap: 6px; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 6px; }
+.cols > * { min-width: 0; }
+.note { margin: 2px 0; padding: 2px 4px; border-left: 2px solid var(--line); font-size: 11px; color: var(--aux); }
+.note .val { color: var(--text); }
+.msg { margin: 0 0 4px; padding: 3px 6px; border-radius: 3px; }
+.msg.ok { background: var(--ok-bg); color: var(--ok-fg); }
+.msg.warn { background: var(--warn-bg); color: var(--warn-fg); }
+.msg ul { margin: 0; padding-left: 18px; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 2px 0; }
+.t { width: 100%; border-collapse: collapse; }
+.t th, .t td { padding: 1px 4px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.t th { color: var(--label); font-size: 11px; font-weight: 600; }
+.wrap { word-break: break-all; white-space: pre-wrap; }
+.nowrap { white-space: nowrap; }
+.warn-t { color: var(--warn-fg); }
+tr.grp > th { padding-top: 4px; background: var(--card-head); text-transform: uppercase; letter-spacing: .04em; }
+tr.sub > td { color: var(--label); font-size: 11px; font-weight: 600; padding-left: 8px; }
+.t td > input:not([type=checkbox]):not([type=radio]) { width: 100%; }
+.t tr.hit > td { background: var(--warn-bg); }
+
+/* ---------- user-typed text */
+input, select, textarea { font: inherit; color: var(--input-fg); background: var(--input-bg); border: 1px solid var(--input-line);
+                          border-radius: 3px; padding: 2px 4px; min-width: 0; }
+input[readonly] { background: var(--input-ro-bg); }
+input[type=checkbox], input[type=radio] { margin: 0; }
+::placeholder { color: var(--aux); }
+
+/* ---------- press-able buttons */
+.btn { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; font: inherit; font-weight: 600; cursor: pointer;
+       color: var(--btn-fg); background: var(--btn-bg); border: 1px solid var(--btn-bg); border-radius: 3px; text-decoration: none; }
+.btn:active, .btn.on, .btn[aria-pressed=true] { color: var(--btn-on-fg); background: var(--btn-on-bg); border-color: var(--btn-on-bg); }
+.btn:disabled { opacity: .6; cursor: default; }
+.btn.sm { padding: 0 6px; font-size: 11px; }
+
+/* ---------- (i) hint: <span class="tip" tabindex="0" data-tip="Explanation"></span> right after a label's text.
+   The text is shown in #tip-box by _layout.js: above the hint on hover, or on tap/focus on touch screens. */
+.tip { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; margin-left: 3px;
+       vertical-align: 1px; border: 1px solid var(--info); border-radius: 50%; color: var(--info);
+       font: italic 700 9px/1 Georgia, serif; text-transform: none; letter-spacing: 0; cursor: help; }
+.tip::before { content: "i"; }
+.tip:focus { outline: none; background: var(--info); color: var(--tip-fg); }
+#tip-box { position: fixed; z-index: 100; display: none; max-width: min(280px, 70vw); padding: 3px 6px; border-radius: 3px;
+           background: var(--tip-bg); color: var(--tip-fg); font-size: 11px; line-height: 1.35; pointer-events: none; }

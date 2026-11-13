@@ -47,7 +47,7 @@
 
             const originalHtml = btn?.innerHTML;
             if (btn) {
-                btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin plss-mr-2"></i> Synchronizing...';
+                btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Synchronizing...';
                 btn.disabled = true;
             }
 

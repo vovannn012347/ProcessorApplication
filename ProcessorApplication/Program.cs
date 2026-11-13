@@ -142,6 +142,7 @@ builder.Services.Configure<MvcRazorRuntimeCompilationOptions>(options =>
 
 builder.Services.AddSingleton<IModuleService, ModuleService>();
 builder.Services.AddScoped<ISettingsIngestService, SettingsIngestService>();
+builder.Services.AddScoped<ISettingsStore, SettingsStore>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSession(options =>
 {

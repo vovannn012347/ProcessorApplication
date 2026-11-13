@@ -1,119 +1,59 @@
 ﻿<!DOCTYPE html>
-<html lang="en" class="mm-h-full mm-bg-gray-100">
+<html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - ProcessorApplication</title>
+    <title>@(ViewData["Title"] is string t && t.Length > 0 ? t + " - " : "")ProcessorApplication</title>
     <link rel="stylesheet" href="~/css/output.min.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/ui.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/lib/font-awesome/css/all.min.css" />
 
     @await RenderSectionAsync("Styles", required: false)
 </head>
-<body class="mm-h-full mm-font-sans mm-text-gray-900">
+<body>
     @Html.AntiForgeryToken()
 
-    @* Navigation Templates: These keep styles in HTML rather than JS strings *@
-    <template id="tpl-nav-desktop">
-        <a href="#" class="module-nav-link mm-px-4 mm-py-2 mm-rounded-xl mm-text-[11px] mm-font-black mm-uppercase mm-tracking-tight mm-text-gray-500 hover:mm-bg-gray-100 hover:mm-text-indigo-600 mm-transition-all"></a>
-    </template>
+    @* Navigation templates, filled by _layout.js *@
+    <template id="tpl-nav-desktop"><a href="#" class="module-nav-link"></a></template>
+    <template id="tpl-nav-mobile"><a href="#" class="module-nav-link"><i class="fa-solid fa-cube"></i><span class="label"></span></a></template>
 
-    <template id="tpl-nav-mobile">
-        <a href="#" class="module-nav-link mm-flex mm-items-center mm-gap-3 mm-px-3 mm-py-2.5 mm-rounded-xl mm-text-xs mm-font-bold mm-text-gray-400 hover:mm-bg-gray-700/50 hover:mm-text-white mm-transition-all">
-            <i class="fa-solid fa-cube mm-w-5 mm-text-center"></i>
-            <span class="label"></span>
-        </a>
-    </template>
-
-    <div id="app-container" class="mm-flex mm-h-full mm-overflow-hidden">
-
-        <!-- Sidebar Backdrop (Mobile only) -->
+    <div id="app-container" class="app">
         <div id="sidebar-backdrop"></div>
 
-        <!-- Sidebar -->
-        <aside id="sidebar" class="sidebar mm-z-50 mm-flex mm-h-full mm-w-64 mm-flex-col mm-bg-gray-800 mm-shadow-xl md:mm-relative md:mm-flex-shrink-0 md:mm-transform-none sidebar-hidden-mobile">
-            <div class="mm-flex mm-h-16 mm-shrink-0 mm-items-center mm-justify-between mm-px-5 mm-bg-gray-900 mm-border-b mm-border-white/5">
-                <div class="mm-flex mm-items-center mm-gap-2">
-                    <div class="mm-w-2 mm-h-2 mm-rounded-full mm-bg-indigo-500 mm-animate-pulse"></div>
-                    <span class="mm-text-sm mm-font-black mm-text-white mm-uppercase mm-tracking-widest">Core Engine</span>
-                </div>
-                <button id="sidebar-close-btn" class="mm-text-gray-400 hover:mm-text-white md:mm-hidden">
-                    <i class="fa-solid fa-xmark fa-lg"></i>
-                </button>
+        <aside id="sidebar" class="side sidebar-hidden-mobile">
+            @* Current page name: wraps onto new lines instead of widening the sidebar. Pages do not show their own header. *@
+            <div class="side-head">
+                <span id="page-title">@ViewData["Title"]</span>
+                <button id="sidebar-close-btn" class="mob-only" style="background:none;border:0;color:inherit;cursor:pointer"><i class="fa-solid fa-xmark"></i></button>
             </div>
-
-            <nav class="sidebar-nav mm-flex-1 mm-space-y-6 mm-overflow-y-auto mm-p-4">
-                <!-- Mobile Modules (Hidden on Desktop) -->
-                <div class="md:mm-hidden" id="mobile-module-section">
-                    <span class="mm-px-3 mm-text-[10px] mm-font-black mm-uppercase mm-text-gray-500 mm-tracking-widest">Switch Module</span>
-                    <div class="mm-mt-3 mm-space-y-1" id="mobile-module-nav-container"></div>
+            <nav class="sidebar-nav">
+                <div class="mob-only" id="mobile-module-section">
+                    <span class="side-cap">Switch Module</span>
+                    <div id="mobile-module-nav-container"></div>
                 </div>
-
-                <!-- Contextual Menu -->
-                <div class="mm-space-y-1">
-                    <span class="mm-px-3 mm-text-[10px] mm-font-black mm-uppercase mm-text-gray-500 mm-tracking-widest">Navigation</span>
-                    <div class="mm-mt-3 mm-space-y-1" id="contextual-menu-container">
-                        <div class="mm-px-3 mm-py-10 mm-flex mm-flex-col mm-items-center mm-gap-3 mm-opacity-20">
-                            <i class="fa-solid fa-layer-group mm-text-2xl mm-text-gray-400"></i>
-                            <span class="mm-text-[10px] mm-font-bold mm-text-gray-500 mm-uppercase mm-tracking-widest">Initialize...</span>
-                        </div>
-                    </div>
-                </div>
+                <span class="side-cap">Navigation</span>
+                <div id="contextual-menu-container"></div>
             </nav>
-
-            @* <div class="mm-p-4 mm-bg-gray-900/50 mm-border-t mm-border-white/5">
-                <div class="mm-flex mm-items-center mm-gap-3 mm-px-2">
-                    <div class="mm-w-8 mm-h-8 mm-rounded-lg mm-bg-gray-700 mm-flex mm-items-center mm-justify-center mm-text-xs mm-font-black mm-text-gray-300">ND</div>
-                    <div class="mm-flex mm-flex-col">
-                        <span class="mm-text-[10px] mm-font-black mm-text-white mm-uppercase mm-truncate mm-w-32">Local Node</span>
-                        <span class="mm-text-[8px] mm-font-bold mm-text-indigo-400 mm-uppercase mm-tracking-tighter">Status: Optimal</span>
-                    </div>
-                </div>
-            </div> *@
         </aside>
 
-        <!-- Main Workspace -->
-        <div id="content-wrapper" class="mm-flex-1 mm-flex mm-flex-col mm-min-w-0 mm-bg-white">
-            <header class="main-navbar mm-sticky mm-top-0 mm-z-40 mm-flex mm-h-16 mm-w-full mm-shrink-0 mm-items-center mm-justify-between mm-border-b mm-border-gray-200 mm-bg-white mm-px-4 md:mm-px-6">
-                <div class="mm-flex mm-items-center">
-                    <!-- Toggle Controls -->
-                    <button id="sidebar-open-btn" class="mm-p-2 mm-text-gray-500 hover:mm-text-indigo-600 md:mm-hidden">
-                        <i class="fa-solid fa-bars-staggered fa-lg"></i>
-                    </button>
-                    <button id="sidebar-toggle-btn" class="mm-hidden mm-p-2 mm-text-gray-400 hover:mm-text-indigo-600 md:mm-block transition-colors">
-                        <i id="sidebar-toggle-icon" class="fa-solid fa-angles-left"></i>
-                    </button>
-
-                    <!-- Desktop Module Nav -->
-                    <div class="mm-hidden md:mm-flex md:mm-items-center md:mm-space-x-1" id="desktop-module-nav-container"></div>
+        <div id="content-wrapper" class="work">
+            <header class="topbar main-navbar">
+                <div>
+                    <button id="sidebar-open-btn" class="mob-only"><i class="fa-solid fa-bars-staggered"></i></button>
+                    <button id="sidebar-toggle-btn" class="desk-only"><i id="sidebar-toggle-icon" class="fa-solid fa-angles-left"></i></button>
+                    <div class="desk-only" id="desktop-module-nav-container"></div>
                 </div>
-
-                <div class="mm-flex mm-items-center mm-space-x-4">
+                <div>
                     @if (User.Identity?.IsAuthenticated == true)
                     {
-                        <div class="mm-relative" id="user-menu-container">
-                            <button type="button" class="mm-group mm-flex mm-items-center mm-gap-3 mm-p-1 mm-rounded-full hover:mm-bg-gray-50 mm-transition-all" id="user-menu-button">
-                                <div class="mm-h-8 mm-w-8 mm-rounded-lg mm-bg-indigo-600 mm-flex mm-items-center mm-justify-center mm-text-white mm-font-black mm-text-xs mm-shadow-lg mm-shadow-indigo-200">
-                                    @User.Identity.Name?[0].ToString().ToUpper()
-                                </div>
-                                <div class="mm-hidden md:mm-flex mm-flex-col mm-items-start mm-leading-none mm-text-left">
-                                    <span class="mm-text-xs mm-font-black mm-text-gray-800 mm-uppercase">@User.Identity.Name</span>
-                                    <span class="mm-text-[9px] mm-font-bold mm-text-gray-400 mm-uppercase mm-tracking-tighter">Authorized</span>
-                                </div>
-                                <i class="fa-solid fa-chevron-down mm-text-[10px] mm-text-gray-300 mm-transition-transform" id="user-dropdown-arrow"></i>
+                        <div class="user-menu" id="user-menu-container">
+                            <button type="button" id="user-menu-button">
+                                <i class="fa-solid fa-user"></i> @User.Identity.Name <i class="fa-solid fa-chevron-down" id="user-dropdown-arrow" style="font-size:9px"></i>
                             </button>
-                            <div id="user-dropdown" class="mm-hidden mm-absolute mm-right-0 mm-mt-3 mm-w-56 mm-origin-top-right mm-rounded-2xl mm-bg-white mm-p-2 mm-shadow-2xl mm-ring-1 mm-ring-black/5 mm-z-50">
-                                <div class="mm-px-3 mm-py-2 mm-border-b mm-border-gray-50 mm-mb-1">
-                                    <p class="mm-text-[10px] mm-font-black mm-text-gray-400 mm-uppercase">Identity</p>
-                                    <p class="mm-text-xs mm-font-bold mm-text-indigo-600 mm-truncate">@User.Identity.Name</p>
-                                </div>
-                                <a href="/Main/Profile/Index" class="mm-flex mm-items-center mm-gap-3 mm-px-3 mm-py-2 mm-text-xs mm-font-bold mm-text-gray-600 hover:mm-bg-indigo-50 hover:mm-text-indigo-700 mm-rounded-xl mm-transition-all">
-                                    <i class="fa-solid fa-user-gear"></i> Profile
-                                </a>
-                                <div class="mm-my-1 mm-border-t mm-border-gray-50"></div>
+                            <div id="user-dropdown" class="menu is-hidden">
+                                <a href="/Main/Profile/Index"><i class="fa-solid fa-user-gear"></i> Profile</a>
                                 <form asp-area="Main" asp-controller="Account" asp-action="Logout" method="post">
-                                    <button type="submit" class="mm-flex mm-w-full mm-items-center mm-gap-3 mm-px-3 mm-py-2 mm-text-xs mm-font-bold mm-text-red-600 hover:mm-bg-red-50 mm-rounded-xl mm-transition-all">
-                                        <i class="fa-solid fa-power-off"></i> Logout
-                                    </button>
+                                    <button type="submit"><i class="fa-solid fa-power-off"></i> Logout</button>
                                 </form>
                             </div>
                         </div>
@@ -121,17 +61,11 @@
                 </div>
             </header>
 
-            <main class="mm-flex-1 mm-overflow-y-auto mm-relative">
-                <div id="content-container" class="mm-p-6 md:mm-p-10 mm-mx-auto">
+            <main>
+                <div id="content-container">
                     @RenderBody()
                 </div>
-
-                <div id="content-loader" class="mm-hidden mm-absolute mm-inset-0 mm-z-50 mm-bg-white/60 mm-backdrop-blur-sm mm-flex mm-items-center mm-justify-center">
-                    <div class="mm-flex mm-flex-col mm-items-center mm-gap-4">
-                        <div id="mm-content-loader-spinner"></div>
-                        <span class="mm-text-[9px] mm-font-black mm-text-indigo-600 mm-uppercase mm-tracking-[0.3em]">Synching...</span>
-                    </div>
-                </div>
+                <div id="content-loader" class="is-hidden"><div id="mm-content-loader-spinner"></div></div>
             </main>
         </div>
     </div>

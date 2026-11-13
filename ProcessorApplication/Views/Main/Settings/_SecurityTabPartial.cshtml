@@ -6,65 +6,41 @@
     var prefix = ViewData["ModelPrefix"]?.ToString() ?? string.Empty;
 }
 
-<div class="mm-space-y-6 mm-max-w-xl">
-
-    <!-- Field 1: HashStampGenerationPeriod -->
-    <div class="mm-space-y-1">
-        <label asp-for="HashStampGenerationPeriod" class="mm-block mm-text-sm mm-font-medium mm-text-gray-700"></label>
-
-        <div id="hashPeriodInputs" class="mm-flex mm-items-center mm-space-x-2">
-            <input type="number"
-                   name="@(prefix).HashStampGenerationPeriod"
-                   id="HashStampGenerationPeriod"
-                   value="@Model.HashStampGenerationPeriod.ToString("0.##")"
-                   min="0.01"
-                   step="0.01"
-                   placeholder="0.00"
-                   class="mm-mt-1 mm-block mm-w-24 mm-rounded-md mm-border mm-border-gray-300 mm-shadow-sm mm-p-2 focus:mm-border-indigo-500 focus:mm-ring-indigo-500 mm-text-right" />
-            <span class="mm-text-sm mm-text-gray-600">hours</span>
+<div class="card">
+    <h2>Security</h2>
+    <div class="body grid">
+        <div class="f">
+            <div><label asp-for="HashStampGenerationPeriod"></label> <span class="tip" tabindex="0" data-tip="How often a new cryptographic hash stamp is generated for data integrity, in hours (minimum 0.01)."></span></div>
+            <div class="f row">
+                <input type="number" name="@(prefix).HashStampGenerationPeriod" id="HashStampGenerationPeriod"
+                       value="@Model.HashStampGenerationPeriod.ToString("0.##")" min="0.01" step="0.01" placeholder="0.00" style="width:90px;text-align:right" />
+                <span class="aux">hours</span>
+            </div>
+            <span asp-validation-for="HashStampGenerationPeriod" class="warn-t"></span>
         </div>
-
-        <span asp-validation-for="HashStampGenerationPeriod" class="mm-mt-2 mm-text-sm mm-text-red-600 mm-block"></span>
-        <p class="mm-mt-1 mm-text-xs mm-text-gray-500">How often a new cryptographic hash stamp is generated for data integrity (minimum 0.01 hours).</p>
-    </div>
-
-    <!-- Field 2: HashStampBackupEnabled -->
-    <div class="mm-relative mm-flex mm-items-start mm-pt-3">
-        <div class="mm-flex mm-items-center mm-h-5">
-            <input type="hidden" name="@(prefix).HashStampBackupEnabled" value="false" />
-            <input asp-for="HashStampBackupEnabled" name="@(prefix).HashStampBackupEnabled" type="checkbox" class="mm-h-4 mm-w-4 mm-rounded mm-border-gray-300 mm-text-indigo-600 focus:mm-ring-indigo-500" />
+        <div>
+            <div class="f row">
+                <input type="hidden" name="@(prefix).HashStampBackupEnabled" value="false" />
+                <input asp-for="HashStampBackupEnabled" name="@(prefix).HashStampBackupEnabled" type="checkbox" />
+                <label asp-for="HashStampBackupEnabled"></label> <span class="tip" tabindex="0" data-tip="Back up the forensic hash stamps to the path below."></span>
+            </div>
+            <div class="f">
+                <div><label asp-for="HashStampBackupFilePath"></label> <span class="tip" tabindex="0" data-tip="Absolute path where integrity hash backups are stored."></span></div>
+                <input asp-for="HashStampBackupFilePath" name="@(prefix).HashStampBackupFilePath" type="text" class="mono" />
+                <span asp-validation-for="HashStampBackupFilePath" class="warn-t"></span>
+            </div>
         </div>
-        <div class="mm-ml-3 mm-text-sm">
-            <label asp-for="HashStampBackupEnabled" class="mm-font-medium mm-text-gray-700"></label>
-            <p class="mm-text-gray-500 mm-text-xs">If enabled, forensic hash stamps are backed up to the specified file path.</p>
+        <div>
+            <div class="f row">
+                <input type="hidden" name="@(prefix).RecordDecipherLogging" value="false" />
+                <input asp-for="RecordDecipherLogging" name="@(prefix).RecordDecipherLogging" type="checkbox" />
+                <label asp-for="RecordDecipherLogging"></label> <span class="tip" tabindex="0" data-tip="Log every access to sensitive encrypted data, for audit."></span>
+            </div>
+            <div class="f">
+                <div><label asp-for="RecordDecipherLogPath"></label> <span class="tip" tabindex="0" data-tip="Absolute path where the daily sensitive-access logs are stored."></span></div>
+                <input asp-for="RecordDecipherLogPath" name="@(prefix).RecordDecipherLogPath" type="text" class="mono" />
+                <span asp-validation-for="RecordDecipherLogPath" class="warn-t"></span>
+            </div>
         </div>
-    </div>
-
-    <!-- Field 3: HashStampBackupFilePath -->
-    <div class="mm-space-y-1">
-        <label asp-for="HashStampBackupFilePath" class="mm-block mm-text-sm mm-font-medium mm-text-gray-700"></label>
-        <input asp-for="HashStampBackupFilePath" name="@(prefix).HashStampBackupFilePath" type="text" class="mm-mt-1 mm-block mm-w-full mm-rounded-md mm-border mm-border-gray-300 mm-shadow-sm mm-p-2 focus:mm-border-indigo-500 focus:mm-ring-indigo-500" />
-        <span asp-validation-for="HashStampBackupFilePath" class="mm-mt-2 mm-text-sm mm-text-red-600 mm-block"></span>
-        <p class="mm-mt-1 mm-text-xs mm-text-gray-500">Absolute path where integrity hash backups will be stored.</p>
-    </div>
-
-    <!-- Field 4: RecordDecipherLogging -->
-    <div class="mm-relative mm-flex mm-items-start mm-pt-3">
-        <div class="mm-flex mm-items-center mm-h-5">
-            <input type="hidden" name="@(prefix).RecordDecipherLogging" value="false" />
-            <input asp-for="RecordDecipherLogging" name="@(prefix).RecordDecipherLogging" type="checkbox" class="mm-h-4 mm-w-4 mm-rounded mm-border-gray-300 mm-text-indigo-600 focus:mm-ring-indigo-500" />
-        </div>
-        <div class="mm-ml-3 mm-text-sm">
-            <label asp-for="RecordDecipherLogging" class="mm-font-medium mm-text-gray-700"></label>
-            <p class="mm-text-gray-500 mm-text-xs">Toggle to log sensitive encrypted data access for audit purposes.</p>
-        </div>
-    </div>
-
-    <!-- Field 5: RecordDecipherLogPath -->
-    <div class="mm-space-y-1">
-        <label asp-for="RecordDecipherLogPath" class="mm-block mm-text-sm mm-font-medium mm-text-gray-700"></label>
-        <input asp-for="RecordDecipherLogPath" name="@(prefix).RecordDecipherLogPath" type="text" class="mm-mt-1 mm-block mm-w-full mm-rounded-md mm-border mm-border-gray-300 mm-shadow-sm mm-p-2 focus:mm-border-indigo-500 focus:mm-ring-indigo-500" />
-        <span asp-validation-for="RecordDecipherLogPath" class="mm-mt-2 mm-text-sm mm-text-red-600 mm-block"></span>
-        <p class="mm-mt-1 mm-text-xs mm-text-gray-500">Absolute path where daily sensitive access logs will be stored.</p>
     </div>
 </div>

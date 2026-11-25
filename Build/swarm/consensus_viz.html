@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consensus growth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@500;700&family=Red+Hat+Text:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* VOICE work: a lab readout of one consensus run
+   IDEA a culture plate - nodes are spores, merges grow hyphae, consensus groups are colonies that fuse
+   PICTURE the live plate: force layout per step, nodes drift toward the partners of their next merges
+   COLOUR plate white / night agar black, oxford ink, colony hues, magenta for the step happening now
+   TYPE Red Hat Display + Red Hat Text
+   LAYOUT plate full width under a modest title, readout beside it on a laptop, controls under the plate; phone: title, plate, controls, readout */
+:root{color-scheme:light dark;--bg:light-dark(#ffffff,#070f26);--plate:light-dark(#f4f6fb,#0b1736);--ink:light-dark(#0b1f4b,#e7ecf8);--soft:light-dark(#5b6787,#9aa6c6);--rule:light-dark(#d9deea,#22305a);--now:#e0115f;--done:light-dark(#0b1f4b,#ffffff);--lone:light-dark(#b9c1d6,#3a4876)}
+:root[data-theme=light]{color-scheme:light}
+:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Red Hat Text",system-ui,sans-serif;overflow-x:clip}
+h1{font:700 clamp(28px,4vw,40px)/1.05 "Red Hat Display",system-ui,sans-serif;letter-spacing:-.02em;margin:0;text-wrap:balance}
+.wrap{max-width:1240px;margin:0 auto;padding:clamp(18px,3vw,36px) max(4vw,16px)}
+.head{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:8px 24px;margin-bottom:16px}
+.finding{color:var(--soft);margin:6px 0 0;max-width:70ch}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:20px}
+.fig{position:relative;min-height:min(62vh,600px);background:var(--plate);border:1px solid var(--rule);border-radius:20px;overflow:hidden}
+.fig>svg{position:absolute;inset:0;width:100%;height:100%}
+svg text{font:500 12px "Red Hat Text",sans-serif;fill:var(--ink);paint-order:stroke;stroke:var(--plate);stroke-width:4px}
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin-top:14px}
+button,select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--rule);border-radius:8px;min-height:44px;padding:0 14px;cursor:pointer}
+button:hover,select:hover{border-color:var(--ink)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--now);outline-offset:2px}
+#play{background:var(--ink);color:var(--bg);border-color:var(--ink);min-width:92px}
+label{display:flex;align-items:center;gap:8px;color:var(--soft);font-size:14px;white-space:nowrap}
+input[type=range]{accent-color:var(--now);height:44px}
+#scrub{flex:1 1 220px}
+.panel{display:flex;flex-direction:column;gap:14px}
+.figs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.num{font:700 clamp(24px,3vw,30px)/1 "Red Hat Display",sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cap{font-size:13px;color:var(--soft)}
+.now{border-left:3px solid var(--now);padding:4px 0 4px 10px;min-height:52px}
+#spark{width:100%;height:70px;display:block}
+.legend{display:grid;gap:6px;font-size:13px;color:var(--soft)}
+.legend span{display:inline-block;width:26px;height:0;border-top:2px solid var(--ink);vertical-align:middle;margin-right:8px}
+details{border-top:1px solid var(--rule);padding-top:10px}
+summary{cursor:pointer;min-height:32px}
+ol{margin:8px 0 0;padding-left:2.4em;max-height:260px;overflow:auto;font-size:14px}
+li{cursor:pointer;padding:2px 0}
+li.on{color:var(--now);font-weight:500}
+.load{font-size:13px;color:var(--soft)}
+@media(max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}.figs{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:600px){.figs{grid-template-columns:repeat(2,minmax(0,1fr))}.fig{min-height:420px;border-radius:24px}}
+@media(prefers-reduced-motion:reduce){.pulse{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1>Consensus growth</h1>
+      <p class="finding" id="finding">Loading the run...</p>
+    </div>
+    <label class="load">Other run: <input type="file" id="files" accept=".jsonl,.json,.txt" multiple></label>
+  </div>
+  <div class="grid">
+    <div>
+      <div class="fig" id="fig"><svg id="plate" role="img" aria-label="Consensus graph at the current step"></svg></div>
+      <div class="controls">
+        <button id="play" type="button">Play</button>
+        <button id="back" type="button" aria-label="Step back">&#8592;</button>
+        <button id="fwd" type="button" aria-label="Step forward">&#8594;</button>
+        <input type="range" id="scrub" min="0" max="0" value="0" aria-label="Step">
+        <label>Lookahead <input type="range" id="look" min="0" max="8" value="4"> <b id="lookv">4</b></label>
+        <label>Pace <select id="pace"><option value="steps">Even steps</option><option value="time">Real time</option></select></label>
+        <label>Speed <input type="range" id="speed" min="1" max="10" value="4"></label>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="figs">
+        <div><div class="num" id="mStep">0</div><div class="cap">step</div></div>
+        <div><div class="num" id="mTime">+0.0 s</div><div class="cap">since first event</div></div>
+        <div><div class="num" id="mCol">0</div><div class="cap">colonies (2+ nodes)</div></div>
+        <div><div class="num" id="mDone">0</div><div class="cap">nodes holding all</div></div>
+      </div>
+      <div class="now"><div class="cap">This step</div><div id="mNow">-</div></div>
+      <div><div class="cap">Average share of the swarm each node holds</div><svg id="spark" aria-label="Coverage over steps"></svg></div>
+      <div class="legend">
+        <div><span></span>merge done (newer = stronger)</div>
+        <div><span style="border-top-style:dashed"></span>delta received</div>
+        <div><span style="border-top:1px solid var(--soft)"></span>start ping (who invited whom)</div>
+        <div><span style="border-top:2px dotted var(--now)"></span>merge coming in the next steps</div>
+        <div>Node size = share of the swarm it holds; ring = holds all.</div>
+      </div>
+      <details><summary>All steps</summary><ol id="list"></ol></details>
+    </div>
+  </div>
+</div>
+<script id="events" type="application/json">__EVENTS__</script>
+<script>
+{
+const NS = "http://www.w3.org/2000/svg";
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const HUES = ["#2a6fdb","#00a37a","#e08a00","#8a4fff","#d6336c","#1b9aaa","#7a8b00","#c2410c","#4c6ef5","#0f9d58"];
+
+let run = null, step = 0, playing = false, timer = null, alpha = 1;
+let px = [], py = [], vx = [], vy = [], W = 800, H = 500;
+
+function parseLines(text) {
+  const out = [];
+  for (const line of text.split(/\r?\n/)) {
+    const s = line.trim();
+    if (!s) continue;
+    try { const v = JSON.parse(s); Array.isArray(v) ? out.push(...v) : out.push(v); } catch (e) { }
+  }
+  return out;
+}
+
+// Events -> steps, and the state after every step (what each node holds, which colony it is in)
+function build(raw) {
+  const ev = raw.filter(e => e && e.t && e.node && e.ev).map(e => Object.assign({}, e, { ms: Date.parse(e.t) }))
+    .filter(e => !isNaN(e.ms)).sort((a, b) => a.ms - b.ms);
+  const ids = new Set();
+  for (const e of ev) { ids.add(e.node); if (e.peer) ids.add(e.peer); if (e.from) ids.add(e.from); }
+  const names = [...ids].sort();
+  const ix = new Map(names.map((n, i) => [n, i]));
+  const N = names.length;
+  const steps = [], lastPair = new Map();
+  for (const e of ev) {
+    const a = ix.get(e.node);
+    if (e.ev === "start") steps.push(e.from ? { k: "invite", a: ix.get(e.from), b: a, ms: e.ms } : { k: "init", a, ms: e.ms });
+    else if (e.ev === "merge" || e.ev === "merge_in") {
+      if (!e.peer) continue;
+      const b = ix.get(e.peer);
+      if (e.ok === false) { steps.push({ k: "fail", a, b, ms: e.ms }); continue; }
+      const key = Math.min(a, b) + "|" + Math.max(a, b);
+      if (lastPair.has(key) && e.ms - lastPair.get(key) < 3000) continue; // the other side's record of the same swap
+      lastPair.set(key, e.ms);
+      steps.push({ k: "merge", a, b, ms: e.ms });
+    }
+    else if (e.ev === "delta" && e.from) steps.push({ k: "delta", a: ix.get(e.from), b: a, ms: e.ms });
+    else if (e.ev === "finish") steps.push({ k: "finish", a, ms: e.ms, known: e.known });
+  }
+  // replay
+  const know = names.map((_, i) => new Set([i]));
+  const parent = names.map((_, i) => i), size = names.map(() => 1), colour = names.map(() => -1);
+  let nextHue = 0;
+  const find = i => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  const union = (a, b) => {
+    let ra = find(a), rb = find(b);
+    if (ra === rb) return;
+    if (size[ra] < size[rb] || (size[ra] === size[rb] && colour[ra] < 0)) [ra, rb] = [rb, ra];
+    parent[rb] = ra; size[ra] += size[rb];
+    if (colour[ra] < 0) colour[ra] = colour[rb] >= 0 ? colour[rb] : (nextHue++ % HUES.length);
+  };
+  const snap = () => ({
+    held: Int16Array.from(know, s => s.size),
+    col: Int16Array.from(names, (_, i) => { const r = find(i); return size[r] > 1 ? colour[r] : -1; }),
+    root: Int16Array.from(names, (_, i) => find(i)),
+  });
+  const states = [snap()];
+  for (const s of steps) {
+    if (s.k === "merge") { const u = new Set([...know[s.a], ...know[s.b]]); know[s.a] = u; know[s.b] = new Set(u); union(s.a, s.b); }
+    else if (s.k === "delta") { for (const x of know[s.a]) know[s.b].add(x); union(s.a, s.b); }
+    else if (s.k === "finish" && typeof s.known === "number" && s.known + 1 >= N && know[s.a].size < N) {
+      // The node reports it holds everyone: whatever it got without a logged event (deltas in older builds) shows here
+      know[s.a] = new Set(names.map((_, i) => i)); s.late = true;
+    }
+    states.push(snap());
+  }
+  const t0 = ev.length ? ev[0].ms : 0;
+  const coverage = states.map(st => st.held.reduce((a, b) => a + b, 0) / Math.max(1, N * N));
+  const full = states.findIndex(st => st.held.every(h => h === N));
+  const prefix = commonPrefix(names);
+  const hasDeltas = steps.some(s => s.k === "delta");
+  return { names, labels: names.map(n => n.slice(prefix.length) || n), N, steps, states, t0, coverage, full, hasDeltas };
+}
+
+function commonPrefix(names) {
+  if (names.length < 2) return "";
+  let p = names[0];
+  for (const n of names) while (!n.startsWith(p)) p = p.slice(0, -1);
+  return p.replace(/[^-_ .]*$/, "");
+}
+
+function describe(s) {
+  const n = i => run.names[i];
+  return { invite: `${n(s.a)} invited ${n(s.b)} (start ping)`, init: `${n(s.a)} started the consensus`, merge: `${n(s.a)} merged with ${n(s.b)}`,
+    fail: `${n(s.a)} tried to merge with ${n(s.b)} and failed`, delta: `${n(s.b)} got a delta from ${n(s.a)}`, finish: `${n(s.a)} finished` + (s.late ? " (reports it holds all)" : "") }[s.k];
+}
+
+function load(raw) {
+  run = build(raw);
+  const { N, steps, full, t0 } = run;
+  W = $("fig").clientWidth; H = $("fig").clientHeight;
+  px = []; py = []; vx = []; vy = [];
+  for (let i = 0; i < N; i++) { const a = i / Math.max(1, N) * Math.PI * 2; px.push(W / 2 + Math.cos(a) * W * .36); py.push(H / 2 + Math.sin(a) * H * .36); vx.push(0); vy.push(0); }
+  $("scrub").max = steps.length; step = 0; alpha = 1;
+  const merges = steps.filter(s => s.k === "merge").length, deltas = steps.filter(s => s.k === "delta").length;
+  $("finding").textContent = !N ? "No consensus events found. Load consensus_events.jsonl files from the node homes." :
+    full >= 0 ? `${N} nodes reached full consensus in ${((steps[full - 1].ms - t0) / 1000).toFixed(1)} s, after ${full} steps (${merges} merges${deltas ? `, ${deltas} deltas` : ""} in the whole run).`
+      : `${N} nodes, ${merges} merges${deltas ? `, ${deltas} deltas` : ""}; at the end ${run.states[run.states.length - 1].held.filter(h => h === N).length} hold all ${N}.`;
+  if (N && !run.hasDeltas) {
+    const lastMerge = [...steps].reverse().find(s => s.k === "merge");
+    const allFinished = run.states[run.states.length - 1].held.every(h => h === N);
+    $("finding").textContent = `${N} nodes, ${merges} merges between +0.0 s and +${lastMerge ? ((lastMerge.ms - t0) / 1000).toFixed(1) : "0.0"} s` +
+      (allFinished ? `; every node reported holding all ${N} when its session ended.` : ".") +
+      " These logs have no delta events (older build), so what deltas delivered shows only when each node finishes.";
+  }
+  $("list").innerHTML = steps.map((s, i) => `<li data-i="${i + 1}">${esc(describe(s))}</li>`).join("");
+  setupSvg(); show();
+}
+
+// ---- drawing
+let edgeEls = [], nodeEls = [], labelEls = [], pulseEl = null;
+function setupSvg() {
+  const svg = $("plate");
+  svg.innerHTML = "";
+  const ge = document.createElementNS(NS, "g"), gn = document.createElementNS(NS, "g");
+  svg.append(ge, gn);
+  edgeEls = run.steps.map(s => { if (s.b === undefined) return null; const l = document.createElementNS(NS, "line"); l.setAttribute("stroke-linecap", "round"); ge.append(l); return l; });
+  pulseEl = document.createElementNS(NS, "circle"); pulseEl.setAttribute("class", "pulse"); pulseEl.setAttribute("fill", "none"); pulseEl.setAttribute("stroke", "var(--now)"); gn.append(pulseEl);
+  nodeEls = run.names.map((n, i) => { const c = document.createElementNS(NS, "circle"); const t = document.createElementNS(NS, "title"); t.textContent = n; c.append(t); gn.append(c); return c; });
+  labelEls = run.labels.map(l => { const t = document.createElementNS(NS, "text"); t.textContent = l; t.setAttribute("text-anchor", "middle"); gn.append(t); return t; });
+}
+
+function tick() {
+  if (!run || !run.N) return;
+  const { N, steps, states } = run, st = states[step], look = +$("look").value;
+  const k = Math.sqrt(W * H / N) * .55, a = alpha;
+  const fx = new Float64Array(N), fy = new Float64Array(N);
+  for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {          // spores keep their distance
+    let dx = px[i] - px[j], dy = py[i] - py[j], d2 = dx * dx + dy * dy;
+    if (d2 < 1) { dx = Math.random() - .5; dy = Math.random() - .5; d2 = 1; }
+    const f = k * k / d2 * .02;
+    fx[i] += dx * f; fy[i] += dy * f; fx[j] -= dx * f; fy[j] -= dy * f;
+  }
+  const spring = (i, j, L, s) => {
+    const dx = px[j] - px[i], dy = py[j] - py[i], d = Math.hypot(dx, dy) || 1, f = (d - L) / d * s;
+    fx[i] += dx * f; fy[i] += dy * f; fx[j] -= dx * f; fy[j] -= dy * f;
+  };
+  for (let j = 0; j < step; j++) {                                         // hyphae already grown
+    const s = steps[j]; if (s.b === undefined || s.k === "fail") continue;
+    const fresh = .45 + .55 * Math.exp(-(step - j) / 12);
+    if (s.k === "merge") spring(s.a, s.b, k * .55, .06 * fresh);
+    else if (s.k === "delta") spring(s.a, s.b, k * .8, .03 * fresh);
+    else spring(s.a, s.b, k, .01);
+  }
+  for (let j = step, w = 1; j < Math.min(steps.length, step + look); j++) { // anticipation: next partners attract early
+    const s = steps[j]; if (s.k !== "merge" && s.k !== "delta") continue;
+    spring(s.a, s.b, k * .9, .035 * w); w *= .55;
+  }
+  const cx = new Map();                                                    // a colony pulls its members together
+  for (let i = 0; i < N; i++) { const r = st.root[i], c = cx.get(r) || [0, 0, 0]; c[0] += px[i]; c[1] += py[i]; c[2]++; cx.set(r, c); }
+  for (let i = 0; i < N; i++) {
+    const c = cx.get(st.root[i]);
+    if (c[2] > 1) { fx[i] += (c[0] / c[2] - px[i]) * .012; fy[i] += (c[1] / c[2] - py[i]) * .012; }
+    fx[i] += (W / 2 - px[i]) * .004; fy[i] += (H / 2 - py[i]) * .004;
+    vx[i] = (vx[i] + fx[i] * a) * .82; vy[i] = (vy[i] + fy[i] * a) * .82;
+    const sp = Math.hypot(vx[i], vy[i]); if (sp > 14) { vx[i] *= 14 / sp; vy[i] *= 14 / sp; }
+    px[i] = Math.min(W - 24, Math.max(24, px[i] + vx[i])); py[i] = Math.min(H - 24, Math.max(24, py[i] + vy[i]));
+  }
+  alpha = Math.max(.12, alpha * .985);
+}
+
+function render() {
+  if (!run || !run.N) return;
+  const { N, steps, states } = run, st = states[step], look = +$("look").value;
+  steps.forEach((s, j) => {
+    const l = edgeEls[j]; if (!l) return;
+    let show = false, w = 1;
+    if (j < step && s.k !== "fail") {
+      show = true;
+      const fresh = Math.exp(-(step - 1 - j) / 10);
+      const hue = st.col[s.a] >= 0 ? HUES[st.col[s.a]] : "var(--soft)";
+      l.setAttribute("stroke", j === step - 1 ? "var(--now)" : s.k === "invite" ? "var(--soft)" : hue);
+      l.setAttribute("stroke-width", j === step - 1 ? 3.5 : s.k === "merge" ? 1.5 + 2 * fresh : 1.2);
+      l.setAttribute("stroke-dasharray", s.k === "delta" ? "6 5" : "");
+      l.setAttribute("opacity", s.k === "invite" ? .3 : (.35 + .65 * fresh).toFixed(2));
+    } else if (j >= step && j < step + look && (s.k === "merge" || s.k === "delta")) {
+      show = true;
+      l.setAttribute("stroke", "var(--now)"); l.setAttribute("stroke-width", 1.5); l.setAttribute("stroke-dasharray", "2 5");
+      l.setAttribute("opacity", (.7 * Math.pow(.6, j - step)).toFixed(2));
+    }
+    l.style.display = show ? "" : "none";
+    if (show) { l.setAttribute("x1", px[s.a]); l.setAttribute("y1", py[s.a]); l.setAttribute("x2", px[s.b]); l.setAttribute("y2", py[s.b]); }
+  });
+  const showLabels = N <= 40;
+  for (let i = 0; i < N; i++) {
+    const r = 5 + 10 * Math.sqrt(st.held[i] / N), c = nodeEls[i];
+    c.setAttribute("cx", px[i]); c.setAttribute("cy", py[i]); c.setAttribute("r", r.toFixed(1));
+    c.setAttribute("fill", st.col[i] >= 0 ? HUES[st.col[i]] : "var(--lone)");
+    const all = st.held[i] === N;
+    c.setAttribute("stroke", all ? "var(--done)" : "none"); c.setAttribute("stroke-width", all ? 2.5 : 0);
+    const t = labelEls[i]; t.style.display = showLabels ? "" : "none";
+    t.setAttribute("x", px[i]); t.setAttribute("y", py[i] - r - 6);
+  }
+  const cur = steps[step - 1];
+  if (cur) {
+    const ph = (performance.now() % 1200) / 1200;
+    pulseEl.style.display = ""; pulseEl.setAttribute("cx", px[cur.a]); pulseEl.setAttribute("cy", py[cur.a]);
+    pulseEl.setAttribute("r", (12 + ph * 22).toFixed(1)); pulseEl.setAttribute("opacity", (1 - ph).toFixed(2)); pulseEl.setAttribute("stroke-width", 2);
+  } else pulseEl.style.display = "none";
+}
+
+function show() {
+  const { N, steps, states, t0 } = run, st = states[step];
+  $("scrub").value = step;
+  $("mStep").textContent = `${step}/${steps.length}`;
+  $("mTime").textContent = `+${(((steps[step - 1] || { ms: t0 }).ms - t0) / 1000).toFixed(1)} s`;
+  $("mCol").textContent = new Set(Array.from(st.root).filter((r, i) => st.col[i] >= 0)).size;
+  $("mDone").textContent = `${st.held.filter(h => h === N).length}/${N}`;
+  $("mNow").textContent = steps[step - 1] ? describe(steps[step - 1]) : "Before the first event";
+  for (const li of $("list").children) li.classList.toggle("on", +li.dataset.i === step);
+  drawSpark();
+}
+
+function drawSpark() {
+  const s = $("spark"), w = s.clientWidth || 280, h = s.clientHeight || 70, cov = run.coverage, n = cov.length - 1 || 1;
+  const pts = cov.map((c, i) => `${(i / n * (w - 8) + 4).toFixed(1)},${(h - 6 - c * (h - 12)).toFixed(1)}`);
+  const x = step / n * (w - 8) + 4;
+  s.innerHTML = `<polyline points="4,${h - 6} ${pts.join(" ")} ${w - 4},${h - 6}" fill="color-mix(in srgb,var(--ink) 12%,transparent)" stroke="none"/>` +
+    `<polyline points="${pts.join(" ")}" fill="none" stroke="var(--ink)" stroke-width="2"/>` +
+    `<line x1="${x}" x2="${x}" y1="2" y2="${h - 2}" stroke="var(--now)" stroke-width="2"/>`;
+}
+
+function go(i) {
+  if (!run) return;
+  step = Math.max(0, Math.min(run.steps.length, i)); alpha = 1; show();
+}
+function schedule() {
+  clearTimeout(timer);
+  if (!playing) return;
+  if (step >= run.steps.length) { playing = false; $("play").textContent = "Replay"; return; }
+  const speed = +$("speed").value;
+  let wait = 1400 / speed;
+  if ($("pace").value === "time" && step > 0) {
+    const gap = run.steps[step].ms - run.steps[step - 1].ms;
+    wait = Math.min(3000, Math.max(80, gap / speed));
+  }
+  timer = setTimeout(() => { go(step + 1); schedule(); }, wait);
+}
+
+$("play").addEventListener("click", () => {
+  if (!run) return;
+  if (step >= run.steps.length) go(0);
+  playing = !playing; $("play").textContent = playing ? "Pause" : "Play"; schedule();
+});
+$("back").addEventListener("click", () => go(step - 1));
+$("fwd").addEventListener("click", () => go(step + 1));
+$("scrub").addEventListener("input", e => go(+e.target.value));
+$("look").addEventListener("input", e => { $("lookv").textContent = e.target.value; alpha = 1; });
+$("list").addEventListener("click", e => { const li = e.target.closest("li"); if (li) go(+li.dataset.i); });
+document.addEventListener("keydown", e => { if (e.target.tagName === "INPUT" && e.target.type !== "range") return; if (e.key === "ArrowRight") go(step + 1); if (e.key === "ArrowLeft") go(step - 1); });
+$("files").addEventListener("change", async e => {
+  const all = [];
+  for (const f of e.target.files) all.push(...parseLines(await f.text()));
+  playing = false; $("play").textContent = "Play"; load(all);
+});
+const fig = $("fig");
+fig.addEventListener("dragover", e => e.preventDefault());
+fig.addEventListener("drop", async e => {
+  e.preventDefault(); const all = [];
+  for (const f of e.dataTransfer.files) all.push(...parseLines(await f.text()));
+  if (all.length) load(all);
+});
+const sizer = new ResizeObserver(() => {
+  const nw = fig.clientWidth, nh = fig.clientHeight;
+  if (run) for (let i = 0; i < run.N; i++) { px[i] *= nw / W; py[i] *= nh / H; }
+  W = nw; H = nh; if (run) drawSpark();
+});
+sizer.observe(fig);
+
+let data = [];
+try { data = JSON.parse($("events").textContent); } catch (e) { data = []; }
+load(Array.isArray(data) ? data : []);
+const loop = () => { tick(); render(); requestAnimationFrame(loop); };
+requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>

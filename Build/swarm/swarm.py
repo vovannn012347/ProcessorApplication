@@ -35,6 +35,8 @@ Commands (python swarm.py <command> --help for the options):
               <group>/convergence.log; --watch N repeats every N seconds, --until-converged stops when done
     analyze   report from convergence.log + every node's Module_Data/P2P/consensus_events.jsonl,
               and CSV files for charts (convergence.csv, consensus_events.csv)
+    viz       consensus_viz.html: the run replayed step by step (merges, deltas, start pings) as a growing graph;
+              open it in a browser. Other runs can be loaded into it (drop the consensus_events.jsonl files)
 
 Convergence test:
     swarm.bat fresh --count 20 --yes  &&  swarm.bat start
@@ -751,6 +753,41 @@ def analyze(args):
         print(f"\nNo snapshots in {log} yet: run  swarm.bat check --watch 15")
 
 
+def collect_events(args, entries):
+    """Every node's consensus events, since the last trigger unless --all / --since."""
+    events = []
+    for home, info in node_homes(args.rid):
+        for e in read_lines(p2p_dir(home) / "consensus_events.jsonl"):
+            events.append(e)
+    triggers = [e for e in entries if e.get("kind") == "trigger" and e.get("success")]
+    since = _parse_t(triggers[-1]["t"]) if triggers and not args.all else None
+    if args.since:
+        since = _parse_t(args.since if "." in args.since else args.since + ".000")
+    if since:
+        events = [e for e in events if _parse_t(e["t"]) >= since]
+    events.sort(key=lambda e: e["t"])
+    return events, since
+
+
+def viz(args):
+    events, since = collect_events(args, read_lines(convergence_log(args.rid)))
+    template = Path(__file__).resolve().parent / "consensus_viz.html"
+    slim = [{k: v for k, v in e.items() if k != "session"} for e in events]
+    data = json.dumps(slim, separators=(",", ":")).replace("</", "<\\/")
+    html = template.read_text(encoding="utf-8").replace("__EVENTS__", data)
+    out = Path(args.out) if args.out else group_root(args.rid) / "consensus_viz.html"
+    out.write_text(html, encoding="utf-8")
+    print(f"{len(events)} consensus events" + (f" since {since.isoformat()}" if since else "") + f" -> {out}")
+    if not events:
+        print("No events: run a consensus first (swarm.bat consensus), or use --all.")
+    elif not args.no_open:
+        try:
+            import webbrowser
+            webbrowser.open(out.resolve().as_uri())
+        except Exception:
+            pass
+
+
 # ---------------------------------------------------------------- full test
 
 def http_ok(url, timeout=3):
@@ -908,13 +945,19 @@ def main():
     p.add_argument("--all", action="store_true", help="everything in the logs, not only since the last trigger")
     p.add_argument("--since", default="", help="UTC start, e.g. 2026-11-24T02:10:00")
 
+    p = sub.add_parser("viz")
+    p.add_argument("--all", action="store_true", help="everything in the logs, not only since the last trigger")
+    p.add_argument("--since", default="", help="UTC start, e.g. 2026-11-24T02:10:00")
+    p.add_argument("--out", default="", help="output file (default <group>/consensus_viz.html)")
+    p.add_argument("--no-open", action="store_true", help="don't open it in the browser")
+
     args = ap.parse_args()
     if args.command == "up":
         prepare(args)
         start(args)
     else:
         {"build": build, "prepare": prepare, "fresh": fresh, "start": start, "stop": stop, "status": status,
-         "consensus": consensus, "check": check, "analyze": analyze, "test": test}[args.command](args)
+         "consensus": consensus, "check": check, "analyze": analyze, "test": test, "viz": viz}[args.command](args)
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ rem   swarm.bat consensus                              sign in to the first node
 rem   swarm.bat check                                  convergence snapshot of every node -> convergence.log
 rem   swarm.bat check --watch 15 --until-converged     repeat every 15 s until every node holds all others
 rem   swarm.bat analyze                                report + convergence.csv / consensus_events.csv
+rem   swarm.bat viz                                    consensus_viz.html: the run replayed as a growing graph
 rem   swarm.bat test --count 20                        the whole test in one go (same as swarm-test.bat)
 rem   swarm.bat <command> --help                       all options
 rem

@@ -91,6 +91,21 @@ Each node also writes its consensus events to `Module_Data\P2P\consensus_events.
 - `queue_empty`: no more peers to visit;
 - `finish`: the session ended (`reason`: inactivity, midnight or error; `known`: how many nodes it knew).
 
+## Replay as a graph (`swarm.bat viz`)
+
+Writes `consensus_viz.html` next to `convergence.log` and opens it. One step per event (start ping, merge,
+delta, finish); nodes are drawn by a force layout that keeps running between steps:
+
+- every node pushes the others away; merges done are springs (newer = stronger), deltas weaker, start pings weakest;
+- the nodes of one colony (joined by merges/deltas so far) are pulled to its centre;
+- **lookahead**: the merges of the next K steps (slider) already pull their two nodes together, with weight
+  0.55^j for the j-th step ahead, so nodes drift toward their next partners before they merge (a "foresighted"
+  layout: the future of the graph shapes the present picture and nothing has to jump when the edge appears).
+
+Node size = the share of the swarm the node holds (replayed from merges and deltas); a ring = holds all.
+`--all` / `--since` as for analyze; other runs can be loaded into the page (file picker or drop the
+`consensus_events.jsonl` files on it).
+
 ## The report (`swarm.bat analyze`)
 
 By default the report covers everything since the last trigger (`--all` for the whole log, `--since 2026-11-24T02:10:00` for a UTC start time).

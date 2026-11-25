@@ -1044,6 +1044,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
 
             // The swap is complete on our side too: we hold the sender's updates now.
             _sessionManager.MarkNodeAsVisited(senderNodeId);
+            LogConsensusEvent("merge_in", new Dictionary<string, object?> { ["peer"] = senderNodeId, ["order"] = returnSignature.Order });
 
             return JsonSerializer.Serialize(returnSignature);
         }
@@ -1083,6 +1084,12 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
 
                         // Their updates reached us through the delta: no need to visit them ourselves.
                         _sessionManager.MarkNodeAsVisited(senderNodeId);
+                        LogConsensusEvent("delta", new Dictionary<string, object?>
+                        {
+                            ["from"] = senderNodeId,
+                            ["signers"] = ping.SignatureChain?.Where(s => s != null).Select(s => s.SignerNodeId).Distinct().ToList(),
+                            ["unconfirmed"] = _sessionManager.GetUnconfirmedSigners(assignedDeltaId),
+                        });
                         if (ping.SignatureChain != null)
                         {
                             // A signer whose link we could not check (no key yet) has not been confirmed: not visited

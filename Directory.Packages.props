@@ -14,7 +14,9 @@
 		<PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="6.0.0" />
 		<PackageVersion Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
 		<PackageVersion Include="MailKit" Version="4.16.0" />
-		<PackageVersion Include="SIPSorcery" Version="6.0.11" />
+		<!-- 6.2.4: 6.0.x crashed the whole process (NullReferenceException in RtpIceChannel.RefreshTurn on a timer,
+		     unhandled) when a connection came up before a STUN server answered: fixed upstream in 6.2.0/6.2.4. -->
+		<PackageVersion Include="SIPSorcery" Version="6.2.4" />
 		<PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
 	</ItemGroup>
 

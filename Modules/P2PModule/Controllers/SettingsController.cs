@@ -14,7 +14,6 @@ using ProcessorApplication.Attributes;
 using ProcessorApplication.Configuration.Settings;
 using ProcessorApplication.Utils;
 
-using SIPSorcery.Media.G729Codec;
 
 namespace P2PModule.Controllers;
 

@@ -169,6 +169,16 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
     public bool SendMessageRaw(string nodeId, string payload, string channelLabel = "p2p-control-channel")
     {
+        // Talk to a node over the channel it last talked to us on. After two dials crossed, the connection
+        // stored for the node can be a half-dead one that still reports connected/open on our side while the
+        // node reads only the other: everything the node sent us arrived, but every request we sent it
+        // (pings, start pings, swaps) vanished - minutes of failed heartbeats and NO_RESPONSE in consensus.
+        if (_lastInboundChannel.TryGetValue($"{nodeId}|{channelLabel}", out var preferred) && preferred.readyState == RTCDataChannelState.open)
+        {
+            preferred.send(payload);
+            return true;
+        }
+
         if (_connections.TryGetValue(nodeId, out var conn))
         {
             if (conn.DataChannels.TryGetValue(channelLabel, out var dc) && dc.readyState == RTCDataChannelState.open)
@@ -1086,6 +1096,11 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
     public async Task<bool> KillConnectionAsync(string nodeId, string terminationReason = "")
     {
+        foreach (var key in _lastInboundChannel.Keys.Where(k => k.StartsWith(nodeId + "|", StringComparison.OrdinalIgnoreCase)).ToList())
+        {
+            if (_lastInboundChannel.TryRemove(key, out var inbound)) { try { inbound.close(); } catch { } }
+        }
+
         if (_connections.TryRemove(nodeId, out var conn))
         {
             try

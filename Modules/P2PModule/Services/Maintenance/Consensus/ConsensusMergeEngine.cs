@@ -229,6 +229,14 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
 
         using var gate = await operation.LockAsync();
 
+        if (!Directory.Exists(operation.IterDir))
+        {
+            // The session finished (workspace deleted) while this set was on its way
+            _logger.LogDebug("[Consensus Engine] Staging workspace for {Date} is gone; dropping {Count} late node(s) from {RemoteNodeId}.",
+                operation.TargetDate, remoteNodes.Count, remoteNodeId);
+            return false;
+        }
+
         _logger.LogInformation("[Consensus Engine] Staging incoming node set from {RemoteNodeId} into IterDir. Count: {Count}.",
             remoteNodeId, remoteNodes.Count);
 

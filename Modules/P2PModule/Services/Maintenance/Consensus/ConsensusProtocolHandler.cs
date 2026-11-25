@@ -973,12 +973,10 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                                 }
                             }
 
-                            // Stage parsed nodes immediately
-                            var activeSession = _sessionManager.GetActiveSession();
-                            if (activeSession?.StagingOperation != null && transferredList.Count > 0)
-                            {
-                                _ = _mergeEngine.StageIncomingNodeSetAsync(activeSession.StagingOperation, senderNodeId, transferredList);
-                            }
+                            // Not staged here: the delta's signature chain is checked only after the download
+                            // (RegisterDownloadedDeltaAsync), and IngestPendingDeltasAsync stages its nodes then.
+                            // Staging them straight away let unverified nodes in, staged them twice, and the
+                            // fire-and-forget write could land after the session had already deleted its workspace.
                         }
                     }
                     catch (Exception ex)

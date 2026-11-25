@@ -771,6 +771,30 @@ def collect_events(args, entries):
 
 def viz(args):
     events, since = collect_events(args, read_lines(convergence_log(args.rid)))
+    homes = node_homes(args.rid)
+
+    # Direct connections (up / rtt / down). They form before the trigger, so take them from a while before it
+    # (homes made by "fresh" hold only this run anyway).
+    conn_since = None
+    if since and not args.all:
+        conn_since = since.timestamp() - args.connections_before * 60
+    conns = []
+    for home, info in homes:
+        for e in read_lines(p2p_dir(home) / "connection_events.jsonl"):
+            if conn_since is None or _parse_t(e["t"]).timestamp() >= conn_since:
+                conns.append(e)
+
+    # Seed lists from the homes' swarm-node.json (configured links), as one event per pair at the first timestamp
+    by_url = {i.get("Url", "").rstrip("/"): i["Name"] for _, i in homes}
+    first_t = min([e["t"] for e in events + conns], default=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"))
+    seeds = []
+    for _, info in homes:
+        for url in info.get("Seeds", []):
+            peer = by_url.get(str(url).rstrip("/"))
+            if peer and peer != info["Name"]:
+                seeds.append({"t": first_t, "node": info["Name"], "ev": "seed", "peer": peer})
+
+    events = sorted(events + conns + seeds, key=lambda e: e["t"])
     template = Path(__file__).resolve().parent / "consensus_viz.html"
     slim = [{k: v for k, v in e.items() if k != "session"} for e in events]
     data = json.dumps(slim, separators=(",", ":")).replace("</", "<\\/")
@@ -949,6 +973,8 @@ def main():
     p.add_argument("--all", action="store_true", help="everything in the logs, not only since the last trigger")
     p.add_argument("--since", default="", help="UTC start, e.g. 2026-11-24T02:10:00")
     p.add_argument("--out", default="", help="output file (default <group>/consensus_viz.html)")
+    p.add_argument("--connections-before", type=float, default=60,
+                   help="minutes of connection events before the trigger to include (default 60)")
     p.add_argument("--no-open", action="store_true", help="don't open it in the browser")
 
     args = ap.parse_args()

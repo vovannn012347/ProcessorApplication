@@ -93,18 +93,20 @@ Each node also writes its consensus events to `Module_Data\P2P\consensus_events.
 
 ## Replay as a graph (`swarm.bat viz`)
 
-Writes `consensus_viz.html` next to `convergence.log` and opens it. One step per event (start ping, merge,
-delta, finish); nodes are drawn by a force layout that keeps running between steps:
+Writes `consensus_viz.html` next to `convergence.log` and opens it: the run as a 3D mesh you can turn.
+Links: grey = seeded (from the homes' seed lists), red = live connection (`connection_events.jsonl`: up / rtt / down,
+logged from the heartbeat), deep green = consensus merge, yellow = delta push (direction ignored).
 
-- every node pushes the others away; merges done are springs (newer = stronger), deltas weaker, start pings weakest;
-- the nodes of one colony (joined by merges/deltas so far) are pulled to its centre;
-- **lookahead**: the merges of the next K steps (slider) already pull their two nodes together, with weight
-  0.55^j for the j-th step ahead, so nodes drift toward their next partners before they merge (a "foresighted"
-  layout: the future of the graph shapes the present picture and nothing has to jump when the edge appears).
+One step per event (connection up/down, start ping, merge, delta, finish). The layout is t-SNE in 3D, run a few
+small iterations per step (slider) from random positions:
+- affinity of a pair = sum of the weights of the links it has so far (sliders; defaults seed 1, delta 2,
+  connection 3, merge 4), a connection scaled by 2·median/(median + its ping), so low-latency pairs pull harder;
+- everyone repels through the Student-t kernel, a small gravity keeps stray nodes in view.
+So nodes drift slowly along their seed links first, then harder along connections and merges as they appear.
 
-Node size = the share of the swarm the node holds (replayed from merges and deltas); a ring = holds all.
-`--all` / `--since` as for analyze; other runs can be loaded into the page (file picker or drop the
-`consensus_events.jsonl` files on it).
+Node size = the share of the swarm the node holds (replayed from merges and deltas); green ring = holds all.
+`--all` / `--since` as for analyze, `--connections-before 60` = minutes of connection events before the trigger.
+Other runs can be loaded into the page (file picker, or drop the .jsonl files on the plate).
 
 ## The report (`swarm.bat analyze`)
 

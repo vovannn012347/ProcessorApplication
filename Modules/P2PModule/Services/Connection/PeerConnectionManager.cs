@@ -1571,6 +1571,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
         if (_connections.TryRemove(nodeId, out var conn))
         {
+            P2PModule.Services.Maintenance.ConsensusEventLog.WriteConnection(_settings.CurrentValue.DataStoragePath, _identityService.NodeId, "down", nodeId, reason: terminationReason);
             try
             {
                 foreach (var dc in conn.DataChannels.Values) try { dc.close(); } catch { }

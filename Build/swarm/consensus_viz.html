@@ -7,13 +7,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@500;700&family=Red+Hat+Text:wght@400;500&display=swap" rel="stylesheet">
 <style>
-/* VOICE work: a lab readout of one consensus run
-   IDEA a culture plate - nodes are spores, merges grow hyphae, consensus groups are colonies that fuse
-   PICTURE the live plate: force layout per step, nodes drift toward the partners of their next merges
-   COLOUR plate white / night agar black, oxford ink, colony hues, magenta for the step happening now
+/* VOICE work: a lab readout of one swarm run
+   IDEA a culture seen under a dark-field microscope - nodes are spores floating in 3D, links of each kind glow in their own colour
+   PICTURE the live 3D mesh: t-SNE on the links known so far (seeds, connections with their latency, merges, deltas), small steps per event
+   COLOUR page white / night navy; the plate is always dark so grey, green, red and yellow links all read; magenta for "now"
    TYPE Red Hat Display + Red Hat Text
-   LAYOUT plate full width under a modest title, readout beside it on a laptop, controls under the plate; phone: title, plate, controls, readout */
-:root{color-scheme:light dark;--bg:light-dark(#ffffff,#070f26);--plate:light-dark(#f4f6fb,#0b1736);--ink:light-dark(#0b1f4b,#e7ecf8);--soft:light-dark(#5b6787,#9aa6c6);--rule:light-dark(#d9deea,#22305a);--now:#e0115f;--done:light-dark(#0b1f4b,#ffffff);--lone:light-dark(#b9c1d6,#3a4876)}
+   LAYOUT plate full width under a modest title with the readout beside it on a laptop; phone: title, plate, controls, readout */
+:root{color-scheme:light dark;--bg:light-dark(#ffffff,#070f26);--ink:light-dark(#0b1f4b,#e7ecf8);--soft:light-dark(#5b6787,#9aa6c6);--rule:light-dark(#d9deea,#22305a);--now:#e0115f}
 :root[data-theme=light]{color-scheme:light}
 :root[data-theme=dark]{color-scheme:dark}
 *{box-sizing:border-box;min-width:0}
@@ -22,36 +22,40 @@ body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Red Hat Text"
 h1{font:700 clamp(28px,4vw,40px)/1.05 "Red Hat Display",system-ui,sans-serif;letter-spacing:-.02em;margin:0;text-wrap:balance}
 .wrap{max-width:1240px;margin:0 auto;padding:clamp(18px,3vw,36px) max(4vw,16px)}
 .head{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:8px 24px;margin-bottom:16px}
-.finding{color:var(--soft);margin:6px 0 0;max-width:70ch}
-.grid{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:20px}
-.fig{position:relative;min-height:min(62vh,600px);background:var(--plate);border:1px solid var(--rule);border-radius:20px;overflow:hidden}
-.fig>svg{position:absolute;inset:0;width:100%;height:100%}
-svg text{font:500 12px "Red Hat Text",sans-serif;fill:var(--ink);paint-order:stroke;stroke:var(--plate);stroke-width:4px}
+.finding{color:var(--soft);margin:6px 0 0;max-width:75ch}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px}
+.fig{position:relative;min-height:min(66vh,640px);background:radial-gradient(circle at 50% 40%,#16213f,#070b16 75%);border-radius:20px;overflow:hidden;touch-action:none;cursor:grab}
+.fig:active{cursor:grabbing}
+.fig>canvas{position:absolute;inset:0;width:100%;height:100%}
+.hint{position:absolute;left:14px;bottom:10px;font-size:13px;color:#9aa6c6;pointer-events:none}
 .controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin-top:14px}
 button,select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--rule);border-radius:8px;min-height:44px;padding:0 14px;cursor:pointer}
 button:hover,select:hover{border-color:var(--ink)}
 button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--now);outline-offset:2px}
 #play{background:var(--ink);color:var(--bg);border-color:var(--ink);min-width:92px}
 label{display:flex;align-items:center;gap:8px;color:var(--soft);font-size:14px;white-space:nowrap}
-input[type=range]{accent-color:var(--now);height:44px}
-#scrub{flex:1 1 220px}
+input[type=range]{accent-color:var(--now);height:36px}
+input[type=checkbox]{width:18px;height:18px;accent-color:var(--now)}
+#scrub{flex:1 1 220px;height:44px}
 .panel{display:flex;flex-direction:column;gap:14px}
 .figs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.num{font:700 clamp(24px,3vw,30px)/1 "Red Hat Display",sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap}
+.num{font:700 clamp(22px,3vw,28px)/1 "Red Hat Display",sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap}
 .cap{font-size:13px;color:var(--soft)}
 .now{border-left:3px solid var(--now);padding:4px 0 4px 10px;min-height:52px}
-#spark{width:100%;height:70px;display:block}
-.legend{display:grid;gap:6px;font-size:13px;color:var(--soft)}
-.legend span{display:inline-block;width:26px;height:0;border-top:2px solid var(--ink);vertical-align:middle;margin-right:8px}
+#spark{width:100%;height:64px;display:block}
+.layers{display:grid;gap:4px}
+.layer{display:grid;grid-template-columns:22px minmax(0,1fr) 92px;align-items:center;gap:8px;font-size:14px}
+.layer span{display:flex;align-items:center;gap:8px}
+.layer i{flex:none;width:22px;height:0;border-top:3px solid}
+.layer input[type=range]{width:92px}
 details{border-top:1px solid var(--rule);padding-top:10px}
 summary{cursor:pointer;min-height:32px}
-ol{margin:8px 0 0;padding-left:2.4em;max-height:260px;overflow:auto;font-size:14px}
+ol{margin:8px 0 0;padding-left:2.8em;max-height:260px;overflow:auto;font-size:14px}
 li{cursor:pointer;padding:2px 0}
 li.on{color:var(--now);font-weight:500}
 .load{font-size:13px;color:var(--soft)}
 @media(max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}.figs{grid-template-columns:repeat(4,minmax(0,1fr))}}
-@media(max-width:600px){.figs{grid-template-columns:repeat(2,minmax(0,1fr))}.fig{min-height:420px;border-radius:24px}}
-@media(prefers-reduced-motion:reduce){.pulse{display:none}}
+@media(max-width:600px){.figs{grid-template-columns:repeat(2,minmax(0,1fr))}.fig{min-height:440px}}
 </style>
 </head>
 <body>
@@ -65,32 +69,32 @@ li.on{color:var(--now);font-weight:500}
   </div>
   <div class="grid">
     <div>
-      <div class="fig" id="fig"><svg id="plate" role="img" aria-label="Consensus graph at the current step"></svg></div>
+      <div class="fig" id="fig"><canvas id="cv" aria-label="3D mesh of the swarm at the current step"></canvas><div class="hint">Drag to turn, wheel or pinch to zoom</div></div>
       <div class="controls">
         <button id="play" type="button">Play</button>
         <button id="back" type="button" aria-label="Step back">&#8592;</button>
         <button id="fwd" type="button" aria-label="Step forward">&#8594;</button>
         <input type="range" id="scrub" min="0" max="0" value="0" aria-label="Step">
-        <label>Lookahead <input type="range" id="look" min="0" max="8" value="4"> <b id="lookv">4</b></label>
         <label>Pace <select id="pace"><option value="steps">Even steps</option><option value="time">Real time</option></select></label>
-        <label>Speed <input type="range" id="speed" min="1" max="10" value="4"></label>
+        <label>Speed <input type="range" id="speed" min="1" max="12" value="5"></label>
+        <label>t-SNE steps per event <input type="range" id="iters" min="1" max="40" value="6"> <b id="itersv">6</b></label>
+        <label><input type="checkbox" id="settle"> Keep settling</label>
+        <label><input type="checkbox" id="spin" checked> Turn</label>
       </div>
     </div>
     <div class="panel">
       <div class="figs">
         <div><div class="num" id="mStep">0</div><div class="cap">step</div></div>
         <div><div class="num" id="mTime">+0.0 s</div><div class="cap">since first event</div></div>
-        <div><div class="num" id="mCol">0</div><div class="cap">colonies (2+ nodes)</div></div>
+        <div><div class="num" id="mUp">0</div><div class="cap">connections up</div></div>
         <div><div class="num" id="mDone">0</div><div class="cap">nodes holding all</div></div>
       </div>
       <div class="now"><div class="cap">This step</div><div id="mNow">-</div></div>
       <div><div class="cap">Average share of the swarm each node holds</div><svg id="spark" aria-label="Coverage over steps"></svg></div>
-      <div class="legend">
-        <div><span></span>merge done (newer = stronger)</div>
-        <div><span style="border-top-style:dashed"></span>delta received</div>
-        <div><span style="border-top:1px solid var(--soft)"></span>start ping (who invited whom)</div>
-        <div><span style="border-top:2px dotted var(--now)"></span>merge coming in the next steps</div>
-        <div>Node size = share of the swarm it holds; ring = holds all.</div>
+      <div>
+        <div class="cap" style="margin-bottom:4px">Links: show, and how hard they pull in the layout</div>
+        <div class="layers" id="layers"></div>
+        <div class="cap" style="margin-top:6px">Connections pull harder the lower their ping time. Node size = share of the swarm it holds; green ring = holds all.</div>
       </div>
       <details><summary>All steps</summary><ol id="list"></ol></details>
     </div>
@@ -99,82 +103,75 @@ li.on{color:var(--now);font-weight:500}
 <script id="events" type="application/json">__EVENTS__</script>
 <script>
 {
-const NS = "http://www.w3.org/2000/svg";
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const HUES = ["#2a6fdb","#00a37a","#e08a00","#8a4fff","#d6336c","#1b9aaa","#7a8b00","#c2410c","#4c6ef5","#0f9d58"];
+const LAYERS = [
+  { id: "seed", name: "Seeded (configured)", col: "#8b95ad", w: 1, width: 1, alpha: .45 },
+  { id: "cons", name: "Consensus merge", col: "#12a150", w: 4, width: 4, alpha: .95 },
+  { id: "delta", name: "Delta push", col: "#ffd23f", w: 2, width: 2, alpha: .9 },
+  { id: "conn", name: "Connection (live)", col: "#ff3b4f", w: 3, width: 1.3, alpha: .9 },
+];
+const key = (a, b) => a < b ? a * 4096 + b : b * 4096 + a;
+const ends = k => [Math.floor(k / 4096), k % 4096];
 
-let run = null, step = 0, playing = false, timer = null, alpha = 1;
-let px = [], py = [], vx = [], vy = [], W = 800, H = 500;
+let run = null, step = 0, playing = false, timer = null, S = null, sAt = -1, P = [], budget = 0;
+let Y, V, cam = { yaw: .7, pitch: .35, dist: 3.4 }, fitR = 10, W = 800, H = 500, hover = -1;
+const cv = $("cv"), ctx = cv.getContext("2d"), fig = $("fig");
+
+$("layers").innerHTML = LAYERS.map(l => `<div class="layer"><input type="checkbox" id="on-${l.id}" checked aria-label="Show ${l.name}"><span><i style="border-color:${l.col};border-top-width:${Math.max(2, l.width)}px"></i>${l.name}</span><input type="range" id="w-${l.id}" min="0" max="10" step="0.5" value="${l.w}" aria-label="Pull of ${l.name}"></div>`).join("");
 
 function parseLines(text) {
   const out = [];
   for (const line of text.split(/\r?\n/)) {
-    const s = line.trim();
-    if (!s) continue;
+    const s = line.trim(); if (!s) continue;
     try { const v = JSON.parse(s); Array.isArray(v) ? out.push(...v) : out.push(v); } catch (e) { }
   }
   return out;
 }
 
-// Events -> steps, and the state after every step (what each node holds, which colony it is in)
+// events -> steps (rtt samples ride along with the next step instead of being steps of their own)
 function build(raw) {
   const ev = raw.filter(e => e && e.t && e.node && e.ev).map(e => Object.assign({}, e, { ms: Date.parse(e.t) }))
     .filter(e => !isNaN(e.ms)).sort((a, b) => a.ms - b.ms);
   const ids = new Set();
   for (const e of ev) { ids.add(e.node); if (e.peer) ids.add(e.peer); if (e.from) ids.add(e.from); }
-  const names = [...ids].sort();
-  const ix = new Map(names.map((n, i) => [n, i]));
-  const N = names.length;
-  const steps = [], lastPair = new Map();
+  const names = [...ids].sort(), ix = new Map(names.map((n, i) => [n, i])), N = names.length;
+  const steps = [], up = new Set(), lastPair = new Map(), seeds = new Set();
+  let rtts = [];
+  const push = s => { s.rtts = rtts; rtts = []; steps.push(s); };
+  for (const e of ev) if (e.ev === "seed" && e.peer && e.peer !== e.node) seeds.add(key(ix.get(e.node), ix.get(e.peer)));
+  if (seeds.size) push({ k: "seeds", pairs: [...seeds], ms: ev[0].ms });
   for (const e of ev) {
-    const a = ix.get(e.node);
-    if (e.ev === "start") steps.push(e.from ? { k: "invite", a: ix.get(e.from), b: a, ms: e.ms } : { k: "init", a, ms: e.ms });
-    else if (e.ev === "merge" || e.ev === "merge_in") {
-      if (!e.peer) continue;
-      const b = ix.get(e.peer);
-      if (e.ok === false) { steps.push({ k: "fail", a, b, ms: e.ms }); continue; }
-      const key = Math.min(a, b) + "|" + Math.max(a, b);
-      if (lastPair.has(key) && e.ms - lastPair.get(key) < 3000) continue; // the other side's record of the same swap
-      lastPair.set(key, e.ms);
-      steps.push({ k: "merge", a, b, ms: e.ms });
+    const a = ix.get(e.node), b = e.peer ? ix.get(e.peer) : undefined;
+    switch (e.ev) {
+      case "rtt": if (b !== undefined && e.rtt != null) rtts.push([a, b, e.rtt]); break;
+      case "up": {
+        if (b === undefined) break;
+        if (e.rtt != null) rtts.push([a, b, e.rtt]);
+        const k = key(a, b); if (up.has(k)) break; up.add(k);
+        push({ k: "up", a, b, ms: e.ms, rtt: e.rtt }); break;
+      }
+      case "down": { if (b === undefined) break; const k = key(a, b); if (!up.has(k)) break; up.delete(k); push({ k: "down", a, b, ms: e.ms }); break; }
+      case "start": push(e.from ? { k: "invite", a: ix.get(e.from), b: a, ms: e.ms } : { k: "init", a, ms: e.ms }); break;
+      case "merge": case "merge_in": {
+        if (b === undefined) break;
+        if (e.ok === false) { push({ k: "fail", a, b, ms: e.ms }); break; }
+        const k = key(a, b);
+        if (lastPair.has(k) && e.ms - lastPair.get(k) < 3000) break;   // the other side's record of the same swap
+        lastPair.set(k, e.ms); push({ k: "merge", a, b, ms: e.ms }); break;
+      }
+      case "delta": if (e.from) push({ k: "delta", a: ix.get(e.from), b: a, ms: e.ms }); break;
+      case "finish": push({ k: "finish", a, ms: e.ms, known: e.known }); break;
     }
-    else if (e.ev === "delta" && e.from) steps.push({ k: "delta", a: ix.get(e.from), b: a, ms: e.ms });
-    else if (e.ev === "finish") steps.push({ k: "finish", a, ms: e.ms, known: e.known });
   }
-  // replay
-  const know = names.map((_, i) => new Set([i]));
-  const parent = names.map((_, i) => i), size = names.map(() => 1), colour = names.map(() => -1);
-  let nextHue = 0;
-  const find = i => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
-  const union = (a, b) => {
-    let ra = find(a), rb = find(b);
-    if (ra === rb) return;
-    if (size[ra] < size[rb] || (size[ra] === size[rb] && colour[ra] < 0)) [ra, rb] = [rb, ra];
-    parent[rb] = ra; size[ra] += size[rb];
-    if (colour[ra] < 0) colour[ra] = colour[rb] >= 0 ? colour[rb] : (nextHue++ % HUES.length);
-  };
-  const snap = () => ({
-    held: Int16Array.from(know, s => s.size),
-    col: Int16Array.from(names, (_, i) => { const r = find(i); return size[r] > 1 ? colour[r] : -1; }),
-    root: Int16Array.from(names, (_, i) => find(i)),
-  });
-  const states = [snap()];
-  for (const s of steps) {
-    if (s.k === "merge") { const u = new Set([...know[s.a], ...know[s.b]]); know[s.a] = u; know[s.b] = new Set(u); union(s.a, s.b); }
-    else if (s.k === "delta") { for (const x of know[s.a]) know[s.b].add(x); union(s.a, s.b); }
-    else if (s.k === "finish" && typeof s.known === "number" && s.known + 1 >= N && know[s.a].size < N) {
-      // The node reports it holds everyone: whatever it got without a logged event (deltas in older builds) shows here
-      know[s.a] = new Set(names.map((_, i) => i)); s.late = true;
-    }
-    states.push(snap());
-  }
-  const t0 = ev.length ? ev[0].ms : 0;
-  const coverage = states.map(st => st.held.reduce((a, b) => a + b, 0) / Math.max(1, N * N));
-  const full = states.findIndex(st => st.held.every(h => h === N));
   const prefix = commonPrefix(names);
-  const hasDeltas = steps.some(s => s.k === "delta");
-  return { names, labels: names.map(n => n.slice(prefix.length) || n), N, steps, states, t0, coverage, full, hasDeltas };
+  const r = { names, labels: names.map(n => n.slice(prefix.length) || n), N, steps, t0: ev.length ? ev[0].ms : 0 };
+  const st = fresh(r); r.held = [Int16Array.from(st.held, s => s.size)]; r.upCount = [0];
+  for (const s of steps) { apply(r, st, s); r.held.push(Int16Array.from(st.held, h => h.size)); r.upCount.push(st.conn.size); }
+  r.coverage = r.held.map(h => h.reduce((x, y) => x + y, 0) / Math.max(1, N * N));
+  r.full = r.held.findIndex(h => h.length > 0 && h.every(x => x === N));
+  r.hasDeltas = steps.some(s => s.k === "delta"); r.hasConn = steps.some(s => s.k === "up"); r.hasSeeds = seeds.size > 0;
+  return r;
 }
 
 function commonPrefix(names) {
@@ -184,150 +181,164 @@ function commonPrefix(names) {
   return p.replace(/[^-_ .]*$/, "");
 }
 
-function describe(s) {
-  const n = i => run.names[i];
-  return { invite: `${n(s.a)} invited ${n(s.b)} (start ping)`, init: `${n(s.a)} started the consensus`, merge: `${n(s.a)} merged with ${n(s.b)}`,
-    fail: `${n(s.a)} tried to merge with ${n(s.b)} and failed`, delta: `${n(s.b)} got a delta from ${n(s.a)}`, finish: `${n(s.a)} finished` + (s.late ? " (reports it holds all)" : "") }[s.k];
+function fresh(r) { return { held: r.names.map((_, i) => new Set([i])), seed: new Set(), cons: new Set(), delta: new Set(), conn: new Set(), lat: new Map() }; }
+function apply(r, st, s) {
+  for (const [a, b, ms] of s.rtts || []) { const k = key(a, b), o = st.lat.get(k); st.lat.set(k, o == null ? ms : o * .7 + ms * .3); }
+  if (s.k === "seeds") for (const k of s.pairs) st.seed.add(k);
+  else if (s.k === "up") st.conn.add(key(s.a, s.b));
+  else if (s.k === "down") st.conn.delete(key(s.a, s.b));
+  else if (s.k === "merge") { const u = new Set([...st.held[s.a], ...st.held[s.b]]); st.held[s.a] = u; st.held[s.b] = new Set(u); st.cons.add(key(s.a, s.b)); }
+  else if (s.k === "delta") { for (const x of st.held[s.a]) st.held[s.b].add(x); st.delta.add(key(s.a, s.b)); }
+  else if (s.k === "finish" && typeof s.known === "number" && s.known + 1 >= r.N && st.held[s.a].size < r.N) { st.held[s.a] = new Set(r.names.map((_, i) => i)); s.late = true; }
+}
+function stateAt(t) {          // replay forward from where we are, or from the start when going back
+  if (!S || t < sAt) { S = fresh(run); sAt = 0; }
+  while (sAt < t) apply(run, S, run.steps[sAt++]);
+  return S;
 }
 
-function load(raw) {
-  run = build(raw);
-  const { N, steps, full, t0 } = run;
-  W = $("fig").clientWidth; H = $("fig").clientHeight;
-  px = []; py = []; vx = []; vy = [];
-  for (let i = 0; i < N; i++) { const a = i / Math.max(1, N) * Math.PI * 2; px.push(W / 2 + Math.cos(a) * W * .36); py.push(H / 2 + Math.sin(a) * H * .36); vx.push(0); vy.push(0); }
-  $("scrub").max = steps.length; step = 0; alpha = 1;
-  const merges = steps.filter(s => s.k === "merge").length, deltas = steps.filter(s => s.k === "delta").length;
-  $("finding").textContent = !N ? "No consensus events found. Load consensus_events.jsonl files from the node homes." :
-    full >= 0 ? `${N} nodes reached full consensus in ${((steps[full - 1].ms - t0) / 1000).toFixed(1)} s, after ${full} steps (${merges} merges${deltas ? `, ${deltas} deltas` : ""} in the whole run).`
-      : `${N} nodes, ${merges} merges${deltas ? `, ${deltas} deltas` : ""}; at the end ${run.states[run.states.length - 1].held.filter(h => h === N).length} hold all ${N}.`;
-  if (N && !run.hasDeltas) {
-    const lastMerge = [...steps].reverse().find(s => s.k === "merge");
-    const allFinished = run.states[run.states.length - 1].held.every(h => h === N);
-    $("finding").textContent = `${N} nodes, ${merges} merges between +0.0 s and +${lastMerge ? ((lastMerge.ms - t0) / 1000).toFixed(1) : "0.0"} s` +
-      (allFinished ? `; every node reported holding all ${N} when its session ended.` : ".") +
-      " These logs have no delta events (older build), so what deltas delivered shows only when each node finishes.";
+function describe(s) {
+  const n = i => run.names[i];
+  return { seeds: `Seed lists: ${s.pairs ? s.pairs.length : 0} configured links`, up: `${n(s.a)} and ${n(s.b)} connected` + (s.rtt != null ? ` (ping ${s.rtt} ms)` : ""),
+    down: `${n(s.a)} and ${n(s.b)} dropped their connection`, invite: `${n(s.a)} invited ${n(s.b)} (start ping)`, init: `${n(s.a)} started the consensus`,
+    merge: `${n(s.a)} merged with ${n(s.b)}`, fail: `${n(s.a)} tried to merge with ${n(s.b)} and failed`, delta: `${n(s.a)} pushed a delta to ${n(s.b)}`,
+    finish: `${n(s.a)} finished` + (s.late ? " (reports it holds all)" : "") }[s.k];
+}
+
+// ---- layout: t-SNE in 3D on the links known at this step (affinity = sum of link weights, connections scaled by ping)
+function rebuildP() {
+  const st = stateAt(step), w = new Map(), add = (k, v) => { if (v > 0) w.set(k, (w.get(k) || 0) + v); };
+  const ws = id => +$("w-" + id).value;
+  for (const k of st.seed) add(k, ws("seed"));
+  for (const k of st.cons) add(k, ws("cons"));
+  for (const k of st.delta) add(k, ws("delta"));
+  const lats = [...st.conn].map(k => st.lat.get(k)).filter(x => x != null).sort((a, b) => a - b);
+  const ref = lats.length ? lats[lats.length >> 1] : 50;
+  for (const k of st.conn) { const l = st.lat.get(k); add(k, ws("conn") * (l == null ? 1 : 2 * ref / (ref + l))); }
+  let total = 0; for (const v of w.values()) total += v;
+  P = total > 0 ? [...w].map(([k, v]) => { const [a, b] = ends(k); return [a, b, v / (2 * total)]; }) : [];
+}
+
+function tsneIter() {
+  const N = run.N; if (N < 2) return;
+  const num = new Float64Array(N * N); let Z = 0;
+  for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
+    const dx = Y[3 * i] - Y[3 * j], dy = Y[3 * i + 1] - Y[3 * j + 1], dz = Y[3 * i + 2] - Y[3 * j + 2];
+    const q = 1 / (1 + dx * dx + dy * dy + dz * dz); num[i * N + j] = q; Z += 2 * q;
   }
-  $("list").innerHTML = steps.map((s, i) => `<li data-i="${i + 1}">${esc(describe(s))}</li>`).join("");
-  setupSvg(); show();
+  const g = new Float64Array(3 * N), exag = 4;
+  for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {          // everyone repels: -q_ij * num_ij
+    const nm = num[i * N + j], c = -4 * nm * nm / Z;
+    for (let d = 0; d < 3; d++) { const f = c * (Y[3 * i + d] - Y[3 * j + d]); g[3 * i + d] += f; g[3 * j + d] -= f; }
+  }
+  for (const [a, b, p] of P) {                                             // known links attract: p_ij * num_ij
+    const c = 4 * exag * p * num[Math.min(a, b) * N + Math.max(a, b)];
+    for (let d = 0; d < 3; d++) { const f = c * (Y[3 * a + d] - Y[3 * b + d]); g[3 * a + d] += f; g[3 * b + d] -= f; }
+  }
+  for (let i = 0; i < 3 * N; i++) {                                         // small gravity keeps strays in view
+    g[i] += .002 * Y[i];
+    V[i] = .5 * V[i] - 60 * g[i];
+    if (V[i] > .6) V[i] = .6; else if (V[i] < -.6) V[i] = -.6;
+    Y[i] += V[i];
+  }
 }
 
 // ---- drawing
-let edgeEls = [], nodeEls = [], labelEls = [], pulseEl = null;
-function setupSvg() {
-  const svg = $("plate");
-  svg.innerHTML = "";
-  const ge = document.createElementNS(NS, "g"), gn = document.createElementNS(NS, "g");
-  svg.append(ge, gn);
-  edgeEls = run.steps.map(s => { if (s.b === undefined) return null; const l = document.createElementNS(NS, "line"); l.setAttribute("stroke-linecap", "round"); ge.append(l); return l; });
-  pulseEl = document.createElementNS(NS, "circle"); pulseEl.setAttribute("class", "pulse"); pulseEl.setAttribute("fill", "none"); pulseEl.setAttribute("stroke", "var(--now)"); gn.append(pulseEl);
-  nodeEls = run.names.map((n, i) => { const c = document.createElementNS(NS, "circle"); const t = document.createElementNS(NS, "title"); t.textContent = n; c.append(t); gn.append(c); return c; });
-  labelEls = run.labels.map(l => { const t = document.createElementNS(NS, "text"); t.textContent = l; t.setAttribute("text-anchor", "middle"); gn.append(t); return t; });
+function project(i, c, R) {
+  const x = (Y[3 * i] - c[0]) / R, y = (Y[3 * i + 1] - c[1]) / R, z = (Y[3 * i + 2] - c[2]) / R;
+  const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw), cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+  const x1 = x * cy - z * sy, z1 = x * sy + z * cy, y1 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
+  const f = cam.dist / (cam.dist + z2), s = Math.min(W, H) * .5;
+  return [W / 2 + x1 * f * s, H / 2 + y1 * f * s, z2, f];
 }
 
-function tick() {
+function draw() {
+  const dpr = window.devicePixelRatio || 1;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
   if (!run || !run.N) return;
-  const { N, steps, states } = run, st = states[step], look = +$("look").value;
-  const k = Math.sqrt(W * H / N) * .55, a = alpha;
-  const fx = new Float64Array(N), fy = new Float64Array(N);
-  for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {          // spores keep their distance
-    let dx = px[i] - px[j], dy = py[i] - py[j], d2 = dx * dx + dy * dy;
-    if (d2 < 1) { dx = Math.random() - .5; dy = Math.random() - .5; d2 = 1; }
-    const f = k * k / d2 * .02;
-    fx[i] += dx * f; fy[i] += dy * f; fx[j] -= dx * f; fy[j] -= dy * f;
-  }
-  const spring = (i, j, L, s) => {
-    const dx = px[j] - px[i], dy = py[j] - py[i], d = Math.hypot(dx, dy) || 1, f = (d - L) / d * s;
-    fx[i] += dx * f; fy[i] += dy * f; fx[j] -= dx * f; fy[j] -= dy * f;
-  };
-  for (let j = 0; j < step; j++) {                                         // hyphae already grown
-    const s = steps[j]; if (s.b === undefined || s.k === "fail") continue;
-    const fresh = .45 + .55 * Math.exp(-(step - j) / 12);
-    if (s.k === "merge") spring(s.a, s.b, k * .55, .06 * fresh);
-    else if (s.k === "delta") spring(s.a, s.b, k * .8, .03 * fresh);
-    else spring(s.a, s.b, k, .01);
-  }
-  for (let j = step, w = 1; j < Math.min(steps.length, step + look); j++) { // anticipation: next partners attract early
-    const s = steps[j]; if (s.k !== "merge" && s.k !== "delta") continue;
-    spring(s.a, s.b, k * .9, .035 * w); w *= .55;
-  }
-  const cx = new Map();                                                    // a colony pulls its members together
-  for (let i = 0; i < N; i++) { const r = st.root[i], c = cx.get(r) || [0, 0, 0]; c[0] += px[i]; c[1] += py[i]; c[2]++; cx.set(r, c); }
-  for (let i = 0; i < N; i++) {
-    const c = cx.get(st.root[i]);
-    if (c[2] > 1) { fx[i] += (c[0] / c[2] - px[i]) * .012; fy[i] += (c[1] / c[2] - py[i]) * .012; }
-    fx[i] += (W / 2 - px[i]) * .004; fy[i] += (H / 2 - py[i]) * .004;
-    vx[i] = (vx[i] + fx[i] * a) * .82; vy[i] = (vy[i] + fy[i] * a) * .82;
-    const sp = Math.hypot(vx[i], vy[i]); if (sp > 14) { vx[i] *= 14 / sp; vy[i] *= 14 / sp; }
-    px[i] = Math.min(W - 24, Math.max(24, px[i] + vx[i])); py[i] = Math.min(H - 24, Math.max(24, py[i] + vy[i]));
-  }
-  alpha = Math.max(.12, alpha * .985);
-}
-
-function render() {
-  if (!run || !run.N) return;
-  const { N, steps, states } = run, st = states[step], look = +$("look").value;
-  steps.forEach((s, j) => {
-    const l = edgeEls[j]; if (!l) return;
-    let show = false, w = 1;
-    if (j < step && s.k !== "fail") {
-      show = true;
-      const fresh = Math.exp(-(step - 1 - j) / 10);
-      const hue = st.col[s.a] >= 0 ? HUES[st.col[s.a]] : "var(--soft)";
-      l.setAttribute("stroke", j === step - 1 ? "var(--now)" : s.k === "invite" ? "var(--soft)" : hue);
-      l.setAttribute("stroke-width", j === step - 1 ? 3.5 : s.k === "merge" ? 1.5 + 2 * fresh : 1.2);
-      l.setAttribute("stroke-dasharray", s.k === "delta" ? "6 5" : "");
-      l.setAttribute("opacity", s.k === "invite" ? .3 : (.35 + .65 * fresh).toFixed(2));
-    } else if (j >= step && j < step + look && (s.k === "merge" || s.k === "delta")) {
-      show = true;
-      l.setAttribute("stroke", "var(--now)"); l.setAttribute("stroke-width", 1.5); l.setAttribute("stroke-dasharray", "2 5");
-      l.setAttribute("opacity", (.7 * Math.pow(.6, j - step)).toFixed(2));
+  const N = run.N, st = stateAt(step), c = [0, 0, 0];
+  for (let i = 0; i < N; i++) for (let d = 0; d < 3; d++) c[d] += Y[3 * i + d] / N;
+  const ds = []; for (let i = 0; i < N; i++) ds.push(Math.hypot(Y[3 * i] - c[0], Y[3 * i + 1] - c[1], Y[3 * i + 2] - c[2]));
+  ds.sort((a, b) => a - b);
+  fitR += ((ds[Math.floor(ds.length * .92)] || 1) * 1.15 - fitR) * .05;
+  const pr = []; for (let i = 0; i < N; i++) pr.push(project(i, c, Math.max(fitR, .5)));
+  const cur = run.steps[step - 1], curKey = cur && cur.b !== undefined ? key(cur.a, cur.b) : -1;
+  const sets = { seed: st.seed, cons: st.cons, conn: st.conn, delta: st.delta };
+  ctx.lineCap = "round";
+  for (const L of LAYERS) {
+    if (!$("on-" + L.id).checked) continue;
+    for (const k of sets[L.id]) {
+      const [a, b] = ends(k), p = pr[a], q = pr[b], depth = (p[2] + q[2]) / 2;
+      ctx.globalAlpha = L.alpha * Math.max(.25, Math.min(1, .75 - depth * .45));
+      ctx.strokeStyle = L.col; ctx.lineWidth = L.width * (p[3] + q[3]) / 2;
+      ctx.shadowBlur = k === curKey ? 14 : 0; ctx.shadowColor = L.col;
+      ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
     }
-    l.style.display = show ? "" : "none";
-    if (show) { l.setAttribute("x1", px[s.a]); l.setAttribute("y1", py[s.a]); l.setAttribute("x2", px[s.b]); l.setAttribute("y2", py[s.b]); }
-  });
-  const showLabels = N <= 40;
-  for (let i = 0; i < N; i++) {
-    const r = 5 + 10 * Math.sqrt(st.held[i] / N), c = nodeEls[i];
-    c.setAttribute("cx", px[i]); c.setAttribute("cy", py[i]); c.setAttribute("r", r.toFixed(1));
-    c.setAttribute("fill", st.col[i] >= 0 ? HUES[st.col[i]] : "var(--lone)");
-    const all = st.held[i] === N;
-    c.setAttribute("stroke", all ? "var(--done)" : "none"); c.setAttribute("stroke-width", all ? 2.5 : 0);
-    const t = labelEls[i]; t.style.display = showLabels ? "" : "none";
-    t.setAttribute("x", px[i]); t.setAttribute("y", py[i] - r - 6);
   }
-  const cur = steps[step - 1];
-  if (cur) {
-    const ph = (performance.now() % 1200) / 1200;
-    pulseEl.style.display = ""; pulseEl.setAttribute("cx", px[cur.a]); pulseEl.setAttribute("cy", py[cur.a]);
-    pulseEl.setAttribute("r", (12 + ph * 22).toFixed(1)); pulseEl.setAttribute("opacity", (1 - ph).toFixed(2)); pulseEl.setAttribute("stroke-width", 2);
-  } else pulseEl.style.display = "none";
+  ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+  const order = [...Array(N).keys()].sort((a, b) => pr[b][2] - pr[a][2]);
+  for (const i of order) {
+    const [x, y, z, f] = pr[i], share = st.held[i].size / N, r = (3.5 + 7 * Math.sqrt(share)) * f;
+    const light = Math.round(120 + 135 * share), gr = ctx.createRadialGradient(x - r * .35, y - r * .35, r * .1, x, y, r);
+    gr.addColorStop(0, "#ffffff"); gr.addColorStop(1, `rgb(${light - 40},${light - 25},${light})`);
+    ctx.globalAlpha = Math.max(.45, Math.min(1, .9 - z * .3));
+    ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    if (share === 1) { ctx.strokeStyle = "#2bd46f"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, r + 2.5, 0, Math.PI * 2); ctx.stroke(); }
+    if (cur && (i === cur.a || i === cur.b)) {
+      const ph = (performance.now() % 1200) / 1200;
+      ctx.strokeStyle = "#e0115f"; ctx.lineWidth = 2; ctx.globalAlpha = 1 - ph;
+      ctx.beginPath(); ctx.arc(x, y, r + 4 + ph * 16, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (N <= 40 || i === hover) {
+      ctx.globalAlpha = i === hover ? 1 : .85; ctx.fillStyle = "#e7ecf8"; ctx.font = `${i === hover ? 600 : 500} 12px "Red Hat Text",sans-serif`; ctx.textAlign = "center";
+      ctx.fillText(i === hover ? run.names[i] : run.labels[i], x, y - r - 5);
+    }
+  }
+  ctx.globalAlpha = 1; draw.pr = pr;
 }
 
+// ---- readout
 function show() {
-  const { N, steps, states, t0 } = run, st = states[step];
+  const { N, steps, t0 } = run, held = run.held[step];
   $("scrub").value = step;
   $("mStep").textContent = `${step}/${steps.length}`;
   $("mTime").textContent = `+${(((steps[step - 1] || { ms: t0 }).ms - t0) / 1000).toFixed(1)} s`;
-  $("mCol").textContent = new Set(Array.from(st.root).filter((r, i) => st.col[i] >= 0)).size;
-  $("mDone").textContent = `${st.held.filter(h => h === N).length}/${N}`;
-  $("mNow").textContent = steps[step - 1] ? describe(steps[step - 1]) : "Before the first event";
+  $("mUp").textContent = run.upCount[step];
+  $("mDone").textContent = `${held.filter(h => h === N).length}/${N}`;
+  $("mNow").textContent = steps[step - 1] ? describe(steps[step - 1]) : "Before the first event: nodes placed at random";
   for (const li of $("list").children) li.classList.toggle("on", +li.dataset.i === step);
-  drawSpark();
+  const s = $("spark"), w = s.clientWidth || 280, h = s.clientHeight || 64, cov = run.coverage, n = cov.length - 1 || 1;
+  const pts = cov.map((c, i) => `${(i / n * (w - 8) + 4).toFixed(1)},${(h - 6 - c * (h - 12)).toFixed(1)}`), x = step / n * (w - 8) + 4;
+  s.innerHTML = `<polyline points="4,${h - 6} ${pts.join(" ")} ${w - 4},${h - 6}" fill="color-mix(in srgb,var(--ink) 12%,transparent)"/><polyline points="${pts.join(" ")}" fill="none" stroke="var(--ink)" stroke-width="2"/><line x1="${x}" x2="${x}" y1="2" y2="${h - 2}" stroke="var(--now)" stroke-width="2"/>`;
 }
 
-function drawSpark() {
-  const s = $("spark"), w = s.clientWidth || 280, h = s.clientHeight || 70, cov = run.coverage, n = cov.length - 1 || 1;
-  const pts = cov.map((c, i) => `${(i / n * (w - 8) + 4).toFixed(1)},${(h - 6 - c * (h - 12)).toFixed(1)}`);
-  const x = step / n * (w - 8) + 4;
-  s.innerHTML = `<polyline points="4,${h - 6} ${pts.join(" ")} ${w - 4},${h - 6}" fill="color-mix(in srgb,var(--ink) 12%,transparent)" stroke="none"/>` +
-    `<polyline points="${pts.join(" ")}" fill="none" stroke="var(--ink)" stroke-width="2"/>` +
-    `<line x1="${x}" x2="${x}" y1="2" y2="${h - 2}" stroke="var(--now)" stroke-width="2"/>`;
+function load(raw) {
+  run = build(raw); S = null; sAt = -1; step = 0;
+  const { N, steps, t0 } = run;
+  let seed = 7; const rnd = () => (seed = seed * 16807 % 2147483647) / 2147483647;
+  Y = new Float64Array(3 * N); V = new Float64Array(3 * N);
+  for (let i = 0; i < 3 * N; i++) Y[i] = (rnd() - .5) * 4 * Math.cbrt(Math.max(N, 1));
+  fitR = 2 * Math.cbrt(Math.max(N, 1));
+  $("scrub").max = steps.length;
+  const merges = steps.filter(s => s.k === "merge").length, deltas = steps.filter(s => s.k === "delta").length;
+  const lastMerge = [...steps].reverse().find(s => s.k === "merge"), firstMerge = steps.find(s => s.k === "merge");
+  const maxUp = Math.max(0, ...run.upCount);
+  let f = !N ? "No events found. Load the consensus_events.jsonl and connection_events.jsonl files from the node homes." :
+    `${N} nodes${run.hasConn ? `, up to ${maxUp} live connections` : ""}, ${merges} merges` + (deltas ? `, ${deltas} delta pushes` : "") +
+    (firstMerge ? `, consensus merges from +${((firstMerge.ms - t0) / 1000).toFixed(1)} s to +${((lastMerge.ms - t0) / 1000).toFixed(1)} s` : "") +
+    (run.full >= 0 ? `; every node holds everyone from step ${run.full}.` : ".");
+  const missing = [!run.hasSeeds && "seed lists", !run.hasConn && "connections", !run.hasDeltas && "deltas"].filter(Boolean);
+  if (N && missing.length) f += ` These logs have no ${missing.join(", ")} (older build or not collected).`;
+  $("finding").textContent = f;
+  $("list").innerHTML = steps.map((s, i) => `<li data-i="${i + 1}">${esc(describe(s))}</li>`).join("");
+  rebuildP(); budget = 60; show();
 }
 
 function go(i) {
   if (!run) return;
-  step = Math.max(0, Math.min(run.steps.length, i)); alpha = 1; show();
+  step = Math.max(0, Math.min(run.steps.length, i));
+  rebuildP(); budget += +$("iters").value; show();
 }
 function schedule() {
   clearTimeout(timer);
@@ -335,10 +346,7 @@ function schedule() {
   if (step >= run.steps.length) { playing = false; $("play").textContent = "Replay"; return; }
   const speed = +$("speed").value;
   let wait = 1400 / speed;
-  if ($("pace").value === "time" && step > 0) {
-    const gap = run.steps[step].ms - run.steps[step - 1].ms;
-    wait = Math.min(3000, Math.max(80, gap / speed));
-  }
+  if ($("pace").value === "time" && step > 0) wait = Math.min(3000, Math.max(60, (run.steps[step].ms - run.steps[step - 1].ms) / speed));
   timer = setTimeout(() => { go(step + 1); schedule(); }, wait);
 }
 
@@ -350,32 +358,53 @@ $("play").addEventListener("click", () => {
 $("back").addEventListener("click", () => go(step - 1));
 $("fwd").addEventListener("click", () => go(step + 1));
 $("scrub").addEventListener("input", e => go(+e.target.value));
-$("look").addEventListener("input", e => { $("lookv").textContent = e.target.value; alpha = 1; });
+$("iters").addEventListener("input", e => { $("itersv").textContent = e.target.value; });
+$("layers").addEventListener("input", e => { if (e.target.type === "range" && run) { rebuildP(); budget += 20; } });
 $("list").addEventListener("click", e => { const li = e.target.closest("li"); if (li) go(+li.dataset.i); });
 document.addEventListener("keydown", e => { if (e.target.tagName === "INPUT" && e.target.type !== "range") return; if (e.key === "ArrowRight") go(step + 1); if (e.key === "ArrowLeft") go(step - 1); });
-$("files").addEventListener("change", async e => {
-  const all = [];
-  for (const f of e.target.files) all.push(...parseLines(await f.text()));
-  playing = false; $("play").textContent = "Play"; load(all);
-});
-const fig = $("fig");
+async function loadFiles(files) { const all = []; for (const f of files) all.push(...parseLines(await f.text())); if (all.length) { playing = false; $("play").textContent = "Play"; load(all); } }
+$("files").addEventListener("change", e => loadFiles(e.target.files));
 fig.addEventListener("dragover", e => e.preventDefault());
-fig.addEventListener("drop", async e => {
-  e.preventDefault(); const all = [];
-  for (const f of e.dataTransfer.files) all.push(...parseLines(await f.text()));
-  if (all.length) load(all);
+fig.addEventListener("drop", e => { e.preventDefault(); loadFiles(e.dataTransfer.files); });
+
+// orbit: drag turns, wheel / pinch zooms, hover names a node
+const ptrs = new Map(); let pinch = 0;
+fig.addEventListener("pointerdown", e => { fig.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); });
+fig.addEventListener("pointerup", e => { ptrs.delete(e.pointerId); pinch = 0; });
+fig.addEventListener("pointercancel", e => { ptrs.delete(e.pointerId); pinch = 0; });
+fig.addEventListener("pointermove", e => {
+  const r = fig.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+  if (ptrs.size === 1 && ptrs.has(e.pointerId)) {
+    const [ox, oy] = ptrs.get(e.pointerId);
+    cam.yaw += (e.clientX - ox) * .008; cam.pitch = Math.max(-1.4, Math.min(1.4, cam.pitch + (e.clientY - oy) * .008));
+    ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+  } else if (ptrs.size === 2 && ptrs.has(e.pointerId)) {
+    ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+    const [p, q] = [...ptrs.values()], d = Math.hypot(p[0] - q[0], p[1] - q[1]);
+    if (pinch) cam.dist = Math.max(1.6, Math.min(9, cam.dist * pinch / d));
+    pinch = d;
+  }
+  hover = -1; let best = 14;
+  for (const [i, p] of (draw.pr || []).entries()) { const d = Math.hypot(p[0] - mx, p[1] - my); if (d < best) { best = d; hover = i; } }
 });
-const sizer = new ResizeObserver(() => {
-  const nw = fig.clientWidth, nh = fig.clientHeight;
-  if (run) for (let i = 0; i < run.N; i++) { px[i] *= nw / W; py[i] *= nh / H; }
-  W = nw; H = nh; if (run) drawSpark();
-});
+fig.addEventListener("wheel", e => { e.preventDefault(); cam.dist = Math.max(1.6, Math.min(9, cam.dist * (e.deltaY > 0 ? 1.08 : .93))); }, { passive: false });
+
+const sizer = new ResizeObserver(() => { W = fig.clientWidth; H = fig.clientHeight; if (run) show(); });
 sizer.observe(fig);
 
 let data = [];
 try { data = JSON.parse($("events").textContent); } catch (e) { data = []; }
 load(Array.isArray(data) ? data : []);
-const loop = () => { tick(); render(); requestAnimationFrame(loop); };
+const still = matchMedia("(prefers-reduced-motion: reduce)");
+const loop = () => {
+  if (run && run.N) {
+    const n = budget > 0 ? Math.min(budget, 3) : ($("settle").checked ? 1 : 0);
+    for (let i = 0; i < n; i++) tsneIter();
+    budget = Math.max(0, budget - n);
+    if ($("spin").checked && !still.matches && !ptrs.size) cam.yaw += .0025;
+  }
+  draw(); requestAnimationFrame(loop);
+};
 requestAnimationFrame(loop);
 }
 </script>

@@ -457,6 +457,9 @@ public class ManagementService : BackgroundService, IMeshManagementService, IDis
         }
     }
 
+    // Per peer: which connection we last reported as up (by its start time) and when we last logged its rtt
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime ConnectedAt, DateTime LoggedUtc)> _linkLog = new(StringComparer.OrdinalIgnoreCase);
+
     public async Task<bool> SendHeartbeatAsync(string nodeId, int timeoutSeconds = 5)
     {
         var activeConn = _connectionManager.GetConnection(nodeId);
@@ -469,6 +472,14 @@ public class ManagementService : BackgroundService, IMeshManagementService, IDis
                 if (result.IsSuccess)
                 {
                     await _peerTracker.UpdatePeerActivityAsync(nodeId);
+                    int rtt = (int)(DateTime.UtcNow - started).TotalMilliseconds;
+                    var now = DateTime.UtcNow;
+                    bool isNew = !_linkLog.TryGetValue(nodeId, out var logged) || logged.ConnectedAt != activeConn.ConnectedAt;
+                    if (isNew || now - logged.LoggedUtc > TimeSpan.FromSeconds(15))
+                    {
+                        _linkLog[nodeId] = (activeConn.ConnectedAt, now);
+                        P2PModule.Services.Maintenance.ConsensusEventLog.WriteConnection(_settings.CurrentValue.DataStoragePath, _identity.NodeId, isNew ? "up" : "rtt", nodeId, rtt);
+                    }
                     return true;
                 }
 

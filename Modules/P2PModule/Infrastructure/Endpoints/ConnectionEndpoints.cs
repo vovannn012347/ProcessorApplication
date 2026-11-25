@@ -79,6 +79,28 @@ public static class ConnectionEndpoints
         })
         .AllowAnonymous();
 
+        // link resume: both nodes prove (signatures) they still hold the link key of their last connection
+        endpoints.MapPost("/p2p/link/resume", async context =>
+        {
+            var connectionManager = context.RequestServices.GetRequiredService<IPeerConnectionManager>();
+            try
+            {
+                var request = await context.Request.ReadFromJsonAsync<LinkResumeRequest>();
+                var answer = request == null ? null : connectionManager.HandleLinkResume(request);
+                if (answer == null)
+                {
+                    context.Response.StatusCode = StatusCodes.Status409Conflict;
+                    return;
+                }
+                await context.Response.WriteAsJsonAsync(answer);
+            }
+            catch
+            {
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            }
+        })
+        .AllowAnonymous();
+
         // signalling endpoint
         endpoints.MapPost("/p2p/webrtc/signal", async context =>
         {

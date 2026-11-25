@@ -54,6 +54,8 @@ public interface IPeerConnectionManager
     /// The node with the smaller id dials; the other waits for that dial and dials itself only if nothing comes.
     /// </summary>
     Task RecoverDeadLinkAsync(string nodeId, string[] signalingEndpoints);
+    /// <summary>Answers a link-resume request (see /p2p/link/resume); null = not accepted.</summary>
+    LinkResumeResponse? HandleLinkResume(LinkResumeRequest request);
     Task<string?> HandleIncomingSignalingHttpAsync(string senderNodeId, string offerSdp, Guid handshakeId);
     void HandleRelaySignaling(string senderNodeId, P2PPacketEnvelope frame);
     Task<string> GetEndpointActiveAsync(string endpoint);
@@ -101,6 +103,121 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
     private static readonly TimeSpan SilentConnectionLimit = TimeSpan.FromSeconds(20);
     /// <summary>Nodes we are dialling right now (outbound offer not answered yet).</summary>
     private readonly ConcurrentDictionary<string, byte> _dialsInProgress = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Link key per node: the handshake id both sides used for the last connection that came up between them,
+    /// kept for LinkKeyLifetime. On a reconnect the two nodes prove to each other - each signing with its
+    /// own private key, checked against the other's known public key - that they still hold the SAME key;
+    /// then the connection is rebuilt on it without a full double-blind handshake. If either side has lost
+    /// it, it expired, or the signatures don't check out, the normal handshake runs.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, LinkKey> _linkKeys = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly TimeSpan LinkKeyLifetime = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan LinkResumeClockSkew = TimeSpan.FromSeconds(60);
+    private sealed record LinkKey(Guid Id, DateTime ExpiresUtc);
+    /// <summary>Signed resumes we accepted: the following WebRTC offer may use the link key (once, within 30 s).</summary>
+    private readonly ConcurrentDictionary<string, LinkKey> _resumeApprovals = new(StringComparer.OrdinalIgnoreCase);
+
+    private bool ConsumeResumeApproval(string nodeId, Guid id) =>
+        _resumeApprovals.TryGetValue(nodeId, out var approval) && approval.Id == id && approval.ExpiresUtc > DateTime.UtcNow &&
+        _resumeApprovals.TryRemove(nodeId, out _);
+
+    private void RememberLinkKey(string nodeId, Guid handshakeId)
+    {
+        if (handshakeId == Guid.Empty) return;
+        _linkKeys[nodeId] = new LinkKey(handshakeId, DateTime.UtcNow + LinkKeyLifetime);
+    }
+
+    private bool HasLinkKey(string nodeId, Guid id) =>
+        _linkKeys.TryGetValue(nodeId, out var key) && key.Id == id && key.ExpiresUtc > DateTime.UtcNow;
+
+    private static string LinkResumeText(Guid linkId, string signer, string other, long ticks) =>
+        $"p2p-link-resume|{linkId:N}|{signer}|{other}|{ticks}";
+
+    public LinkResumeResponse? HandleLinkResume(LinkResumeRequest request)
+    {
+        try
+        {
+            if (request == null || string.IsNullOrEmpty(request.SenderNodeId) || request.Signature == null) return null;
+            if (!string.Equals(request.TargetNodeId, _identityService.NodeId, StringComparison.OrdinalIgnoreCase)) return null;
+            if ((DateTime.UtcNow - request.TimestampUtc).Duration() > LinkResumeClockSkew) return null;
+
+            if (!HasLinkKey(request.SenderNodeId, request.LinkId))
+            {
+                _logger.LogInformation("[P2P Transport] Link resume from {NodeId} refused: we don't hold that link key (lost or expired). A full handshake follows.", request.SenderNodeId);
+                _linkKeys.TryRemove(request.SenderNodeId, out _);
+                return null;
+            }
+
+            var publicKey = _peerTracker.GetPeer(request.SenderNodeId)?.Identity?.PublicVerifyKey;
+            if (publicKey == null || publicKey.Length == 0) return null;
+            var text = LinkResumeText(request.LinkId, request.SenderNodeId, _identityService.NodeId, request.TimestampUtc.Ticks);
+            if (!P2PModule.Infrastructure.P2PCrypto.TestSignature(text, publicKey, request.Signature))
+            {
+                _logger.LogWarning("[P2P Transport] Link resume from {NodeId} refused: signature does not verify.", request.SenderNodeId);
+                return null;
+            }
+
+            var now = DateTime.UtcNow;
+            _resumeApprovals[request.SenderNodeId] = new LinkKey(request.LinkId, now + TimeSpan.FromSeconds(30));
+            var answerText = LinkResumeText(request.LinkId, _identityService.NodeId, request.SenderNodeId, now.Ticks);
+            _logger.LogInformation("[P2P Transport] Link resume from {NodeId} accepted: both sides still hold link key {Key}.", request.SenderNodeId, request.LinkId);
+            return new LinkResumeResponse
+            {
+                SenderNodeId = _identityService.NodeId,
+                LinkId = request.LinkId,
+                TimestampUtc = now,
+                Signature = P2PModule.Infrastructure.P2PCrypto.SignData(answerText, _identityService.PrivateSignatureKey)
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[P2P Transport] Link resume from {NodeId} failed.", request?.SenderNodeId);
+            return null;
+        }
+    }
+
+    /// <summary>Asks the node at targetUrl to confirm it still holds our link key. True = both hold it, signatures checked.</summary>
+    private async Task<bool> TryResumeLinkAsync(string nodeId, string targetUrl)
+    {
+        if (!_linkKeys.TryGetValue(nodeId, out var key) || key.ExpiresUtc <= DateTime.UtcNow) return false;
+        try
+        {
+            var now = DateTime.UtcNow;
+            var request = new LinkResumeRequest
+            {
+                SenderNodeId = _identityService.NodeId,
+                TargetNodeId = nodeId,
+                LinkId = key.Id,
+                TimestampUtc = now,
+                Signature = P2PModule.Infrastructure.P2PCrypto.SignData(
+                    LinkResumeText(key.Id, _identityService.NodeId, nodeId, now.Ticks), _identityService.PrivateSignatureKey)
+            };
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var response = await _http.PostAsJsonAsync($"{targetUrl}/p2p/link/resume", request, cts.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                _linkKeys.TryRemove(nodeId, out _);   // the other side no longer has it: start over
+                return false;
+            }
+
+            var answer = await response.Content.ReadFromJsonAsync<LinkResumeResponse>(cancellationToken: cts.Token);
+            var publicKey = _peerTracker.GetPeer(nodeId)?.Identity?.PublicVerifyKey;
+            if (answer == null || answer.LinkId != key.Id || answer.Signature == null || publicKey == null || publicKey.Length == 0) return false;
+            if ((DateTime.UtcNow - answer.TimestampUtc).Duration() > LinkResumeClockSkew) return false;
+
+            var text = LinkResumeText(key.Id, nodeId, _identityService.NodeId, answer.TimestampUtc.Ticks);
+            bool ok = P2PModule.Infrastructure.P2PCrypto.TestSignature(text, publicKey, answer.Signature);
+            if (!ok) _logger.LogWarning("[P2P Transport] Link resume answer from {NodeId} does not verify; running a full handshake.", nodeId);
+            return ok;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[P2P Transport] Link resume with {NodeId} failed; running a full handshake.", nodeId);
+            return false;
+        }
+    }
 
     /// <summary>
     /// One connection per pair of nodes. When both dial each other at once, the dial of the node with the
@@ -865,7 +982,23 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
             //http cnnection available
             Guid? handshakeId = null;
             var target = string.Empty;
-            foreach (var targetUrl in activeEndpoints)
+
+            // Reconnect on the link key both sides kept from the last connection, if both still hold it
+            if (_linkKeys.TryGetValue(nodeId, out var linkKey) && linkKey.ExpiresUtc > DateTime.UtcNow)
+            {
+                foreach (var targetUrl in activeEndpoints)
+                {
+                    if (await TryResumeLinkAsync(nodeId, targetUrl))
+                    {
+                        handshakeId = linkKey.Id;
+                        target = targetUrl;
+                        _logger.LogInformation("[P2P Transport] Reconnecting to {NodeId} on the kept link key (no full handshake).", nodeId);
+                        break;
+                    }
+                }
+            }
+
+            foreach (var targetUrl in handshakeId == null ? activeEndpoints : new List<string>())
             {
                 handshakeId = await TryHttpChallengeHandshakeAsync(nodeId, targetUrl);
                 if (handshakeId != null && handshakeId != Guid.Empty)
@@ -950,6 +1083,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                             }
 
                             pc.setRemoteDescription(new RTCSessionDescriptionInit { sdp = answer.Sdp, type = RTCSdpType.answer });
+                            RememberLinkKey(nodeId, handshakeId.Value);
 
                             await BumpPeerConnectivityAsync(nodeId);
                             //todo: throtttle once per day
@@ -1202,7 +1336,8 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
     {
         if (handshakeId == Guid.Empty) return null;
         if (string.Equals(senderNodeId, _identityService.NodeId, StringComparison.OrdinalIgnoreCase)) return null;
-        bool isHandshakeValid = _challengeService.IsRecentlyHandshaked(senderNodeId);
+        // A kept link key counts only right after a signed resume we accepted (the key alone travels in clear text)
+        bool isHandshakeValid = _challengeService.IsRecentlyHandshaked(senderNodeId) || ConsumeResumeApproval(senderNodeId, handshakeId);
         if (!isHandshakeValid) return null;
 
         var configuration = new RTCConfiguration { iceServers = _settings.CurrentValue.StunServers?.Select(stun => new RTCIceServer { urls = stun }).ToList() ?? new List<RTCIceServer>() };
@@ -1279,6 +1414,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
             if (peer != null) conn.UpdateOffset(peer.ClockOffsetMs);
 
             await BumpPeerConnectivityAsync(senderNodeId);
+            RememberLinkKey(senderNodeId, handshakeId);
 
             return answer.sdp;
         }
@@ -1395,4 +1531,23 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
         foreach (var conn in _connections.Values) try { conn.PeerConnection?.close(); } catch { }
         _connections.Clear();
     }
+}
+
+/// <summary>"Do you still hold our link key?" - signed by the sender's private signature key.</summary>
+public class LinkResumeRequest
+{
+    public string SenderNodeId { get; set; } = string.Empty;
+    public string TargetNodeId { get; set; } = string.Empty;
+    public Guid LinkId { get; set; }
+    public DateTime TimestampUtc { get; set; }
+    public byte[]? Signature { get; set; }
+}
+
+/// <summary>"Yes, the same one" - signed by the answering node's private signature key.</summary>
+public class LinkResumeResponse
+{
+    public string SenderNodeId { get; set; } = string.Empty;
+    public Guid LinkId { get; set; }
+    public DateTime TimestampUtc { get; set; }
+    public byte[]? Signature { get; set; }
 }

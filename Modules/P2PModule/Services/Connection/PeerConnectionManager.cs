@@ -63,6 +63,12 @@ public interface IPeerConnectionManager
     Task<bool> RestartControlChannelAsync(string nodeId);
     /// <summary>Waits (up to max) while the node's control channel is being recreated; true if it can be sent on now.</summary>
     Task<bool> WaitUntilSendableAsync(string nodeId, string channelLabel, TimeSpan max);
+    /// <summary>
+    /// True while the node is known to be down (its endpoints refuse connections, or it could not be reached at
+    /// all). Callers should report "offline" at once instead of retrying, re-dialling or routing through relays.
+    /// Cleared as soon as anything arrives from the node.
+    /// </summary>
+    bool IsOffline(string nodeId);
     Task<string?> HandleIncomingSignalingHttpAsync(string senderNodeId, string offerSdp, Guid handshakeId);
     void HandleRelaySignaling(string senderNodeId, P2PPacketEnvelope frame);
     Task<string> GetEndpointActiveAsync(string endpoint);
@@ -108,6 +114,28 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
     private readonly ConcurrentDictionary<string, DateTime> _lastInboundUtc = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>A connection that has carried nothing from the node for this long may be replaced by a new dial.</summary>
     private static readonly TimeSpan SilentConnectionLimit = TimeSpan.FromSeconds(20);
+    // ---- Nodes that are down ----------------------------------------------------------------------------------
+    private readonly ConcurrentDictionary<string, (DateTime Until, int Strikes)> _offline = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, bool> _endpointRefused = new(StringComparer.OrdinalIgnoreCase);
+
+    public bool IsOffline(string nodeId) =>
+        _offline.TryGetValue(nodeId, out var o) && o.Until > DateTime.UtcNow;
+
+    /// <summary>Back-off grows 15 s, 30 s, 60 s ... up to 5 min while the node stays down.</summary>
+    private void MarkOffline(string nodeId, string reason)
+    {
+        var strikes = _offline.TryGetValue(nodeId, out var o) ? o.Strikes + 1 : 1;
+        var backoff = TimeSpan.FromSeconds(Math.Min(300, 15 * Math.Pow(2, Math.Min(strikes - 1, 5))));
+        _offline[nodeId] = (DateTime.UtcNow + backoff, strikes);
+        _logger.LogWarning("[P2P Transport] {NodeId} is offline ({Reason}). Not dialling or routing to it for {Seconds}s.", nodeId, reason, (int)backoff.TotalSeconds);
+    }
+
+    private void MarkOnline(string nodeId)
+    {
+        if (_offline.TryRemove(nodeId, out _))
+            _logger.LogInformation("[P2P Transport] {NodeId} is reachable again.", nodeId);
+    }
+
     /// <summary>Control-channel restarts in progress per node; sends to that node wait on these.</summary>
     private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _channelRestarts = new(StringComparer.OrdinalIgnoreCase);
     private static readonly TimeSpan ChannelOpenWait = TimeSpan.FromSeconds(8);
@@ -789,6 +817,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                             }
                             _lastInboundChannel[$"{nodeId}|{cleanLabel}"] = upgradedChannel;
                             _lastInboundUtc[nodeId] = DateTime.UtcNow;
+                            if (!_offline.IsEmpty) MarkOnline(nodeId);
                             OnRawMessageReceived?.Invoke(nodeId, cleanLabel, envelope);
                         }
                     }
@@ -900,6 +929,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                                                     }
                                                     _lastInboundChannel[$"{nodeId}|{label}"] = upgradedChannel;
                                                     _lastInboundUtc[nodeId] = DateTime.UtcNow;
+                                                    if (!_offline.IsEmpty) MarkOnline(nodeId);
                                                     OnRawMessageReceived?.Invoke(nodeId, label, envelope);
                                                 }
                                             }
@@ -981,9 +1011,17 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
     /// <summary>
     /// Probes a specific endpoint for cryptographic PONG confirmation.
     /// </summary>
+    private static System.Net.Sockets.SocketError? FindSocketError(Exception ex)
+    {
+        for (var e = ex; e != null; e = e.InnerException)
+            if (e is System.Net.Sockets.SocketException se) return se.SocketErrorCode;
+        return null;
+    }
+
     public async Task<string> GetEndpointActiveAsync(string endpoint)
     {
         if (string.IsNullOrWhiteSpace(endpoint)) return string.Empty;
+        _endpointRefused.TryRemove(endpoint, out _);
 
         try
         {
@@ -1001,6 +1039,12 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                 }
             }
 
+            return string.Empty;
+        }
+        catch (HttpRequestException ex) when (FindSocketError(ex) == System.Net.Sockets.SocketError.ConnectionRefused)
+        {
+            // Nothing listens there: the node's process is not running (not a NAT/firewall timeout)
+            _endpointRefused[endpoint] = true;
             return string.Empty;
         }
         catch (HttpRequestException ex)
@@ -1094,6 +1138,12 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
             return null;
         }
 
+        if (IsOffline(nodeId))
+        {
+            _logger.LogDebug("[P2P Transport] Not dialling {NodeId}: it is offline.", nodeId);
+            return null;
+        }
+
         // HTTP-First Flow
         //ping for active url
         List<string> activeEndpoints = new();
@@ -1112,6 +1162,14 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
             {
                 activeEndpoints.Add(target);
             }
+        }
+
+        var probed = signalingEndpoints.Where(e => !ownEndpoints.Any(own => EndpointText.SameAuthority(own, e))).ToList();
+        if (activeEndpoints.Count == 0 && probed.Count > 0 && probed.All(e => _endpointRefused.ContainsKey(e)))
+        {
+            // Every address refuses the connection: the node is down. No relay attempt - there is nothing to reach.
+            MarkOffline(nodeId, "its endpoints refuse connections");
+            return null;
         }
 
         if (activeEndpoints.Any(e => !string.IsNullOrEmpty(e)))
@@ -1223,6 +1281,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
                             pc.setRemoteDescription(new RTCSessionDescriptionInit { sdp = answer.Sdp, type = RTCSdpType.answer });
                             RememberLinkKey(nodeId, handshakeId.Value);
+                            MarkOnline(nodeId);
 
                             await BumpPeerConnectivityAsync(nodeId);
                             //todo: throtttle once per day
@@ -1259,7 +1318,9 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
             //try anyway
             var fallbackGateways = _connections.Keys.Where(id => _connections[id].ConnectionTypes.Contains("outbound"));
-            return await InitiateRelayedConnectionAsync(nodeId, fallbackGateways.ToArray(), connectionType);
+            var relayed = await InitiateRelayedConnectionAsync(nodeId, fallbackGateways.ToArray(), connectionType);
+            if (relayed == null) MarkOffline(nodeId, "no endpoint answers and no relay reaches it");
+            return relayed;
         }
     }
 
@@ -1430,6 +1491,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
         if (_connections.TryGetValue(nodeId, out var back) && back.PeerConnection?.connectionState == RTCPeerConnectionState.connected)
             return;
 
+        if (IsOffline(nodeId)) return;
         _logger.LogInformation("[P2P Transport] {NodeId} did not dial back within 15 s; dialling it ourselves.", nodeId);
         await ConnectPeerAsync(nodeId, signalingEndpoints, "outbound");
     }
@@ -1562,6 +1624,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
             await BumpPeerConnectivityAsync(senderNodeId);
             RememberLinkKey(senderNodeId, handshakeId);
+            MarkOnline(senderNodeId);
 
             return answer.sdp;
         }

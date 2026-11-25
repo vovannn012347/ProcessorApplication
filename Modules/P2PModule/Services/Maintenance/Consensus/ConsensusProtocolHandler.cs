@@ -265,7 +265,10 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                     bool connected = await EnsurePeerConnectionAsync(targetNodeId);
                     if (!connected)
                     {
-                        bool requeued = _sessionManager.RequeueNodeForRetry(targetNodeId, MaxConnectRetries);
+                        // A node that is down is not retried in this session (no point; it would only delay the loop)
+                        bool requeued = !_connectionManager.IsOffline(targetNodeId) &&
+                                        _sessionManager.RequeueNodeForRetry(targetNodeId, MaxConnectRetries);
+                        if (!requeued) _sessionManager.RequeueNodeForRetry(targetNodeId, 0);   // records it as given up
                         _logger.LogWarning("[Consensus Protocol] Connection to {TargetNodeId} failed. {Action}.", targetNodeId, requeued ? "Re-queued" : "Giving up for this session (not marked visited)");
                         _sessionManager.SetActiveTargetNode(null);
                         await Task.Delay(500, ct);
@@ -281,8 +284,11 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                         if (!string.Equals(startStatus, "AVAILABLE", StringComparison.OrdinalIgnoreCase) &&
                             !string.Equals(startStatus, "STARTING_UP", StringComparison.OrdinalIgnoreCase))
                         {
-                            bool requeued = _sessionManager.RequeueNodeForRetry(targetNodeId, MaxBusyRetries);
-                            _logger.LogInformation("[Consensus Protocol] Target {TargetNodeId} start ping returned '{Status}'. {Action}.", targetNodeId, startStatus, requeued ? "Re-queued" : "Giving up for this session");
+                            bool offline = _connectionManager.IsOffline(targetNodeId);
+                            bool requeued = !offline && _sessionManager.RequeueNodeForRetry(targetNodeId, MaxBusyRetries);
+                            if (!requeued) _sessionManager.RequeueNodeForRetry(targetNodeId, 0);
+                            _logger.LogInformation("[Consensus Protocol] Target {TargetNodeId} start ping returned '{Status}'. {Action}.", targetNodeId, startStatus,
+                                offline ? "It is offline; skipping it this session" : requeued ? "Re-queued" : "Giving up for this session");
                             await Task.Delay(RetryDelayMs, ct);
                             continue;
                         }

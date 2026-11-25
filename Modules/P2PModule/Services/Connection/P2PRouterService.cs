@@ -167,6 +167,12 @@ public class P2PRouterService : IP2PRouterService, IDisposable
         }
         else
         {
+            if (_connectionManager.IsOffline(targetNodeId))
+            {
+                _logger.LogDebug("[P2P Transport] Not routing {Command} to {Target}: it is offline.", envelope.CommandType, targetNodeId);
+                return;
+            }
+
             // Execute recursive DFS routing path derivation to avoid dirty flood-storms
             var visited = new HashSet<string> { _identity.GetLocalNodeId(), envelope.SenderNodeId };
 

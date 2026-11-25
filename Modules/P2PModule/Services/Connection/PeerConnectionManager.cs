@@ -976,6 +976,11 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                             {
                                 envelope.CreatedUtc = envelope.CreatedUtc.AddMilliseconds(conn.ClockOffsetMs);
                             }
+                            // Same bookkeeping as the other receive paths: without it an answer to a request that
+                            // came in on this (re-created) channel had nowhere to go ("channel not open").
+                            _lastInboundChannel[$"{nodeId}|{label}"] = channel;
+                            _lastInboundUtc[nodeId] = DateTime.UtcNow;
+                            if (!_offline.IsEmpty) MarkOnline(nodeId);
                             OnRawMessageReceived?.Invoke(nodeId, label, envelope);
                         }
                     }
@@ -1104,6 +1109,27 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
         _logger.LogInformation("[P2P Transport] Establishing WebRTC session with {NodeId}.", nodeId);
 
+        // A connection to this node is still coming up (typically: it just dialled us and the answer is out).
+        // Dialling now would close that half-built connection and start a second one - the other side would
+        // keep the first, and the two ends end up on different connections. Let it finish instead.
+        if (_connections.TryGetValue(nodeId, out var pending) &&
+            pending.PeerConnection != null &&
+            (pending.PeerConnection.connectionState == RTCPeerConnectionState.@new ||
+             pending.PeerConnection.connectionState == RTCPeerConnectionState.connecting) &&
+            !_dialsInProgress.ContainsKey(nodeId) &&
+            DateTime.UtcNow - pending.ConnectedAt < TimeSpan.FromSeconds(15))
+        {
+            var until = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+            while (pending.PeerConnection.connectionState != RTCPeerConnectionState.connected && DateTime.UtcNow < until)
+                await Task.Delay(200);
+            if (pending.PeerConnection.connectionState == RTCPeerConnectionState.connected)
+            {
+                _logger.LogInformation("[P2P Transport] {NodeId} was already connecting to us; using that connection instead of dialling.", nodeId);
+                if (!pending.ConnectionTypes.Contains(connectionType)) pending.ConnectionTypes.Add(connectionType);
+                return pending;
+            }
+        }
+
         if (_connections.TryGetValue(nodeId, out var existingConn) &&
             existingConn.PeerConnection.connectionState == RTCPeerConnectionState.connected &&
             !(connectionType == "temporary" && IsSilent(nodeId)))
@@ -1218,8 +1244,15 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
             {
                 var configuration = new RTCConfiguration { iceServers = _settings.CurrentValue.StunServers?.Select(stun => new RTCIceServer { urls = stun }).ToList() ?? new List<RTCIceServer>() };
                 var pc = new RTCPeerConnection(configuration);
-                ForgetInbound(nodeId);   // a new connection: channels of the old one must not be used any more
                 _dialsInProgress[nodeId] = 0;
+
+                // The previous connection stays open until the other side has answered the new one. Closing it up
+                // front broke a working link whenever the other side turned the new dial away: it kept the old
+                // connection and went on sending on it, while this side had already dropped it and every answer
+                // went to a closed channel ("could not send the answer to Ping ... channel not open").
+                RTCPeerConnection? previousPc = null;
+                var previousChannels = new Dictionary<string, RTCDataChannel>();
+                DateTime previousConnectedAt = default;
 
                 if (!_connections.TryGetValue(nodeId, out var conn))
                 {
@@ -1236,7 +1269,9 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                 }
                 else
                 {
-                    conn.PeerConnection?.close();
+                    previousPc = conn.PeerConnection;
+                    foreach (var kv in conn.DataChannels) previousChannels[kv.Key] = kv.Value;
+                    previousConnectedAt = conn.ConnectedAt;
                     conn.PeerConnection = pc;
                     conn.ConnectedAt = DateTime.UtcNow;
                     conn.LastActivity = DateTime.UtcNow;
@@ -1276,9 +1311,13 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                             {
                                 // The other node's dial won the tie-break while ours was in flight: keep theirs
                                 try { pc.close(); } catch { }
+                                if (previousPc != null && !ReferenceEquals(previousPc, conn.PeerConnection)) { try { previousPc.close(); } catch { } }
                                 return conn;
                             }
 
+                            // Answered: from here on the new connection is the one; the old one goes
+                            ForgetInbound(nodeId);
+                            if (previousPc != null && !ReferenceEquals(previousPc, pc)) { try { previousPc.close(); } catch { } }
                             pc.setRemoteDescription(new RTCSessionDescriptionInit { sdp = answer.Sdp, type = RTCSdpType.answer });
                             RememberLinkKey(nodeId, handshakeId.Value);
                             MarkOnline(nodeId);
@@ -1297,6 +1336,21 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
                 _dialsInProgress.TryRemove(nodeId, out _);
                 pc.close();
+
+                if (previousPc != null && ReferenceEquals(conn.PeerConnection, pc))
+                {
+                    var prevState = previousPc.connectionState;
+                    if (prevState == RTCPeerConnectionState.connected || prevState == RTCPeerConnectionState.connecting || prevState == RTCPeerConnectionState.@new)
+                    {
+                        // The other side turned the new dial away and still uses the old connection: go back to it
+                        conn.PeerConnection = previousPc;
+                        conn.ConnectedAt = previousConnectedAt;
+                        foreach (var kv in previousChannels) conn.DataChannels[kv.Key] = kv.Value;
+                        _logger.LogInformation("[P2P Transport] {NodeId} did not take the new connection; keeping the one we already had with it.", nodeId);
+                        return prevState == RTCPeerConnectionState.connected ? conn : null;
+                    }
+                    try { previousPc.close(); } catch { }
+                }
             }
 
             return null;
@@ -1548,16 +1602,14 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
         bool isHandshakeValid = _challengeService.IsRecentlyHandshaked(senderNodeId) || ConsumeResumeApproval(senderNodeId, handshakeId);
         if (!isHandshakeValid) return null;
 
-        var configuration = new RTCConfiguration { iceServers = _settings.CurrentValue.StunServers?.Select(stun => new RTCIceServer { urls = stun }).ToList() ?? new List<RTCIceServer>() };
-        var pc = new RTCPeerConnection(configuration);
-        ForgetInbound(senderNodeId);   // a new connection: channels of the old one must not be used any more
-
+        // Decide first, build the new connection after: a turned-away offer used to leave a stray connection
+        // behind and wipe the reply channels of the connection we kept.
         if (!_connections.TryGetValue(senderNodeId, out var conn))
         {
             conn = new ActivePeerConnection
             {
                 NodeId = senderNodeId,
-                PeerConnection = pc,
+                PeerConnection = null!,
                 ConnectedAt = DateTime.UtcNow,
                 LastActivity = DateTime.UtcNow,
                 HandshakedAtUtc = DateTime.UtcNow,
@@ -1586,7 +1638,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
             // through in either direction, and every re-dial was turned away here. Let the new dial replace it.
             if (!IsSilent(senderNodeId))
             {
-                //what ARE you thinking?
+                _logger.LogInformation("[P2P Transport] {NodeId} dialled again, but the current connection with it is up and carrying messages; it keeps using that one.", senderNodeId);
                 return null;
             }
 
@@ -1594,6 +1646,10 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                 senderNodeId, (int)SilentConnectionLimit.TotalSeconds);
             try { conn.PeerConnection.close(); } catch { }
         }
+
+        var configuration = new RTCConfiguration { iceServers = _settings.CurrentValue.StunServers?.Select(stun => new RTCIceServer { urls = stun }).ToList() ?? new List<RTCIceServer>() };
+        var pc = new RTCPeerConnection(configuration);
+        ForgetInbound(senderNodeId);   // a new connection: channels of the old one must not be used any more
 
         conn.PeerConnection = pc;
         _connections[senderNodeId] = conn;

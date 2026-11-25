@@ -897,9 +897,12 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                         _sessionManager.MarkNodeAsVisited(senderNodeId);
                         if (ping.SignatureChain != null)
                         {
+                            // A signer whose link we could not check (no key yet) has not been confirmed: not visited
+                            var unconfirmed = _sessionManager.GetUnconfirmedSigners(assignedDeltaId);
                             foreach (var sig in ping.SignatureChain)
                             {
                                 if (!string.IsNullOrEmpty(sig?.SignerNodeId) &&
+                                    !unconfirmed.Contains(sig.SignerNodeId, StringComparer.OrdinalIgnoreCase) &&
                                     !string.Equals(sig.SignerNodeId, _identity.NodeId, StringComparison.OrdinalIgnoreCase))
                                 {
                                     _sessionManager.MarkNodeAsVisited(sig.SignerNodeId);
@@ -913,7 +916,8 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                         _logger.LogWarning("[Anti-Tamper Guard] Downloaded delta {DeltaId} from {Sender} failed signature validation. Applying reputation penalty.", assignedDeltaId, senderNodeId);
                         await _ratingService.ApplyLocalReputationUpdateAsync(senderNodeId, -15);
                     }
-                    // UnverifiableSigner / Failed: skipped, logged by the session manager, no penalty
+                    // Failed: skipped, logged by the session manager, no penalty. Unknown signers no longer block a
+                    // delta: it is registered and its nodes stay doubtful until another source confirms them.
                 }
             }
         }

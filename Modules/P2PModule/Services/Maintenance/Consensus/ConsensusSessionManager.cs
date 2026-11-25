@@ -31,6 +31,8 @@ namespace P2PModule.Services.Maintenance;
 public class ConsensusSessionDeltaItem
 {
     public string DeltaId { get; set; } = string.Empty;
+    /// <summary>Chain signers we had no key for when the delta arrived (taken in on trust, not counted as visited).</summary>
+    public List<string> UnconfirmedSigners { get; set; } = new();
     public string SourceNodeId { get; set; } = string.Empty;
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 
@@ -157,6 +159,7 @@ public interface IConsensusSessionManager
     Task<DeltaRegistration> RegisterDownloadedDeltaAsync(string sourceNodeId, string downloadedFolderPath, List<ChainSignature>? signatureChain = null, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     List<ConsensusSessionDeltaItem> GetPendingDeltasToMerge(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     bool HasPendingDeltas(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    List<string> GetUnconfirmedSigners(string deltaId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     bool RemovePendingDelta(string deltaId, bool deleteFolder = false, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     ConsensusSessionDeltaItem? GetLocalDelta(string deltaId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     List<string> GetDeltaFolderPathsBatch(List<string> deltaIds, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
@@ -675,17 +678,32 @@ public class ConsensusSessionManager : IConsensusSessionManager
 
         var chain = signatureChain ?? incomingMetadata?.SignatureChain ?? new List<ChainSignature>();
 
-        var (chainCheck, unknownSigner) = await VerifySignatureChainAsync(chain, nodeVerifyKeys, session);
+        var (chainCheck, unconfirmedSigners, failedLink) = await VerifySignatureChainAsync(chain, nodeVerifyKeys, session);
+        if (chainCheck == DeltaRegistration.Registered && unconfirmedSigners.Count > 0)
+        {
+            // Nodes we have not met yet are part of the new consensus: take the delta in. Its node records still
+            // need valid self-signatures when staged, and they stay doubtful until another source reports them too.
+            _logger.LogInformation("[Session Manager] Delta {DeltaId} from {SourceNodeId}: signer(s) {Signers} not known here yet - taken in on trust until another source confirms them.",
+                deltaId, sourceNodeId, string.Join(", ", unconfirmedSigners));
+        }
         if (chainCheck != DeltaRegistration.Registered)
         {
-            if (chainCheck == DeltaRegistration.UnverifiableSigner)
+            _logger.LogWarning("[Session Manager] Early verification failed for downloaded delta {DeltaId} from {SourceNodeId}. Purging folder.", deltaId, sourceNodeId);
+            if (chainCheck == DeltaRegistration.InvalidSignature && session.StagingOperation != null)
             {
-                _logger.LogInformation("[Session Manager] Delta {DeltaId} from {SourceNodeId} skipped: signer {Signer} is not known here yet, so its signature can't be checked (no penalty).",
-                    deltaId, sourceNodeId, unknownSigner);
-            }
-            else
-            {
-                _logger.LogWarning("[Session Manager] Early verification failed for downloaded delta {DeltaId} from {SourceNodeId}. Purging folder.", deltaId, sourceNodeId);
+                // A link that fails against this day's key for its signer: a real discrepancy, kept for gossip
+                ConsensusEvidenceStore.Write(session.StagingOperation.EvidenceDir, new ConsensusEvidence
+                {
+                    Kind = "bad-chain",
+                    SubjectNodeId = sourceNodeId,
+                    ConsensusDate = session.StagingOperation.TargetDate,
+                    DetectedByNodeId = _identity.NodeId,
+                    Reason = failedLink == null
+                        ? "Malformed signature chain."
+                        : $"Chain link {failedLink.Order} {failedLink.SignerNodeId}->{failedLink.TargetNodeId} does not verify against the signer's key for this day.",
+                    Chain = chain,
+                    PenalizedNodeIds = new List<string> { sourceNodeId },
+                }, _logger);
             }
             try
             {
@@ -702,7 +720,8 @@ public class ConsensusSessionManager : IConsensusSessionManager
             CreatedUtc = incomingMetadata?.CreatedUtc ?? DateTime.UtcNow,
             DeltaFolderPath = downloadedFolderPath,
             SignatureChain = chain,
-            Signature = incomingMetadata?.Signature ?? Array.Empty<byte>()
+            Signature = incomingMetadata?.Signature ?? Array.Empty<byte>(),
+            UnconfirmedSigners = unconfirmedSigners,
         };
 
         File.WriteAllText(sourceMetadataFile, JsonSerializer.Serialize(deltaItem, new JsonSerializerOptions { WriteIndented = true }));
@@ -720,6 +739,15 @@ public class ConsensusSessionManager : IConsensusSessionManager
         {
             if (!_activeSessionsByChannel.TryGetValue(channelId, out var session)) return new List<ConsensusSessionDeltaItem>();
             return session.PendingDeltasToMerge.Values.ToList();
+        }
+    }
+
+    public List<string> GetUnconfirmedSigners(string deltaId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
+    {
+        lock (_sessionLock)
+        {
+            if (!_activeSessionsByChannel.TryGetValue(channelId, out var session) || string.IsNullOrEmpty(deltaId)) return new List<string>();
+            return session.PendingDeltasToMerge.TryGetValue(deltaId, out var item) ? item.UnconfirmedSigners.ToList() : new List<string>();
         }
     }
 
@@ -996,44 +1024,46 @@ public class ConsensusSessionManager : IConsensusSessionManager
         return SHA256.HashData(ms.ToArray());
     }
 
-    private async Task<(DeltaRegistration Result, string? UnknownSigner)> VerifySignatureChainAsync(List<ChainSignature> chain, Dictionary<string, byte[]> nodeVerifyKeys, ConsensusMergeSession? session)
+    /// <summary>
+    /// Registered = every link checks out, except links by signers we have no key for at all (returned as
+    /// unconfirmed: new nodes, taken in on trust). InvalidSignature = a link fails against the signer's key for
+    /// this consensus day (from the delta itself or our staging) - a real discrepancy. A link that only fails
+    /// against an older key from the peer tracker is not proof (keys rotate daily), so it counts as unconfirmed.
+    /// </summary>
+    private async Task<(DeltaRegistration Result, List<string> Unconfirmed, ChainSignature? FailedLink)> VerifySignatureChainAsync(List<ChainSignature> chain, Dictionary<string, byte[]> nodeVerifyKeys, ConsensusMergeSession? session)
     {
-        if (chain == null || chain.Count == 0) return (DeltaRegistration.Registered, null);
+        var unconfirmed = new List<string>();
+        if (chain == null || chain.Count == 0) return (DeltaRegistration.Registered, unconfirmed, null);
 
         // The links of one session form a tree, not one line: every merge adds a link of order n+1 that
         // points at SOME link of order n, and several merges in parallel produce several links of the same
         // order. So each link must verify against at least one link of the previous order (or none at the start).
         var sortedChain = chain.Where(x => x != null).OrderBy(x => x.Order).ToList();
-        if (sortedChain.Count != chain.Count) return (DeltaRegistration.InvalidSignature, null);
+        if (sortedChain.Count != chain.Count) return (DeltaRegistration.InvalidSignature, unconfirmed, null);
         int minOrder = sortedChain[0].Order;
 
         foreach (var sig in sortedChain)
         {
-            if (sig == null || string.IsNullOrEmpty(sig.SignerNodeId)) return (DeltaRegistration.InvalidSignature, null);
+            if (sig == null || string.IsNullOrEmpty(sig.SignerNodeId)) return (DeltaRegistration.InvalidSignature, unconfirmed, sig);
 
-            if (!nodeVerifyKeys.TryGetValue(sig.SignerNodeId, out var publicVerifyKey) || publicVerifyKey == null || publicVerifyKey.Length == 0)
+            // Every key we know for the signer: this day's (delta, staging) and the tracker's (possibly an older day's)
+            var dayKeys = new List<byte[]>();
+            if (nodeVerifyKeys.TryGetValue(sig.SignerNodeId, out var deltaKey) && deltaKey?.Length > 0) dayKeys.Add(deltaKey);
+            if (session?.StagingOperation != null)
             {
-                if (session?.StagingOperation != null)
-                {
-                    var historicPeer = await _mergeEngine.GetNodeFromStagingHierarchyAsync(session.StagingOperation, sig.SignerNodeId);
-                    if (historicPeer?.Identity?.PublicVerifyKey != null && historicPeer.Identity.PublicVerifyKey.Length > 0)
-                    {
-                        publicVerifyKey = historicPeer.Identity.PublicVerifyKey;
-                    }
-                }
+                var historicPeer = await _mergeEngine.GetNodeFromStagingHierarchyAsync(session.StagingOperation, sig.SignerNodeId);
+                var stagedKey = historicPeer?.Identity?.PublicVerifyKey;
+                if (stagedKey?.Length > 0 && !dayKeys.Any(k => k.AsSpan().SequenceEqual(stagedKey))) dayKeys.Add(stagedKey);
+            }
+            var trackerKey = _peerTracker.GetPeer(sig.SignerNodeId)?.Identity?.PublicVerifyKey;
+            var keys = new List<byte[]>(dayKeys);
+            if (trackerKey?.Length > 0 && !keys.Any(k => k.AsSpan().SequenceEqual(trackerKey))) keys.Add(trackerKey);
 
-                if (publicVerifyKey == null || publicVerifyKey.Length == 0)
-                {
-                    var localPeer = _peerTracker.GetPeer(sig.SignerNodeId);
-                    if (localPeer?.Identity?.PublicVerifyKey != null && localPeer.Identity.PublicVerifyKey.Length > 0)
-                    {
-                        publicVerifyKey = localPeer.Identity.PublicVerifyKey;
-                    }
-                    else
-                    {
-                        return (DeltaRegistration.UnverifiableSigner, sig.SignerNodeId);
-                    }
-                }
+            if (keys.Count == 0)
+            {
+                // A node we have not met: nothing to check its link against yet
+                if (!unconfirmed.Contains(sig.SignerNodeId, StringComparer.OrdinalIgnoreCase)) unconfirmed.Add(sig.SignerNodeId);
+                continue;
             }
 
             var candidates = sortedChain
@@ -1044,23 +1074,36 @@ public class ConsensusSessionManager : IConsensusSessionManager
             if (candidates.Count == 0 || sig.Order == minOrder) candidates.Add(null);
 
             bool ok = false;
-            foreach (var previousSignature in candidates)
+            foreach (var key in keys)
             {
-                if (P2PCrypto.TestSignature(ChainLinkHash(previousSignature, sig), publicVerifyKey, sig.Signature))
+                foreach (var previousSignature in candidates)
                 {
-                    ok = true;
-                    break;
+                    if (P2PCrypto.TestSignature(ChainLinkHash(previousSignature, sig), key, sig.Signature))
+                    {
+                        ok = true;
+                        break;
+                    }
                 }
+                if (ok) break;
             }
 
             if (!ok)
             {
+                if (dayKeys.Count == 0)
+                {
+                    // Only an older key to compare with: the signer may simply have rotated keys since
+                    _logger.LogInformation("[Session Manager] Chain link {Order} {Signer}->{Target}: only an older key of {Signer} is known here; not counted against anyone.",
+                        sig.Order, sig.SignerNodeId, sig.TargetNodeId, sig.SignerNodeId);
+                    if (!unconfirmed.Contains(sig.SignerNodeId, StringComparer.OrdinalIgnoreCase)) unconfirmed.Add(sig.SignerNodeId);
+                    continue;
+                }
+
                 _logger.LogWarning("[Session Manager] Chain link {Order} {Signer}->{Target} does not verify against any link of order {Prev}.",
                     sig.Order, sig.SignerNodeId, sig.TargetNodeId, sig.Order - 1);
-                return (DeltaRegistration.InvalidSignature, null);
+                return (DeltaRegistration.InvalidSignature, unconfirmed, sig);
             }
         }
 
-        return (DeltaRegistration.Registered, null);
+        return (DeltaRegistration.Registered, unconfirmed, null);
     }
 }

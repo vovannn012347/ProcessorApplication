@@ -19,6 +19,12 @@ public class ConsensusMergeOperation
     public string MergeDir { get; set; } = string.Empty;        // ConsensusCurrentMerge (finalized iteration results)
     public string IterDir { get; set; } = string.Empty;         // ConsensusCurrentIter (temporary uncommitted staging)
     public string BasePath { get; set; } = string.Empty;
+    /// <summary>Discrepancies found while merging (kept after the workspace is gone; material for gossip).</summary>
+    public string EvidenceDir { get; set; } = string.Empty;
+
+    /// <summary>Which source reported which record of each node during this merge.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public ConsensusObservationLedger Observations { get; } = new();
 
     /// <summary>
     /// One gate per staging workspace. Incoming swaps are staged on a background task while the
@@ -97,6 +103,7 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
     private readonly IOptionsMonitor<P2PSettings> _p2pSettings;
     private readonly IOptionsMonitor<RatingSettings> _ratingSettings;
     private readonly ILogger<ConsensusMergeEngine> _logger;
+    private readonly INodeIdentityService _identity;
 
     public ConsensusMergeEngine(
         IConsensusStore consensusStore,
@@ -104,8 +111,10 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
         IRatingService ratingService,
         IOptionsMonitor<P2PSettings> p2pSettings,
         IOptionsMonitor<RatingSettings> ratingSettings,
+        INodeIdentityService identity,
         ILogger<ConsensusMergeEngine> logger)
     {
+        _identity = identity;
         _consensusStore = consensusStore;
         _peerTracker = peerTracker;
         _ratingService = ratingService;
@@ -178,6 +187,7 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
         {
             TargetDate = targetDateKey,
             BasePath = baseMergeDir,
+            EvidenceDir = Path.Combine(basePath, "consensus_evidence", targetDateKey),
             IterDir = Path.Combine(baseMergeDir, "iter"),
             MergeDir = Path.Combine(baseMergeDir, "merge")
         };
@@ -294,6 +304,35 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
             // 2. Check cryptographic lineage against local history
             bool isLineageVerified = VerifyHistoricalSignatures(remoteNode, nodeHash, nodeId);
 
+            // 2b. A node we did not know is taken in; one source alone leaves it doubtful (the fusion below firms
+            // it up per independent source). Penalties only come from records that contradict each other.
+            var seen = operation.Observations.Observe(nodeId, remoteNode.Identity, nodeHash, remoteNodeId, isLineageVerified);
+            bool takeThisIdentity = false;
+
+            if (seen.Conflict == ObservationConflict.Equivocation)
+            {
+                await HandleEquivocationAsync(operation, nodeId, seen);
+                rejectedCount++;
+                continue;
+            }
+
+            if (seen.Conflict == ObservationConflict.ContestedKey)
+            {
+                var leader = await HandleContestedKeyAsync(operation, nodeId, seen);
+                if (!ReferenceEquals(leader, seen.Version))
+                {
+                    // Not the record we go with (or still a tie): kept as evidence only
+                    rejectedCount++;
+                    continue;
+                }
+                takeThisIdentity = true;
+            }
+            else if (!seen.NewSource)
+            {
+                // The same source repeating the same record is not a second opinion
+                continue;
+            }
+
             // 3. Resolve existing weighted node record from current staging hierarchy
             var existingWeighted = await GetWeightedNodeFromStagingHierarchyAsync(operation, nodeId);
 
@@ -302,14 +341,14 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
             if (existingWeighted?.NodeData?.Identity != null)
             {
                 // Drop stale or replayed updates
-                if (remoteNode.Identity.SignatureTime < existingWeighted.NodeData.Identity.SignatureTime)
+                if (!takeThisIdentity && remoteNode.Identity.SignatureTime < existingWeighted.NodeData.Identity.SignatureTime)
                 {
                     continue;
                 }
 
                 targetWeighted = existingWeighted;
 
-                if (remoteNode.Identity.SignatureTime > targetWeighted.NodeData.Identity.SignatureTime)
+                if (takeThisIdentity || remoteNode.Identity.SignatureTime > targetWeighted.NodeData.Identity.SignatureTime)
                 {
                     targetWeighted.NodeData.Identity = remoteNode.Identity;
                 }
@@ -389,6 +428,7 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
                 }
             }
 
+            operation.Observations.CommitIteration();
             _logger.LogInformation("[Consensus Engine] Iteration milestone successfully updated in MergeDir for date {Date}.", operation.TargetDate);
         }
         catch (Exception ex)
@@ -440,6 +480,11 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
             // The day is committed: IsOutdated() is false for it from now on
             _consensusStore.MarkDayCompleted(operation.TargetDate);
 
+            var (single, corroborated) = operation.Observations.Summary();
+            if (single + corroborated > 0)
+                _logger.LogInformation("[Consensus Engine] Records received this merge: {Corroborated} node(s) confirmed by several sources, {Single} by one source only (taken in, still doubted until another source confirms).",
+                    corroborated, single);
+
             // Purge staging workspaces (IterDir & MergeDir)
             if (Directory.Exists(operation.BasePath))
             {
@@ -465,6 +510,7 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
         using var gate = await operation.LockAsync();
 
         _logger.LogWarning("[Consensus Engine] Iteration rollback triggered for date {Date}. Resetting IterDir to MergeDir milestone state.", operation.TargetDate);
+        operation.Observations.RollbackIteration();   // what this iteration was told is undone with it
 
         try
         {
@@ -674,6 +720,97 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
         localState.NodeData.TrustScore = mergedTrust;
 
         return localState;
+    }
+
+    /// <summary>
+    /// The node's own key signed two different records for the same moment. Both records are self-signed, so this
+    /// is proof against the node itself (not against whoever relayed them).
+    /// </summary>
+    private async Task HandleEquivocationAsync(ConsensusMergeOperation operation, string nodeId, ObservationResult seen)
+    {
+        var versions = new List<ObservedVersion> { seen.Version };
+        versions.AddRange(seen.Rivals.Where(r => r.Identity.SignatureTime == seen.Version.Identity.SignatureTime));
+        var penalized = new List<string>();
+
+        if (operation.Observations.Settle($"equivocation|{nodeId}|{seen.Version.Identity.SignatureTime.Ticks}"))
+        {
+            _logger.LogWarning("[Consensus Engine] {NodeId} signed {Count} different records for the same time {Time:u} (reported by {Sources}). Penalizing {NodeId}; evidence kept.",
+                nodeId, versions.Count, seen.Version.Identity.SignatureTime, string.Join(", ", versions.SelectMany(v => v.Sources).Distinct()), nodeId);
+
+            var subject = await GetWeightedNodeFromStagingHierarchyAsync(operation, nodeId);
+            if (subject?.NodeData?.Identity != null && !string.IsNullOrEmpty(subject.NodeData.Identity.NodeId))
+                ApplySenderSlanderPenalty(subject, operation, 0.3);
+            await _ratingService.ApplyLocalReputationUpdateAsync(nodeId, -15);
+            penalized.Add(nodeId);
+        }
+
+        ConsensusEvidenceStore.Write(operation.EvidenceDir, new ConsensusEvidence
+        {
+            Kind = "equivocation",
+            SubjectNodeId = nodeId,
+            ConsensusDate = operation.TargetDate,
+            DetectedByNodeId = _identity.NodeId,
+            Reason = "The same verify key signed different records with the same signature time.",
+            Versions = versions.Select(ConsensusEvidenceStore.From).ToList(),
+            PenalizedNodeIds = penalized.Count > 0 ? penalized : new List<string> { nodeId },
+        }, _logger);
+    }
+
+    /// <summary>
+    /// Different keys claim the same node for the same day. The record with lineage to an earlier day's key wins,
+    /// otherwise the one more independent sources report; a tie decides nothing yet. Once decided, the sources
+    /// that reported only the losing record get a small penalty (they may have relayed it in good faith).
+    /// </summary>
+    private async Task<ObservedVersion?> HandleContestedKeyAsync(ConsensusMergeOperation operation, string nodeId, ObservationResult seen)
+    {
+        var contenders = new List<ObservedVersion> { seen.Version };
+        contenders.AddRange(seen.Rivals.Where(r => !r.Identity.PublicVerifyKey.AsSpan().SequenceEqual(seen.Version.Identity.PublicVerifyKey)));
+
+        var leader = operation.Observations.Leader(contenders);
+        var penalized = new List<string>();
+
+        if (leader != null)
+        {
+            foreach (var loser in contenders.Where(c => !ReferenceEquals(c, leader)))
+            {
+                foreach (var source in loser.Sources.Where(s => !string.IsNullOrEmpty(s) && !leader.Sources.Contains(s)).ToList())
+                {
+                    if (!operation.Observations.Settle($"contested|{nodeId}|{loser.Fingerprint}|{source}")) continue;
+                    var sourceNode = await GetWeightedNodeFromStagingHierarchyAsync(operation, source);
+                    if (sourceNode?.NodeData?.Identity != null && !string.IsNullOrEmpty(sourceNode.NodeData.Identity.NodeId))
+                        ApplySenderSlanderPenalty(sourceNode, operation, 0.05);
+                    await _ratingService.ApplyLocalReputationUpdateAsync(source, -5);
+                    penalized.Add(source);
+                }
+            }
+        }
+
+        string state = string.Join("|", contenders.Select(c => $"{c.Fingerprint}:{c.Sources.Count}").OrderBy(s => s)) + "|" + (leader?.Fingerprint ?? "tie");
+        if (operation.Observations.Settle($"contested-log|{nodeId}|{state}"))
+        {
+            if (leader == null)
+                _logger.LogWarning("[Consensus Engine] {NodeId} is claimed by {Count} different keys today and no record leads yet (reported by {Sources}). Keeping the first one; evidence kept.",
+                    nodeId, contenders.Count, string.Join(", ", contenders.SelectMany(c => c.Sources).Distinct()));
+            else
+                _logger.LogWarning("[Consensus Engine] {NodeId} is claimed by {Count} different keys today. Going with the one reported by {Leaders}{Lineage}; penalized for the other: {Penalized}. Evidence kept.",
+                    nodeId, contenders.Count, string.Join(", ", leader.Sources), leader.LineageVerified ? " (linked to an earlier key)" : string.Empty,
+                    penalized.Count > 0 ? string.Join(", ", penalized) : "nobody new");
+        }
+
+        ConsensusEvidenceStore.Write(operation.EvidenceDir, new ConsensusEvidence
+        {
+            Kind = "contested-key",
+            SubjectNodeId = nodeId,
+            ConsensusDate = operation.TargetDate,
+            DetectedByNodeId = _identity.NodeId,
+            Reason = leader == null
+                ? "Different verify keys claim this node for the same day; undecided (tie)."
+                : $"Different verify keys claim this node for the same day; record {leader.Fingerprint} leads.",
+            Versions = contenders.Select(ConsensusEvidenceStore.From).ToList(),
+            PenalizedNodeIds = penalized,
+        }, _logger);
+
+        return leader;
     }
 
     /// <summary>

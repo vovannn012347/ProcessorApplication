@@ -59,11 +59,43 @@ public class ConsensusRequest
     /// </summary>
     public string ChannelId { get; set; } = PeerTrustConsensusChannel.CHANNEL_ID;
 
+    /// <summary>The node this request is meant for (signed): a copy replayed to another node is refused there.</summary>
+    public string NodeIdTo { get; set; } = string.Empty;
+
+    /// <summary>The sender's current self-signed identity: tells the receiver which key the request is signed with.</summary>
+    public PeerImmutableData? SenderIdentity { get; set; }
+
+    /// <summary>
+    /// The sender's earlier day keys signing the hash of SenderIdentity: proof that the node itself moved to the
+    /// new key. Without it a key the receiver has not seen for this node is a discrepancy, not a key change.
+    /// </summary>
+    public List<SignatureEnvelope> KeyLineage { get; set; } = new();
+
     public byte[] GetHash()
     {
+        string identityHash = SenderIdentity != null ? Convert.ToBase64String(SenderIdentity.GetNodeDataHash()) : string.Empty;
         return SHA256.HashData(
-            Encoding.UTF8.GetBytes($"{NodeIdFrom}|{TimeStamp:o}|{NonTransitive}|{Nonce}|{ChannelId}"));
+            Encoding.UTF8.GetBytes($"{NodeIdFrom}|{NodeIdTo}|{TimeStamp:o}|{NonTransitive}|{Nonce}|{ChannelId}|{identityHash}"));
     }
+}
+
+/// <summary>Outcome of checking a signed consensus request (start ping, merge init).</summary>
+public enum SignedRequestVerdict
+{
+    Ok,
+    /// <summary>Signed with a key we had not seen, and the node's earlier key vouches for it (or we knew no key for it at all).</summary>
+    OkNewKey,
+    Unsigned,
+    /// <summary>Signed as another node than the one on this link.</summary>
+    WrongSender,
+    /// <summary>Signed for another node than us (replayed).</summary>
+    WrongTarget,
+    /// <summary>Too old or seen before.</summary>
+    Replay,
+    /// <summary>Signed with a key that differs from what we know for this node, with nothing showing the node changed keys.</summary>
+    KeyChangeUnproven,
+    /// <summary>The signature matches no key at all, not even the one the request itself names.</summary>
+    BadSignature,
 }
 
 /// <summary>
@@ -405,6 +437,11 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
 
     private async Task<string> HandleIncomingStartPingAsync(string senderNodeId, P2PPacketEnvelope frame, CancellationToken ct)
     {
+        // The start ping must be signed by the node that sends it: the cost of starting a consensus lands on
+        // exactly that node, and nobody else can start one in its name.
+        var (verdict, refusal) = await CheckSignedRequestAsync(senderNodeId, frame, "start ping");
+        if (refusal != null) return refusal;
+
         var session = _sessionManager.GetActiveSession();
 
         if (session != null)
@@ -417,7 +454,8 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
             return "BUSY";
         }
 
-        _logger.LogInformation("[Consensus Protocol] Received ConsensusStartPing from {SenderNodeId}. Debuffing rating and starting session...", senderNodeId);
+        _logger.LogInformation("[Consensus Protocol] Received signed ConsensusStartPing from {SenderNodeId}{NewKey}. Debuffing its rating (it starts the consensus) and starting session...",
+            senderNodeId, verdict == SignedRequestVerdict.OkNewKey ? " (on a new key its earlier key vouches for)" : string.Empty);
         await _ratingService.ApplyLocalReputationUpdateAsync(senderNodeId, -5);
 
         var newSession = await _sessionManager.TryAcquireSessionAsync(_identity.NodeId);
@@ -441,14 +479,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
     {
         try
         {
-            var myReq = new ConsensusRequest
-            {
-                NodeIdFrom = _identity.NodeId,
-                TimeStamp = DateTime.UtcNow,
-                NonTransitive = true,
-                Nonce = Guid.NewGuid().ToString("N")
-            };
-            myReq.Signature = P2PCrypto.SignData(myReq.GetHash(), _identity.PrivateSignatureKey);
+            var myReq = BuildSignedRequest(targetNodeId);
 
             var result = await _routerService.SendRequestAsync(
                 targetNodeId,
@@ -474,14 +505,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
     {
         try
         {
-            var myReq = new ConsensusRequest
-            {
-                NodeIdFrom = _identity.NodeId,
-                TimeStamp = DateTime.UtcNow,
-                NonTransitive = true,
-                Nonce = Guid.NewGuid().ToString("N")
-            };
-            myReq.Signature = P2PCrypto.SignData(myReq.GetHash(), _identity.PrivateSignatureKey);
+            var myReq = BuildSignedRequest(targetNodeId);
 
             var result = await _routerService.SendRequestAsync(
                 targetNodeId,
@@ -508,41 +532,8 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         var session = _sessionManager.GetActiveSession();
         if (session == null) return "NO_SESSION_WTF";
 
-        if (!string.IsNullOrEmpty(frame.SerializedPayload))
-        {
-            try
-            {
-                var req = JsonSerializer.Deserialize<ConsensusRequest>(frame.SerializedPayload);
-                if (req == null)
-                {
-                    await _ratingService.ApplyLocalReputationUpdateAsync(senderNodeId, -5);
-                    return "FUCK_THIS_REQUEST";
-                }
-
-                if (Math.Abs((DateTime.UtcNow - req.TimeStamp).TotalMinutes) > 5.0)
-                {
-                    _logger.LogWarning("[Anti-Tamper Guard] Rejected stale init request from {SenderNodeId}.", senderNodeId);
-                    await _ratingService.ApplyLocalReputationUpdateAsync(senderNodeId, -10);
-                    return "FUCK_TIMESTAMP";
-                }
-
-                var senderPeer = _peerTracker.GetPeer(senderNodeId);
-                if (senderPeer?.Identity?.PublicVerifyKey != null && senderPeer.Identity.PublicVerifyKey.Length > 0)
-                {
-                    if (!P2PCrypto.TestSignature(req.GetHash(), senderPeer.Identity.PublicVerifyKey, req.Signature))
-                    {
-                        _logger.LogWarning("[Anti-Tamper Guard] Signature verification failed on init request from {SenderNodeId}.", senderNodeId);
-                        await _ratingService.ApplyLocalReputationUpdateAsync(senderNodeId, -15);
-                        return "FUCK_YOU_ARE";
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[Consensus Protocol] Error deserializing ConsensusRequest payload from {SenderNodeId}.", senderNodeId);
-                return "FUCK_THIS_REQUEST";
-            }
-        }
+        var (_, refusal) = await CheckSignedRequestAsync(senderNodeId, frame, "merge init");
+        if (refusal != null) return refusal;
 
         if (!string.IsNullOrEmpty(session.TargetNodeId) && !string.Equals(session.TargetNodeId, senderNodeId, StringComparison.OrdinalIgnoreCase))
         {
@@ -562,6 +553,203 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         return "OK_AVAILABLE";
     }
 
+
+    #region Signed consensus requests
+
+    private readonly ConcurrentDictionary<string, DateTime> _seenRequestNonces = new(StringComparer.Ordinal);
+    private static readonly TimeSpan RequestMaxAge = TimeSpan.FromMinutes(5);
+
+    private ConsensusRequest BuildSignedRequest(string targetNodeId)
+    {
+        var keys = _identity.GetDayKeys();
+        var identity = _identity.GetImmutableData();
+        var request = new ConsensusRequest
+        {
+            NodeIdFrom = _identity.NodeId,
+            NodeIdTo = targetNodeId,
+            TimeStamp = DateTime.UtcNow,
+            NonTransitive = true,
+            Nonce = Guid.NewGuid().ToString("N"),
+            SenderIdentity = identity,
+        };
+
+        // Earlier day keys vouch for today's identity, so a receiver that only knows an older key sees the change is ours
+        byte[] identityHash = identity.GetNodeDataHash();
+        string today = DateTime.UtcNow.ToString("yyyy-MM-dd");
+        foreach (var day in _identity.GetRecentDayKeys(4))
+        {
+            if (day == today) continue;
+            var oldKey = _identity.GetPrivateCertificate(day);
+            if (oldKey == null || oldKey.Length == 0) continue;
+            try { request.KeyLineage.Add(new SignatureEnvelope { DayKey = day, Signature = P2PCrypto.SignData(identityHash, oldKey) }); } catch { }
+            if (request.KeyLineage.Count >= 2) break;
+        }
+
+        request.Signature = P2PCrypto.SignData(request.GetHash(), keys.PrivateSignatureKey);
+        return request;
+    }
+
+    /// <summary>
+    /// Checks a signed consensus request and applies the penalty a discrepancy calls for. Returns the reply to send
+    /// back when the request is refused, or null when it may go on.
+    /// </summary>
+    private async Task<(SignedRequestVerdict Verdict, string? Refusal)> CheckSignedRequestAsync(string senderNodeId, P2PPacketEnvelope frame, string what)
+    {
+        ConsensusRequest? req = null;
+        try
+        {
+            if (!string.IsNullOrEmpty(frame.SerializedPayload))
+                req = JsonSerializer.Deserialize<ConsensusRequest>(frame.SerializedPayload);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Consensus Protocol] Unreadable {What} from {SenderNodeId}.", what, senderNodeId);
+        }
+
+        var verdict = await VerifySignedRequestAsync(senderNodeId, req);
+        switch (verdict)
+        {
+            case SignedRequestVerdict.Ok:
+            case SignedRequestVerdict.OkNewKey:
+                return (verdict, null);
+
+            case SignedRequestVerdict.Unsigned:
+                // Nothing proves who sent it, so nobody is charged for it either; it simply does not count
+                _logger.LogWarning("[Anti-Tamper Guard] Unsigned {What} from {SenderNodeId} refused.", what, senderNodeId);
+                return (verdict, "FUCK_UNSIGNED");
+
+            case SignedRequestVerdict.Replay:
+                _logger.LogWarning("[Anti-Tamper Guard] {What} from {SenderNodeId} is stale or a repeat; refused.", what, senderNodeId);
+                await _ratingService.ApplyLocalReputationUpdateAsync(senderNodeId, -10);
+                return (verdict, "FUCK_TIMESTAMP");
+
+            case SignedRequestVerdict.WrongSender:
+            case SignedRequestVerdict.WrongTarget:
+                _logger.LogWarning("[Anti-Tamper Guard] {What} arriving from {SenderNodeId} was signed by {From} for {To}: passed on from elsewhere. Refused; evidence kept.",
+                    what, senderNodeId, req?.NodeIdFrom, req?.NodeIdTo);
+                await _ratingService.ApplyLocalReputationUpdateAsync(senderNodeId, -10);
+                SaveRequestEvidence(verdict, senderNodeId, req, what);
+                return (verdict, "FUCK_NOT_YOURS");
+
+            case SignedRequestVerdict.KeyChangeUnproven:
+                _logger.LogWarning("[Anti-Tamper Guard] {What} from {SenderNodeId} is signed with a key we have not seen for it, and nothing shows {SenderNodeId} changed keys (no earlier key vouches for it). Refused; evidence kept.",
+                    what, senderNodeId, senderNodeId);
+                await _ratingService.ApplyLocalReputationUpdateAsync(senderNodeId, -15);
+                SaveRequestEvidence(verdict, senderNodeId, req, what);
+                return (verdict, "FUCK_YOU_ARE");
+
+            default:
+                _logger.LogWarning("[Anti-Tamper Guard] Signature verification failed on {What} from {SenderNodeId}. Refused; evidence kept.", what, senderNodeId);
+                await _ratingService.ApplyLocalReputationUpdateAsync(senderNodeId, -15);
+                SaveRequestEvidence(verdict, senderNodeId, req, what);
+                return (verdict, "FUCK_YOU_ARE");
+        }
+    }
+
+    private async Task<SignedRequestVerdict> VerifySignedRequestAsync(string senderNodeId, ConsensusRequest? req)
+    {
+        if (req == null || req.Signature == null || req.Signature.Length == 0 || string.IsNullOrEmpty(req.NodeIdFrom))
+            return SignedRequestVerdict.Unsigned;
+
+        if (!string.Equals(req.NodeIdFrom, senderNodeId, StringComparison.OrdinalIgnoreCase))
+            return SignedRequestVerdict.WrongSender;
+        if (!string.IsNullOrEmpty(req.NodeIdTo) && !string.Equals(req.NodeIdTo, _identity.NodeId, StringComparison.OrdinalIgnoreCase))
+            return SignedRequestVerdict.WrongTarget;
+
+        var now = DateTime.UtcNow;
+        if ((now - req.TimeStamp).Duration() > RequestMaxAge)
+            return SignedRequestVerdict.Replay;
+
+        byte[] hash = req.GetHash();
+        var known = await KnownVerifyKeysAsync(senderNodeId);
+
+        bool signatureChecks = false;
+        foreach (var (_, key) in known)
+        {
+            if (P2PCrypto.TestSignature(hash, key, req.Signature)) { signatureChecks = true; break; }
+        }
+
+        var verdict = SignedRequestVerdict.Ok;
+        if (!signatureChecks)
+        {
+            // Not one of the keys we know: is it the key the request itself names, and did the node move to it?
+            var identity = req.SenderIdentity;
+            bool identityHolds = identity != null &&
+                                 string.Equals(identity.NodeId, senderNodeId, StringComparison.OrdinalIgnoreCase) &&
+                                 identity.PublicVerifyKey?.Length > 0 && identity.Signature?.Length > 0 &&
+                                 P2PCrypto.TestSignature(identity.GetNodeDataHash(), identity.PublicVerifyKey, identity.Signature) &&
+                                 P2PCrypto.TestSignature(hash, identity.PublicVerifyKey, req.Signature);
+            if (!identityHolds) return SignedRequestVerdict.BadSignature;
+
+            if (known.Count > 0)
+            {
+                byte[] identityHash = identity!.GetNodeDataHash();
+                bool vouched = req.KeyLineage?.Any(env => env?.Signature?.Length > 0 &&
+                                   known.Any(k => P2PCrypto.TestSignature(identityHash, k.Key, env.Signature))) == true;
+                if (!vouched) return SignedRequestVerdict.KeyChangeUnproven;
+            }
+            // known.Count == 0: a node we have not met - taken in on its own signed identity
+            verdict = SignedRequestVerdict.OkNewKey;
+        }
+
+        // Only a correctly signed request is remembered (an unsigned one must not block the real one)
+        foreach (var old in _seenRequestNonces.Where(kv => now - kv.Value > RequestMaxAge + RequestMaxAge).Select(kv => kv.Key).ToList())
+            _seenRequestNonces.TryRemove(old, out _);
+        if (!_seenRequestNonces.TryAdd($"{req.NodeIdFrom}|{req.Nonce}", now))
+            return SignedRequestVerdict.Replay;
+
+        return verdict;
+    }
+
+    /// <summary>Every verify key we hold for a node: tracker, recent consensus days, and the running merge.</summary>
+    private async Task<List<(string Day, byte[] Key)>> KnownVerifyKeysAsync(string nodeId)
+    {
+        var keys = new List<(string Day, byte[] Key)>();
+        void Add(string day, byte[]? key)
+        {
+            if (key == null || key.Length == 0) return;
+            if (keys.Any(k => k.Key.AsSpan().SequenceEqual(key))) return;
+            keys.Add((day, key));
+        }
+
+        var trackerIdentity = _peerTracker.GetPeer(nodeId)?.Identity;
+        if (trackerIdentity != null) Add(trackerIdentity.SignatureTime.ToString("yyyy-MM-dd"), trackerIdentity.PublicVerifyKey);
+
+        for (int i = 0; i < 7; i++)
+        {
+            string day = DateTime.UtcNow.AddDays(-i).ToString("yyyy-MM-dd");
+            try { Add(day, _consensusStore.GetHistoricalPeer(day, nodeId)?.Identity?.PublicVerifyKey); } catch { }
+        }
+
+        var staging = _sessionManager.GetActiveSession()?.StagingOperation;
+        if (staging != null)
+        {
+            try { Add(staging.TargetDate, (await _mergeEngine.GetNodeFromStagingHierarchyAsync(staging, nodeId))?.Identity?.PublicVerifyKey); } catch { }
+        }
+
+        return keys;
+    }
+
+    private void SaveRequestEvidence(SignedRequestVerdict verdict, string senderNodeId, ConsensusRequest? req, string what)
+    {
+        string today = DateTime.UtcNow.ToString("yyyy-MM-dd");
+        string basePath = _p2pSettings.CurrentValue.DataStoragePath ?? "./Module_Data/P2P";
+        var evidence = new ConsensusEvidence
+        {
+            Kind = "request-" + verdict.ToString().ToLowerInvariant(),
+            SubjectNodeId = senderNodeId,
+            ConsensusDate = today,
+            DetectedByNodeId = _identity.NodeId,
+            Reason = $"{what}: {verdict}",
+            Request = req,
+            PenalizedNodeIds = new List<string> { senderNodeId },
+        };
+        if (req?.SenderIdentity != null)
+            evidence.Versions.Add(new EvidenceVersion { Identity = req.SenderIdentity, Sources = new List<string> { senderNodeId } });
+        ConsensusEvidenceStore.Write(Path.Combine(basePath, "consensus_evidence", today), evidence, _logger);
+    }
+
+    #endregion
 
     private async Task<bool> ExecutePairwiseSwapAsync(string targetNodeId, ConsensusMergeSession session, CancellationToken ct)
     {

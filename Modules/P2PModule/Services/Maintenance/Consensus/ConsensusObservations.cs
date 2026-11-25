@@ -176,6 +176,8 @@ public sealed class ConsensusEvidence
     public List<EvidenceVersion> Versions { get; set; } = new();
     /// <summary>Signature chain links involved (for a delta whose chain does not verify).</summary>
     public object? Chain { get; set; }
+    /// <summary>The signed request involved (start ping, merge init).</summary>
+    public object? Request { get; set; }
     public List<string> PenalizedNodeIds { get; set; } = new();
     /// <summary>Not yet handed to gossip.</summary>
     public bool Gossiped { get; set; }
@@ -199,7 +201,8 @@ public static class ConsensusEvidenceStore
         {
             Directory.CreateDirectory(evidenceDir);
             string tag = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
-                evidence.Kind + "|" + evidence.SubjectNodeId + "|" + string.Join(",", evidence.Versions.Select(v => Convert.ToBase64String(v.Identity.Signature)).OrderBy(s => s))))).Substring(0, 12);
+                evidence.Kind + "|" + evidence.SubjectNodeId + "|" + string.Join(",", evidence.Versions.Select(v => Convert.ToBase64String(v.Identity.Signature)).OrderBy(s => s)) +
+                "|" + (evidence.Request != null ? JsonSerializer.Serialize(evidence.Request) : string.Empty)))).Substring(0, 12);
             string path = Path.Combine(evidenceDir, $"{evidence.Kind}_{evidence.SubjectNodeId}_{tag}.json");
             // Same discrepancy -> same file: a later sighting refreshes the sources and keeps who was penalized before
             if (File.Exists(path))

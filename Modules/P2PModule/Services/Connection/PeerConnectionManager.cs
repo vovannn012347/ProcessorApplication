@@ -45,6 +45,8 @@ public interface IPeerConnectionManager
     Task<CreateChannelResult> CreateUnmanagedDataChannelAsync(string nodeId, string channelLabel);
 
     bool SendMessageRaw(string nodeId, string payload, string channelLabel = "p2p-control-channel");
+    /// <summary>For answers: sends over the channel the node's last message arrived on, if it is open; else like SendMessageRaw.</summary>
+    bool SendReplyRaw(string nodeId, string payload, string channelLabel = "p2p-control-channel");
     Task<string?> HandleIncomingSignalingHttpAsync(string senderNodeId, string offerSdp, Guid handshakeId);
     void HandleRelaySignaling(string senderNodeId, P2PPacketEnvelope frame);
     Task<string> GetEndpointActiveAsync(string endpoint);
@@ -77,6 +79,15 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
     private readonly Timer _timeSyncPulseTimer; 
     
     private readonly ConcurrentDictionary<string, ActivePeerConnection> _connections = new();
+    /// <summary>One dial per remote node at a time (see ConnectPeerAsync).</summary>
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _dialLocks = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// The channel each node's messages last ARRIVED on, per label ("node|label"). After two dials crossed, the
+    /// connection stored for a node can be a different (dead) one than the one the node still talks to us over:
+    /// its requests kept arriving while every answer went to the dead connection ("channel not open") and its
+    /// heartbeats failed for good. SendMessageRaw falls back to this channel then.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, RTCDataChannel> _lastInboundChannel = new(StringComparer.OrdinalIgnoreCase);
 
     public event Action<string, string, P2PPacketEnvelope>? OnRawMessageReceived;
     public event Action<string, string, RTCDataChannel>? OnUnmanagedChannelReceived;
@@ -143,6 +154,19 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
     /// <param name="payload"></param>
     /// <param name="channelLabel"></param>
     /// <returns></returns>
+    public bool SendReplyRaw(string nodeId, string payload, string channelLabel = "p2p-control-channel")
+    {
+        // An answer belongs on the connection the request came in on. After two dials crossed, the connection
+        // stored for the node can be another (still "open") one that the node no longer reads: answers sent
+        // there vanished and the asker's heartbeats failed until the link was rebuilt.
+        if (_lastInboundChannel.TryGetValue($"{nodeId}|{channelLabel}", out var inbound) && inbound.readyState == RTCDataChannelState.open)
+        {
+            inbound.send(payload);
+            return true;
+        }
+        return SendMessageRaw(nodeId, payload, channelLabel);
+    }
+
     public bool SendMessageRaw(string nodeId, string payload, string channelLabel = "p2p-control-channel")
     {
         if (_connections.TryGetValue(nodeId, out var conn))
@@ -153,6 +177,13 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                 //conn.LastActivity = DateTime.UtcNow;
                 return true;
             }
+        }
+
+        // The stored connection's channel isn't open, but the node is still talking to us over another one
+        if (_lastInboundChannel.TryGetValue($"{nodeId}|{channelLabel}", out var inbound) && inbound.readyState == RTCDataChannelState.open)
+        {
+            inbound.send(payload);
+            return true;
         }
         return false;
     }
@@ -483,6 +514,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                             {
                                 envelope.CreatedUtc = envelope.CreatedUtc.AddMilliseconds(-connRef.ClockOffsetMs);
                             }
+                            _lastInboundChannel[$"{nodeId}|{cleanLabel}"] = upgradedChannel;
                             OnRawMessageReceived?.Invoke(nodeId, cleanLabel, envelope);
                         }
                     }
@@ -580,6 +612,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                                                     {
                                                         envelope.CreatedUtc = envelope.CreatedUtc.AddMilliseconds(conn.ClockOffsetMs);
                                                     }
+                                                    _lastInboundChannel[$"{nodeId}|{label}"] = upgradedChannel;
                                                     OnRawMessageReceived?.Invoke(nodeId, label, envelope);
                                                 }
                                             }
@@ -702,7 +735,35 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
     }
 
     //general peer connection method
+    /// <summary>
+    /// Several services dial on their own (consensus visits, mesh management, heartbeat re-dial). Two dials to
+    /// the same node at once each built a new RTCPeerConnection and the second closed the first one mid-setup,
+    /// leaving the two sides on different connections: requests went out on one, answers came back on a closed
+    /// one, and every heartbeat timed out until the link was rebuilt. So dials to one node are serialized; the
+    /// second caller then finds the connection the first one made and reuses it.
+    /// </summary>
     public async Task<ActivePeerConnection?> ConnectPeerAsync(string nodeId, string[] signalingEndpoints, string connectionType)
+    {
+        if (string.IsNullOrEmpty(nodeId)) return null;
+
+        var dialLock = _dialLocks.GetOrAdd(nodeId, _ => new SemaphoreSlim(1, 1));
+        if (!await dialLock.WaitAsync(TimeSpan.FromSeconds(30)))
+        {
+            _logger.LogWarning("[P2P Transport] Another dial to {NodeId} is still running after 30 s; skipping this one.", nodeId);
+            return _connections.TryGetValue(nodeId, out var running) ? running : null;
+        }
+
+        try
+        {
+            return await ConnectPeerCoreAsync(nodeId, signalingEndpoints, connectionType);
+        }
+        finally
+        {
+            dialLock.Release();
+        }
+    }
+
+    private async Task<ActivePeerConnection?> ConnectPeerCoreAsync(string nodeId, string[] signalingEndpoints, string connectionType)
     {
         if (string.Equals(nodeId, _identityService.NodeId, StringComparison.OrdinalIgnoreCase))
         {
@@ -734,11 +795,30 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
             return null;
         }
 
+        // A peer record whose endpoints are all ours is this node under an old/other id: drop it instead of dialing ourselves
+        var ownEndpointList = _identityService.GetEndpoints() ?? new List<string>();
+        if (signalingEndpoints.Length > 0 &&
+            signalingEndpoints.All(e => ownEndpointList.Any(own => EndpointText.SameAuthority(own, e))))
+        {
+            _logger.LogWarning("[P2P Transport] Peer {NodeId} only lists this node's own endpoints - it is a stale record of this node. Removing it.", nodeId);
+            await KillConnectionAsync(nodeId, "self record");
+            try { _peerTracker.RemovePeer(nodeId); } catch (Exception ex) { _logger.LogDebug(ex, "[P2P Transport] Could not remove stale peer {NodeId}.", nodeId); }
+            return null;
+        }
+
         // HTTP-First Flow
         //ping for active url
         List<string> activeEndpoints = new();
+        var ownEndpoints = _identityService.GetEndpoints() ?? new List<string>();
         foreach (var endpoint in signalingEndpoints)
         {
+            // Our own tunnel/LAN address listed for another node would only connect us to ourselves
+            if (ownEndpoints.Any(own => EndpointText.SameAuthority(own, endpoint)))
+            {
+                _logger.LogDebug("[P2P Transport] Skipping {Endpoint} for {NodeId}: it is this node's own endpoint.", endpoint, nodeId);
+                continue;
+            }
+
             var target = string.Empty;
             if (!string.IsNullOrEmpty(target = await GetEndpointActiveAsync(endpoint)))
             {
@@ -1034,6 +1114,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
     public async Task<string?> HandleIncomingSignalingHttpAsync(string senderNodeId, string offerSdp, Guid handshakeId)
     {
         if (handshakeId == Guid.Empty) return null;
+        if (string.Equals(senderNodeId, _identityService.NodeId, StringComparison.OrdinalIgnoreCase)) return null;
         bool isHandshakeValid = _challengeService.IsRecentlyHandshaked(senderNodeId);
         if (!isHandshakeValid) return null;
 

@@ -23,6 +23,7 @@
             this.attachTabListeners(root);
             this.activateTab(root, this.activeTab);
             this.attachFormListener(root);
+            this.attachAdminNetworkList(root);
 
             // Example of a resource that would need disposal
             // this.refreshInterval = setInterval(() => console.log("Settings heartbeat..."), 30000);
@@ -52,6 +53,60 @@
             root.querySelectorAll('.tab-button').forEach(btn => {
                 btn.onclick = () => this.activateTab(root, btn.dataset.tab);
             });
+        },
+
+        /**
+         * "Admin access from other computers": add / remove entries. Each entry is a hidden input posted as
+         * Security.AdminNetworks; the server checks the format again on save.
+         */
+        attachAdminNetworkList: function (root) {
+            const box = root.querySelector('#admin-networks');
+            if (!box) return;
+            const rows = box.querySelector('[data-role="admin-network-rows"]');
+            const input = box.querySelector('[data-role="admin-network-input"]');
+            const error = box.querySelector('[data-role="admin-network-error"]');
+            const empty = box.querySelector('[data-role="admin-network-empty"]');
+            const prefix = input.dataset.prefix || 'Security';
+
+            const refreshEmpty = () => { empty.hidden = rows.children.length > 0; };
+            const looksValid = (v) => /^[0-9a-fA-F:.]+(\/\d{1,3})?$/.test(v) && (v.includes('.') || v.includes(':'));
+
+            const add = () => {
+                const value = input.value.trim();
+                error.textContent = '';
+                if (!value) return;
+                if (!looksValid(value)) { error.textContent = 'Not an IP address or network (e.g. 192.168.1.0/24).'; return; }
+                const exists = Array.from(rows.querySelectorAll('input[type="hidden"]'))
+                    .some(h => h.value.toLowerCase() === value.toLowerCase());
+                if (exists) { input.value = ''; return; }
+
+                const tr = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.className = 'mono';
+                cell.textContent = value;
+                const hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = prefix + '.AdminNetworks';
+                hidden.value = value;
+                cell.appendChild(hidden);
+                const btnCell = document.createElement('td');
+                btnCell.style.width = '1%';
+                btnCell.innerHTML = '<button type="button" class="icon-btn" data-action="remove-admin-network" title="Remove"><i class="fa-solid fa-xmark"></i></button>';
+                tr.appendChild(cell);
+                tr.appendChild(btnCell);
+                rows.appendChild(tr);
+                input.value = '';
+                refreshEmpty();
+            };
+
+            box.onclick = (e) => {
+                const btn = e.target.closest('[data-action]');
+                if (!btn) return;
+                if (btn.dataset.action === 'add-admin-network') add();
+                if (btn.dataset.action === 'remove-admin-network') { btn.closest('tr').remove(); refreshEmpty(); }
+            };
+            // Enter in the field adds the entry instead of submitting the whole settings form
+            input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } };
         },
 
         /**

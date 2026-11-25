@@ -20,6 +20,22 @@ using ProcessorApplication.Utils;
 // Becomes the current directory, so every relative data path lands in it. Without it: the app folder, as before.
 NodeHome.Initialize(args);
 
+// Everything the console shows also goes to <node home>/logs/console-<date>.log (off: --no-console-log).
+ProcessorApplication.Infrastructure.Logging.ConsoleFileTee.Start(Path.Combine(NodeHome.Folder, "logs"), args);
+
+// Console title = node home name, so the windows of several nodes (swarm, Tracker1/Client1...) can be told apart
+if (OperatingSystem.IsWindows() && !Console.IsOutputRedirected && NodeHome.IsSeparate)
+{
+    try { Console.Title = $"{Path.GetFileName(NodeHome.Folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))} - ProcessorApplication"; }
+    catch { /* no console window */ }
+}
+
+// Dots-only decimals: numbers are shown and read back the same way on every machine, whatever the Windows regional
+// format is (with a comma format, "0,05" in a number field shows empty and the browser's "0.05" fails to bind).
+// Only number/date FORMATTING changes; the UI language (CurrentUICulture) is left as it is.
+System.Globalization.CultureInfo.DefaultThreadCurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+
 const string ModuleDir = "Modules";
 var modulesRoot = Path.Combine(AppContext.BaseDirectory, ModuleDir);
 if (!Directory.Exists(modulesRoot)) Directory.CreateDirectory(modulesRoot);
@@ -141,6 +157,23 @@ builder.Services.Configure<MvcRazorRuntimeCompilationOptions>(options =>
 });
 
 builder.Services.AddSingleton<IModuleService, ModuleService>();
+// First Admin from a file, for headless / mass deployment (see AdminSeedFile): --AdminFile <path>, AdminFile=<path>,
+// admin.json in the node home, or admin.json in the program folder (shared by all nodes started from it)
+var adminSeedFile = ProcessorApplication.Services.User.AdminSeedFile.Locate(builder.Configuration[ProcessorApplication.Services.User.AdminSeedFile.SettingKey]);
+if (adminSeedFile.Exists)
+{
+    Console.WriteLine($"[Admin seed] Admin file found: {adminSeedFile.Path} (used only if this node has no Admin yet).");
+}
+builder.Services.AddSingleton(adminSeedFile);
+
+// EF Core's SQL statements go to <node home>/logs/sql-<date>.log, not the console (Logging:Console keeps them at
+// Warning). Off with Logging:SqlFile:Enabled = false.
+if (builder.Configuration.GetValue("Logging:SqlFile:Enabled", true))
+{
+    builder.Logging.AddProvider(new ProcessorApplication.Infrastructure.Logging.CategoryFileLoggerProvider(
+        Path.Combine(NodeHome.Folder, "logs"), "sql", "Microsoft.EntityFrameworkCore"));
+}
+
 builder.Services.AddScoped<ISettingsIngestService, SettingsIngestService>();
 builder.Services.AddScoped<ISettingsStore, SettingsStore>();
 builder.Services.AddMemoryCache();

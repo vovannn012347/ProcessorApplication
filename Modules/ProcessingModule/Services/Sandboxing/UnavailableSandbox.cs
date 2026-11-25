@@ -1,4 +1,4 @@
-using ProcessingModule.Infrastructure;
+﻿using ProcessingModule.Infrastructure;
 using ProcessingModule.Services.Runtime;
 
 namespace ProcessingModule.Services.Sandboxing;
@@ -21,7 +21,7 @@ public sealed class UnavailableSandbox : ISandboxProcessing
 
     public SandboxType GetSandboxType() => _type;
 
-    public Task ExecuteJobAsync(Guid subjobId) => throw new InvalidOperationException(_reason);
+    public Task ExecuteJobAsync(Guid subjobId, CancellationToken stopToken = default) => throw new InvalidOperationException(_reason);
 
     public Task<int> GetActiveJobs() => Task.FromResult(0);
 

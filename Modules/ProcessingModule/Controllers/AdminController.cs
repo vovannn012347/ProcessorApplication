@@ -26,7 +26,7 @@ namespace ProcessingModule.Controllers;
 
 [ModuleRoute(ProcessorModuleEntryPoint.MODULE_ID)]
 [Route("[controller]/[action]/{id?}")]
-[Authorize(Policy = "AdminLocalPolicy")]
+[AdminAccess]
 public class AdminController : Controller
 {
     private readonly ProcessorDbContext _db;

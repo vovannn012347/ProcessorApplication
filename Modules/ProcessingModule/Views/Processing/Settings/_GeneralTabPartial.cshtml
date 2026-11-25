@@ -23,3 +23,32 @@
         <input asp-for="JobTimeoutMinutes" type="number" step="0.5" />
     </div>
 </div>
+
+<h3>Script Package Upload <span class="tip" tabindex="0" data-tip="Limits for packages installed on the Install Script page and through Script Exchange. Bytes actually written while extracting are counted, not the sizes the archive claims."></span></h3>
+<div class="cols">
+    <div class="f">
+        <div><label asp-for="MaxScriptUploadMb"></label> <span class="tip" tabindex="0" data-tip="Largest .zip the upload accepts."></span></div>
+        <input asp-for="MaxScriptUploadMb" type="number" />
+        <span asp-validation-for="MaxScriptUploadMb" class="warn-t"></span>
+    </div>
+    <div class="f">
+        <div><label asp-for="MaxScriptExtractedMb"></label> <span class="tip" tabindex="0" data-tip="Total size a package may extract to."></span></div>
+        <input asp-for="MaxScriptExtractedMb" type="number" />
+        <span asp-validation-for="MaxScriptExtractedMb" class="warn-t"></span>
+    </div>
+    <div class="f">
+        <div><label asp-for="MaxScriptEntryMb"></label> <span class="tip" tabindex="0" data-tip="Largest single file inside a package."></span></div>
+        <input asp-for="MaxScriptEntryMb" type="number" />
+        <span asp-validation-for="MaxScriptEntryMb" class="warn-t"></span>
+    </div>
+    <div class="f">
+        <div><label asp-for="MaxScriptArchiveEntries"></label> <span class="tip" tabindex="0" data-tip="Most files and folders a package may contain."></span></div>
+        <input asp-for="MaxScriptArchiveEntries" type="number" />
+        <span asp-validation-for="MaxScriptArchiveEntries" class="warn-t"></span>
+    </div>
+    <div class="f">
+        <div><label asp-for="MaxScriptCompressionRatio"></label> <span class="tip" tabindex="0" data-tip="Largest expansion of one file (extracted / compressed), checked after its first MB. Normal code compresses 3-10x."></span></div>
+        <input asp-for="MaxScriptCompressionRatio" type="number" />
+        <span asp-validation-for="MaxScriptCompressionRatio" class="warn-t"></span>
+    </div>
+</div>

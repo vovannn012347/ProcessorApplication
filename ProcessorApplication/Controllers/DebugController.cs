@@ -14,6 +14,8 @@ namespace ProcessorApplication.Controllers;
 
 //[ModuleRoute("Main")]
 //[Route("/[area]/[controller]/[action]/{id?}")]
+// Shows the app's disk paths and view locations: admins on an allowed computer only
+[AdminAccess]
 public class DiagnosticController : Controller
 {
     private readonly IRazorViewEngine _viewEngine;

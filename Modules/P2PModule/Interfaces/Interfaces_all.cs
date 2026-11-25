@@ -61,7 +61,7 @@ public interface IMeshManagementService
     Task MaintainOutboundConnectionsAsync();
     Task<bool> DiscoverNewConsensus();
     Task PingNodesAsync();
-    Task<bool> SendHeartbeatAsync(string nodeId);
+    Task<bool> SendHeartbeatAsync(string nodeId, int timeoutSeconds = 5);
     Task<bool> CheckEndpointsALiveAsync(string nodeId);
 }
 

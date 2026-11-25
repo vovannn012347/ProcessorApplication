@@ -13,7 +13,7 @@ namespace FileTransferModule.Controllers;
 
 [ModuleRoute(FileTransferModuleEntryPoint.MODULE_ID)]
 [Route("/[area]/[controller]/[action]/{id?}")]
-[Authorize(Policy = "AdminLocalPolicy", Roles = "Admin")]
+[AdminAccess]
 [ApiExplorerSettings(IgnoreApi = true)]
 public class SettingsController : Controller
 {

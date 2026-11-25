@@ -72,6 +72,17 @@ public class IdentityPortabilityHandler : IPortabilityHandler
     private readonly ProcessorApplicationUserManager _userHelper;
     private readonly AppDbContext _dbContext;
 
+    // The constructor was missing, so both fields stayed null and every export failed with a NullReferenceException
+    public IdentityPortabilityHandler(ProcessorApplicationUserManager userHelper, AppDbContext dbContext)
+    {
+        _userHelper = userHelper;
+        _dbContext = dbContext;
+    }
+
+    /// <summary>The caller may pass the user name (Profile download) or the user id.</summary>
+    private async Task<ApplicationUser?> FindUserAsync(string userNameOrId) =>
+        await _userHelper.FindByNameAsync(userNameOrId) ?? await _userHelper.FindByIdAsync(userNameOrId);
+
     public string ModuleIdentifier => "Identity";
 
     public async Task<ModuleExportSummary> GetExportSummaryAsync(string userId)
@@ -86,7 +97,8 @@ public class IdentityPortabilityHandler : IPortabilityHandler
 
     public async Task<PaginatedList<ExportableItem>> GetExportableItemsAsync(string userId, int pageIndex, int pageSize)
     {
-        var user = await _userHelper.FindByIdAsync(userId);
+        var user = await FindUserAsync(userId);
+        if (user == null) return new PaginatedList<ExportableItem>(new List<ExportableItem>(), 0, pageIndex, pageSize);
         var items = new List<ExportableItem> {
             new ExportableItem {
                 Id = "profile_main",
@@ -101,13 +113,29 @@ public class IdentityPortabilityHandler : IPortabilityHandler
     {
         if (!selectedItemIds.Contains("profile_main")) return new List<string>();
 
-        var user = await _userHelper.FindByIdAsync(userId);
+        var user = await FindUserAsync(userId);
+        if (user == null) return new List<string>();
 
-        // Note: In a real scenario, the 'userKey' would be provided via the Export Request context
-        // This follows your provided logic for identity.json generation
+        // Work on a detached copy: decrypting must not leave plain values tracked for the next SaveChanges
+        _dbContext.Entry(user).State = EntityState.Detached;
+        if (!_userHelper.DecryptUserDataDirect(user, userKey)) return new List<string>();
 
+        // The file identifier: profile fields plus the personal key locked by the user's password and the
+        // user name locked by that key (LoginFromFile / RegisterFromFile check both)
+        var exportModel = new ProfileExportModel
+        {
+            UserName = user.UserName,
+            Name = user.Name,
+            Surname = user.Surname,
+            Email = user.Email,
+            DisplayNickname = user.DisplayNickname,
+            PersonalHashKey = user.PersonalHashKeyLockedByPassword,
+            UserIdLockedByPHSK = user.UserIdLockedByPHSK
+        };
+
+        Directory.CreateDirectory(destinationFolder);
         var filePath = Path.Combine(destinationFolder, "identity.json");
-        // ... (JSON Serialization logic from your attached file) ...
+        await File.WriteAllTextAsync(filePath, JsonSerializer.Serialize(exportModel, new JsonSerializerOptions { WriteIndented = true }));
 
         return new List<string> { "identity.json" };
     }

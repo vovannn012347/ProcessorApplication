@@ -187,6 +187,13 @@ public class MeshOrchestratorService : BackgroundService
                 var isalive = await _management.SendHeartbeatAsync(conn.NodeId);
                 if (!isalive)
                 {
+                    // One slow answer (busy node, consensus traffic) is not a dead link. Re-dialing a link that is
+                    // still up on the other side replaces our connection and kills theirs - which then fails ITS
+                    // heartbeat and re-dials us: the links kept flapping for minutes. Ask once more, more patiently.
+                    isalive = await _management.SendHeartbeatAsync(conn.NodeId, timeoutSeconds: 15);
+                }
+                if (!isalive)
+                {
                     _logger.LogWarning("[P2P Mesh Management] Link heartbeat failed for {NodeId}. Re-dialing...", conn.NodeId);
 
                     ActivePeerConnection? reconnected = null;
@@ -272,7 +279,7 @@ public class MeshOrchestratorService : BackgroundService
         // Grab our current known nodes to verify address overlap prior to making network queries
         var existingPeers = _peerService.GetLastSeenNodes(PeerTracker.DefaultNodeComparer).ToList();
 
-        using var client = new HttpClient();
+        using var client = new HttpClient(P2PModule.Infrastructure.LanCertificatePolicy.CreateHandler());
         client.Timeout = TimeSpan.FromSeconds(currentConfig.HttpTimeoutSeconds);
 
         foreach (var trackerEndpointUrl in currentConfig.SeedEndpoints)

@@ -33,7 +33,7 @@ public class MeshPeerDisplayItem
 
 [ModuleRoute("P2P")]
 [Route("/[area]/[controller]/[action]/{id?}")]
-[Authorize(Roles = "NetworkAdmin")]
+[AdminAccess("NetworkAdmin")]
 [ApiExplorerSettings(IgnoreApi = true)]
 public class MeshControlController : Controller
 {

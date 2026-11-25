@@ -42,5 +42,26 @@
                 <span asp-validation-for="RecordDecipherLogPath" class="warn-t"></span>
             </div>
         </div>
+        <div class="f" id="admin-networks">
+            <div><label>Admin access from other computers</label> <span class="tip" tabindex="0" data-tip="Admin pages always work from this computer. Add other computers (192.168.1.20) or networks (192.168.1.0/24) that may use them too. Empty list = this computer only. Use HTTPS when admins sign in from another computer, otherwise the password crosses the network unencrypted."></span></div>
+            <table class="t">
+                <tbody data-role="admin-network-rows">
+                    @foreach (var network in Model.AdminNetworks ?? new List<string>())
+                    {
+                        <tr>
+                            <td class="mono">@network<input type="hidden" name="@(prefix).AdminNetworks" value="@network" /></td>
+                            <td style="width:1%"><button type="button" class="icon-btn" data-action="remove-admin-network" title="Remove"><i class="fa-solid fa-xmark"></i></button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <div class="aux" data-role="admin-network-empty" @((Model.AdminNetworks?.Count ?? 0) > 0 ? "hidden" : "")>This computer only.</div>
+            <div class="f row">
+                <input type="text" class="mono" data-role="admin-network-input" data-prefix="@prefix" placeholder="192.168.1.0/24 or 192.168.1.20" />
+                <button type="button" class="btn sm" data-action="add-admin-network"><i class="fa-solid fa-plus"></i> Add</button>
+            </div>
+            <span class="warn-t" data-role="admin-network-error"></span>
+            <span asp-validation-for="AdminNetworks" class="warn-t"></span>
+        </div>
     </div>
 </div>

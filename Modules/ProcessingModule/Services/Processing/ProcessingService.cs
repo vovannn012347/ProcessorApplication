@@ -72,19 +72,28 @@ public class ProcessingService : IProcessingService
             return;
         }
 
+        // Cancelled by Stop (TaskControlMonitor): the launcher kills the running script
+        var stopToken = _monitor.GetToken(subJob.ParentJobId);
+
         try
         {
             // Inside the try: if no sandbox can be resolved the step must end in Error, not stay Running
             var sandbox = _sandboxSelector.GetActiveProcessor();
 
             // Physical execution via standalone executor
-            await sandbox.ExecuteJobAsync(subJob.Id);
+            await sandbox.ExecuteJobAsync(subJob.Id, stopToken);
 
             // Cleanup artifacts not declared in file_output.json
             await PurgeUnmappedFilesAsync(subJob, subJob.ParentJob.PhysicalPathRoot);
 
             subJob.Status = TaskStatusKeyword.Complete;
             subJob.ResultMessage = null;
+        }
+        catch (OperationCanceledException) when (stopToken.IsCancellationRequested)
+        {
+            // Stop pressed while the script ran: it was killed. Resume runs the step again.
+            subJob.Status = TaskStatusKeyword.Stopped;
+            subJob.ResultMessage = "Stopped while running (Stop).";
         }
         catch (FileNotFoundException ex)
         {
@@ -386,7 +395,7 @@ public class ProcessingService : IProcessingService
 
         task.Status = TaskStatusKeyword.Stopped;
 
-        // Steps that haven't started won't start. A step that is already running finishes on its own.
+        // Steps that haven't started won't start. A running step's script is killed (_monitor.Stop below) and ends as Stopped.
         var waiting = await _db.ProcessingJobs
             .Where(j => j.ParentJobId == taskId && j.Status == TaskStatusKeyword.Pending)
             .ToListAsync();

@@ -34,6 +34,9 @@ namespace P2PModule.Services.Maintenance;
 public class ConsensusNodeSwapPayload
 {
     public List<PeerNodeTransferred> Nodes { get; set; } = new();
+    /// <summary>0-based number of this chunk and how many chunks the swap has (0 = sender too old to say).</summary>
+    public int ChunkIndex { get; set; }
+    public int ChunkCount { get; set; }
 }
 
 /// <summary>
@@ -121,6 +124,12 @@ public interface IConsensusProtocolHandler
     /// Attempts to initiate a local daily consensus session on demand.
     /// </summary>
     Task<bool> TriggerConsensusAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when at least one peer is connected and handshaked. Consensus is not started without one
+    /// (there is nobody to merge with, the session would only idle and fill the log).
+    /// </summary>
+    bool HasConnectedPeers();
 }
 
 
@@ -146,6 +155,10 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
     private const int NodeSwapBatchSize = 50;
     private const int DeltaNodeBatchSize = 40;
     private const int RetryDelayMs = 1500;
+    /// <summary>How many times a BUSY node is put back into the visit queue before it is given up for this session.</summary>
+    private const int MaxBusyRetries = 20;
+    /// <summary>How many times an unreachable node is retried before it is given up for this session.</summary>
+    private const int MaxConnectRetries = 5;
 
     public ConsensusProtocolHandler(
         IConsensusSessionManager sessionManager,
@@ -190,8 +203,18 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         return Task.CompletedTask;
     }
 
+    public bool HasConnectedPeers() =>
+        _connectionManager.GetActiveConnections().Any(c =>
+            c.IsHandshaked && !string.Equals(c.NodeId, _identity.NodeId, StringComparison.OrdinalIgnoreCase));
+
     public async Task<bool> TriggerConsensusAsync(CancellationToken cancellationToken = default)
     {
+        if (!HasConnectedPeers())
+        {
+            _logger.LogDebug("[Consensus Protocol] Not starting consensus - no peers connected.");
+            return false;
+        }
+
         if (_sessionManager.IsBusy())
         {
             _logger.LogWarning("[Consensus Protocol] Cannot trigger manual consensus - session is already busy.");
@@ -206,6 +229,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
 
         SeedVisitQueueFromPeerTracker();
         RegisterConsensusNetworkHandlers();
+        LogConsensusEvent("start", new Dictionary<string, object?> { ["role"] = "initiator", ["known"] = KnownPeerCount() });
 
         _sessionLoopCts?.Cancel();
         _sessionLoopCts = new CancellationTokenSource();
@@ -229,7 +253,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                 if (IsMidnightBoundaryReached())
                 {
                     _logger.LogWarning("[Consensus Protocol] Midnight UTC boundary reached. Finalizing consensus session.");
-                    await CompleteAndFinalizeSessionAsync();
+                    await CompleteAndFinalizeSessionAsync("midnight");
                     break;
                 }
 
@@ -241,8 +265,8 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                     bool connected = await EnsurePeerConnectionAsync(targetNodeId);
                     if (!connected)
                     {
-                        _logger.LogWarning("[Consensus Protocol] Connection to {TargetNodeId} failed. Marking node visited.", targetNodeId);
-                        _sessionManager.MarkNodeAsVisited(targetNodeId);
+                        bool requeued = _sessionManager.RequeueNodeForRetry(targetNodeId, MaxConnectRetries);
+                        _logger.LogWarning("[Consensus Protocol] Connection to {TargetNodeId} failed. {Action}.", targetNodeId, requeued ? "Re-queued" : "Giving up for this session (not marked visited)");
                         _sessionManager.SetActiveTargetNode(null);
                         await Task.Delay(500, ct);
                         continue;
@@ -257,7 +281,8 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                         if (!string.Equals(startStatus, "AVAILABLE", StringComparison.OrdinalIgnoreCase) &&
                             !string.Equals(startStatus, "STARTING_UP", StringComparison.OrdinalIgnoreCase))
                         {
-                            _logger.LogInformation("[Consensus Protocol] Target {TargetNodeId} start ping returned '{Status}'. Skipping for now.", targetNodeId, startStatus);
+                            bool requeued = _sessionManager.RequeueNodeForRetry(targetNodeId, MaxBusyRetries);
+                            _logger.LogInformation("[Consensus Protocol] Target {TargetNodeId} start ping returned '{Status}'. {Action}.", targetNodeId, startStatus, requeued ? "Re-queued" : "Giving up for this session");
                             await Task.Delay(RetryDelayMs, ct);
                             continue;
                         }
@@ -272,14 +297,17 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                         }
                         else if (string.Equals(initStatus, "ALREADY_SYNCED", StringComparison.OrdinalIgnoreCase))
                         {
-                            _logger.LogInformation("[Consensus Protocol] Target {TargetNodeId} reports ALREADY_SYNCED.", targetNodeId);
-                            _sessionManager.MarkNodeAsVisited(targetNodeId);
+                            // The target already holds OUR updates; that doesn't mean we hold ITS.
+                            // Stop chasing it, but leave it unvisited until a merge or its delta reaches us.
+                            _logger.LogInformation("[Consensus Protocol] Target {TargetNodeId} reports ALREADY_SYNCED. Not chasing it further this session.", targetNodeId);
+                            _sessionManager.GiveUpNode(targetNodeId);
                             continue;
                         }
                         else if (initStatus.StartsWith("BUSY", StringComparison.OrdinalIgnoreCase) ||
                                  initStatus.StartsWith("WTF_BUSY", StringComparison.OrdinalIgnoreCase))
                         {
-                            _logger.LogInformation("[Consensus Protocol] Target {TargetNodeId} is BUSY ({Status}). Re-queuing with retry backoff.", targetNodeId, initStatus);
+                            bool requeued = _sessionManager.RequeueNodeForRetry(targetNodeId, MaxBusyRetries);
+                            _logger.LogInformation("[Consensus Protocol] Target {TargetNodeId} is BUSY ({Status}). {Action}.", targetNodeId, initStatus, requeued ? "Re-queued with retry backoff" : "Giving up for this session");
                             await Task.Delay(RetryDelayMs, ct);
                             continue;
                         }
@@ -295,9 +323,15 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                     _logger.LogInformation("[Consensus Protocol] Engaged target node {TargetNodeId} in pairwise merge step.", targetNodeId);
 
                     bool swapOk = await ExecutePairwiseSwapAsync(targetNodeId, session, ct);
+                    LogConsensusEvent("merge", new Dictionary<string, object?> { ["peer"] = targetNodeId, ["ok"] = swapOk });
                     if (swapOk)
                     {
                         await RequestAndAttachSyncSetSignatureAsync(targetNodeId, session, ct);
+                        _sessionManager.MarkNodeAsVisited(targetNodeId);
+                    }
+                    else
+                    {
+                        _sessionManager.RequeueNodeForRetry(targetNodeId, MaxConnectRetries);
                     }
 
                     _sessionManager.SetActiveTargetNode(null);
@@ -311,6 +345,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                 }
 
                 _logger.LogInformation("[Consensus Protocol] Visit queue empty. Entering post-expansion idling state.");
+                LogConsensusEvent("queue_empty", new Dictionary<string, object?> { ["known"] = KnownPeerCount() });
                 await SyncMergeDirToConsensusStoreAsync(session);
 
                 while (_sessionManager.IsBusy() && !ct.IsCancellationRequested)
@@ -318,8 +353,15 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                     if (IsMidnightBoundaryReached())
                     {
                         _logger.LogWarning("[Consensus Protocol] Midnight UTC boundary reached during idling phase. Finalizing session.");
-                        await CompleteAndFinalizeSessionAsync();
+                        await CompleteAndFinalizeSessionAsync("midnight");
                         return;
+                    }
+
+                    if (_sessionManager.HasNodesToVisit() && string.IsNullOrEmpty(session.TargetNodeId))
+                    {
+                        _logger.LogInformation("[Consensus Protocol] New nodes queued while idling. Resuming visits.");
+                        LogConsensusEvent("resume", new Dictionary<string, object?> { ["known"] = KnownPeerCount() });
+                        break;
                     }
 
                     if (_sessionManager.HasPendingDeltas())
@@ -335,7 +377,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                     {
                         _logger.LogInformation("[Consensus Protocol] Inactivity threshold (5m) reached. Finalizing consensus.");
                         await BroadcastConsensusFinishedAsync(session);
-                        await CompleteAndFinalizeSessionAsync();
+                        await CompleteAndFinalizeSessionAsync("inactivity");
                         return;
                     }
 
@@ -350,7 +392,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         catch (Exception ex)
         {
             _logger.LogError(ex, "[Consensus Protocol] Error in consensus workflow loop.");
-            await CompleteAndFinalizeSessionAsync();
+            await CompleteAndFinalizeSessionAsync("error");
         }
     }
 
@@ -377,6 +419,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         {
             SeedVisitQueueFromPeerTracker();
             RegisterConsensusNetworkHandlers();
+            LogConsensusEvent("start", new Dictionary<string, object?> { ["role"] = "joined", ["from"] = senderNodeId, ["known"] = KnownPeerCount() });
 
             _sessionLoopCts?.Cancel();
             _sessionLoopCts = new CancellationTokenSource();
@@ -500,7 +543,9 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
             return $"WTF_BUSY|{session.TargetNodeId}";
         }
 
-        if (session.PastSyncSet.Contains(senderNodeId) || session.VisitedNodes.Contains(senderNodeId))
+        // Only when we really hold the sender's updates (merged with it, or its delta reached us).
+        // Having its record in a sync set is not enough.
+        if (session.VisitedNodes.Contains(senderNodeId))
         {
             return "ALREADY_SYNCED";
         }
@@ -517,7 +562,25 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         try
         {
             bool hasReceivedData = false;
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            // The router hands every chunk (and the final "completed" signal) to its own task, in no particular
+            // order, and staging ran fire-and-forget: the swap counted as done while chunks were still being
+            // written to IterDir and their nodes registered in the sync set. The local delta was then computed
+            // and the iteration finalized without them (their nodes landed in the NEXT iteration's sync set, so
+            // the next delta's "old nodes" list was empty). Now the swap ends only after every chunk is staged.
+            var swapGate = new object();
+            int stagedChunks = 0;
+            int expectedChunks = 0;      // 0 = not known (older sender): finish on the completed signal
+            bool senderDone = false;
+            void TryFinishSwap()
+            {
+                lock (swapGate)
+                {
+                    if (senderDone && (expectedChunks <= 0 || stagedChunks >= expectedChunks))
+                        tcs.TrySetResult(hasReceivedData);
+                }
+            }
 
             await _routerService.SendRequestProgressiveAsync(
                 targetNodeId,
@@ -532,16 +595,26 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                         return;
                     }
 
+                    bool chunkCounted = false;
+
                     if (!string.IsNullOrEmpty(payloadJson))
                     {
                         try
                         {
                             var chunk = JsonSerializer.Deserialize<ConsensusNodeSwapPayload>(payloadJson);
+                            if (chunk != null && chunk.ChunkCount > 0)
+                            {
+                                lock (swapGate) expectedChunks = chunk.ChunkCount;
+                            }
+
                             if (chunk?.Nodes != null && chunk.Nodes.Count > 0)
                             {
                                 hasReceivedData = true;
+                                chunkCounted = true;
                                 _ = Task.Run(async () =>
                                 {
+                                  try
+                                  {
                                     await _mergeEngine.StageIncomingNodeSetAsync(session.StagingOperation!, targetNodeId, chunk.Nodes);
 
                                     var nodeIds = new List<string>();
@@ -554,9 +627,19 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                                         }
                                     }
 
-                                    _sessionManager.RegisterNodesInCurrentSyncSet(nodeIds);
                                     _sessionManager.QueueNodesToVisit(nodeIds);
-                                }, ct);
+                                    _sessionManager.RegisterNodesInCurrentSyncSet(nodeIds);
+                                  }
+                                  catch (Exception ex)
+                                  {
+                                    _logger.LogError(ex, "[Consensus Protocol] Error staging swap chunk from {TargetNodeId}.", targetNodeId);
+                                  }
+                                  finally
+                                  {
+                                    lock (swapGate) stagedChunks++;
+                                    TryFinishSwap();
+                                  }
+                                });
                             }
                         }
                         catch (Exception ex)
@@ -565,14 +648,28 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                         }
                     }
 
+                    if (!chunkCounted && !string.IsNullOrEmpty(payloadJson))
+                    {
+                        lock (swapGate) stagedChunks++;   // empty or unreadable chunk: nothing to stage, but it counts
+                    }
+
                     if (isCompleted)
                     {
-                        tcs.TrySetResult(hasReceivedData);
+                        lock (swapGate) senderDone = true;
                     }
+                    TryFinishSwap();
                 },
                 new RouteSettings { Timeout = TimeSpan.FromSeconds(20), CancellationToken = ct }
             );
 
+            // Safety net: a lost chunk must not hang the session
+            var finished = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(60), ct));
+            if (finished != tcs.Task)
+            {
+                _logger.LogWarning("[Consensus Protocol] Swap with {TargetNodeId}: only {Staged}/{Expected} chunks staged after 60 s; continuing.",
+                    targetNodeId, stagedChunks, expectedChunks);
+                return hasReceivedData;
+            }
             return await tcs.Task;
         }
         catch (Exception ex)
@@ -587,8 +684,13 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         try
         {
             var fullChain = _sessionManager.GetSyncSetSignatures();
-            var prevSig = fullChain.LastOrDefault();
-            int order = fullChain.Count + 1;
+            // Point at the newest link of the highest order; the new link is one order above it.
+            // (Count + 1 skipped orders as soon as two merges had produced links of the same order.)
+            var prevSig = fullChain
+                .OrderBy(x => x.Order)
+                .ThenBy(x => x.TimestampUtc)
+                .LastOrDefault();
+            int order = (prevSig?.Order ?? 0) + 1;
             long timestamp = DateTime.UtcNow.Ticks;
 
             byte[] localSigBytes = ComputeChainLinkSignature(
@@ -633,11 +735,13 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                 var responseSig = JsonSerializer.Deserialize<ChainSignature>(result.Payload);
                 if (responseSig != null && responseSig.Signature.Length > 0)
                 {
-                    _sessionManager.AddSyncSetSignature(targetNodeId, _identity.NodeId, responseSig.Signature, responseSig.Order);
+                    responseSig.SignerNodeId = targetNodeId;
+                    responseSig.TargetNodeId = _identity.NodeId;
+                    _sessionManager.AddSyncSetSignature(responseSig);
                 }
             }
 
-            _sessionManager.AddSyncSetSignature(_identity.NodeId, targetNodeId, localSigBytes, order);
+            _sessionManager.AddSyncSetSignature(localChainLink);
 
             foreach (var nodeId in session.CurrentSyncSet)
             {
@@ -664,16 +768,17 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
 
         if (totalNodes == 0)
         {
-            var emptyPayload = new ConsensusNodeSwapPayload();
+            var emptyPayload = new ConsensusNodeSwapPayload { ChunkIndex = 0, ChunkCount = 1 };
             await _routerService.SendProgressiveResponseAsync(
                 senderNodeId, frame.MessageId, "ConsensusSwap", JsonSerializer.Serialize(emptyPayload), 100, true);
             return null!;
         }
 
+        int chunkCount = (totalNodes + NodeSwapBatchSize - 1) / NodeSwapBatchSize;
         for (int i = 0; i < totalNodes; i += NodeSwapBatchSize)
         {
             var batch = localNodes.Skip(i).Take(NodeSwapBatchSize).ToList();
-            var payload = new ConsensusNodeSwapPayload { Nodes = batch };
+            var payload = new ConsensusNodeSwapPayload { Nodes = batch, ChunkIndex = i / NodeSwapBatchSize, ChunkCount = chunkCount };
 
             int processedCount = Math.Min(i + NodeSwapBatchSize, totalNodes);
             double progress = ((double)processedCount / totalNodes) * 100.0;
@@ -705,6 +810,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
 
             if (req.ExchangedNodeIds != null && req.ExchangedNodeIds.Count > 0)
             {
+                _sessionManager.QueueNodesToVisit(req.ExchangedNodeIds);
                 _sessionManager.RegisterNodesInCurrentSyncSet(req.ExchangedNodeIds);
                 foreach (var nodeId in req.ExchangedNodeIds)
                 {
@@ -716,14 +822,20 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
             {
                 foreach (var sig in req.FullSignatureChain)
                 {
-                    _sessionManager.AddSyncSetSignature(sig.SignerNodeId, sig.TargetNodeId, sig.Signature, sig.Order);
+                    if (sig != null) _sessionManager.AddSyncSetSignature(sig);
                 }
             }
 
+            // Our link points at the requester's own link for this merge (order n -> n+1),
+            // not at the link the requester itself pointed at - otherwise it never verifies.
+            var requesterLink = req.FullSignatureChain?
+                .LastOrDefault(s => s != null &&
+                                    s.Order == req.SignatureOrder &&
+                                    string.Equals(s.SignerNodeId, senderNodeId, StringComparison.OrdinalIgnoreCase));
             int order = req.SignatureOrder + 1;
             long timestamp = DateTime.UtcNow.Ticks;
             byte[] targetSigBytes = ComputeChainLinkSignature(
-                req.PreviousSignature?.Signature, order, _identity.NodeId, senderNodeId, timestamp, session.DayKeySignatureKey);
+                requesterLink?.Signature ?? req.PreviousSignature?.Signature, order, _identity.NodeId, senderNodeId, timestamp, session.DayKeySignatureKey);
 
             var returnSignature = new ChainSignature
             {
@@ -734,7 +846,10 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                 Signature = targetSigBytes
             };
 
-            _sessionManager.AddSyncSetSignature(_identity.NodeId, senderNodeId, targetSigBytes, order);
+            _sessionManager.AddSyncSetSignature(returnSignature);
+
+            // The swap is complete on our side too: we hold the sender's updates now.
+            _sessionManager.MarkNodeAsVisited(senderNodeId);
 
             return JsonSerializer.Serialize(returnSignature);
         }
@@ -767,16 +882,32 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                 bool downloaded = await DownloadDeltaFilesAsync(senderNodeId, remoteDeltaId, destFolderPath, ct);
                 if (downloaded)
                 {
-                    bool registered = await _sessionManager.RegisterDownloadedDeltaAsync(senderNodeId, destFolderPath, ping.SignatureChain);
-                    if (registered)
+                    var registration = await _sessionManager.RegisterDownloadedDeltaAsync(senderNodeId, destFolderPath, ping.SignatureChain);
+                    if (registration == DeltaRegistration.Registered)
                     {
                         _logger.LogInformation("[Consensus Protocol] Successfully downloaded and registered delta {DeltaId} from {Sender}.", assignedDeltaId, senderNodeId);
+
+                        // Their updates reached us through the delta: no need to visit them ourselves.
+                        _sessionManager.MarkNodeAsVisited(senderNodeId);
+                        if (ping.SignatureChain != null)
+                        {
+                            foreach (var sig in ping.SignatureChain)
+                            {
+                                if (!string.IsNullOrEmpty(sig?.SignerNodeId) &&
+                                    !string.Equals(sig.SignerNodeId, _identity.NodeId, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    _sessionManager.MarkNodeAsVisited(sig.SignerNodeId);
+                                }
+                            }
+                        }
                     }
-                    else
+                    else if (registration == DeltaRegistration.InvalidSignature)
                     {
+                        // Only a signature that fails against a key we DO know is evidence of tampering
                         _logger.LogWarning("[Anti-Tamper Guard] Downloaded delta {DeltaId} from {Sender} failed signature validation. Applying reputation penalty.", assignedDeltaId, senderNodeId);
                         await _ratingService.ApplyLocalReputationUpdateAsync(senderNodeId, -15);
                     }
+                    // UnverifiableSigner / Failed: skipped, logged by the session manager, no penalty
                 }
             }
         }
@@ -924,15 +1055,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                 {
                     string json = await File.ReadAllTextAsync(filePath, ct);
                     PeerNodeHistoric? node = null;
-                    try
-                    {
-                        var weighted = JsonSerializer.Deserialize<WeightedConsensusNode>(json);
-                        node = weighted?.NodeData;
-                    }
-                    catch
-                    {
-                        node = JsonSerializer.Deserialize<PeerNodeHistoric>(json);
-                    }
+                    node = ConsensusNodeJson.ReadHistoric(json);
 
                     if (node?.Identity != null)
                     {
@@ -961,6 +1084,8 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         var deltaItem = await _sessionManager.CreateLocalDeltaAsync();
         if (deltaItem == null) return;
 
+        // Deltas go to OLD nodes only (earlier iterations' sync sets). The nodes of the merge that just
+        // happened received our full merged state in the swap and don't need it again.
         var pastNodes = _sessionManager.GetPastSyncSetNodes();
         if (pastNodes.Count == 0) return;
 
@@ -1027,15 +1152,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                     {
                         string json = await File.ReadAllTextAsync(file);
                         PeerNodeHistoric? peerHistoric = null;
-                        try
-                        {
-                            var weighted = JsonSerializer.Deserialize<WeightedConsensusNode>(json);
-                            peerHistoric = weighted?.NodeData;
-                        }
-                        catch
-                        {
-                            peerHistoric = JsonSerializer.Deserialize<PeerNodeHistoric>(json);
-                        }
+                        peerHistoric = ConsensusNodeJson.ReadHistoric(json);
 
                         if (peerHistoric?.Identity?.NodeId != null)
                         {
@@ -1067,6 +1184,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         if (session?.StagingOperation == null) return;
 
         string mergeDir = session.StagingOperation.MergeDir;
+        using var gate = await session.StagingOperation.LockAsync();
         if (!Directory.Exists(mergeDir)) return;
 
         try
@@ -1076,15 +1194,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                 string nodeId = Path.GetFileNameWithoutExtension(file);
                 string json = await File.ReadAllTextAsync(file);
                 PeerNodeHistoric? historicPeer = null;
-                try
-                {
-                    var weighted = JsonSerializer.Deserialize<WeightedConsensusNode>(json);
-                    historicPeer = weighted?.NodeData;
-                }
-                catch
-                {
-                    historicPeer = JsonSerializer.Deserialize<PeerNodeHistoric>(json);
-                }
+                historicPeer = ConsensusNodeJson.ReadHistoric(json);
 
                 if (historicPeer?.Identity != null && !string.IsNullOrEmpty(nodeId))
                 {
@@ -1218,6 +1328,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         if (session.StagingOperation == null) return list;
 
         string mergeDir = session.StagingOperation.MergeDir;
+        using var gate = await session.StagingOperation.LockAsync();
         if (!Directory.Exists(mergeDir)) return list;
 
         foreach (var file in Directory.GetFiles(mergeDir, "*.json"))
@@ -1226,15 +1337,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
             {
                 string json = await File.ReadAllTextAsync(file);
                 PeerNodeHistoric? historic = null;
-                try
-                {
-                    var weighted = JsonSerializer.Deserialize<WeightedConsensusNode>(json);
-                    historic = weighted?.NodeData;
-                }
-                catch
-                {
-                    historic = JsonSerializer.Deserialize<PeerNodeHistoric>(json);
-                }
+                historic = ConsensusNodeJson.ReadHistoric(json);
 
                 if (historic?.Identity != null)
                 {
@@ -1274,8 +1377,26 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         _routerService.UnregisterCommandHandler("ConsensusFinished");
     }
 
-    private async Task CompleteAndFinalizeSessionAsync()
+    /// <summary>Appends a line to consensus_events.jsonl (see <see cref="ConsensusEventLog"/>).</summary>
+    private void LogConsensusEvent(string ev, IDictionary<string, object?>? extra = null)
     {
+        ConsensusEventLog.Write(_p2pSettings.CurrentValue.DataStoragePath, _identity.NodeId, ev,
+            _sessionManager.GetActiveSession()?.SessionId, extra);
+    }
+
+    private int KnownPeerCount()
+    {
+        try
+        {
+            return _peerTracker.GetLastSeenNodes(PeerTracker.DefaultNodeComparer)
+                .Count(p => p.Identity?.NodeId != null && !p.Identity.NodeId.Equals(_identity.NodeId, StringComparison.OrdinalIgnoreCase));
+        }
+        catch { return -1; }
+    }
+
+    private async Task CompleteAndFinalizeSessionAsync(string reason = "done")
+    {
+        LogConsensusEvent("finish", new Dictionary<string, object?> { ["reason"] = reason, ["known"] = KnownPeerCount() });
         UnregisterConsensusNetworkHandlers();
         await _sessionManager.FinalizeSessionAsync();
 

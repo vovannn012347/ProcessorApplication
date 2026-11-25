@@ -37,6 +37,14 @@ public class SecuritySettings
     /// <summary>Local stamp backup folder (always written). Empty = Module_Data/Main/hashstamps in the node home.</summary>
     [Display(Name = "Local hash stamp backup directory")]
     public string LocalStampBackupPath { get; set; } = "";
+    /// <summary>
+    /// Other computers allowed to use the admin pages, besides this one (which is always allowed): IP addresses and
+    /// networks, one per entry (e.g. "192.168.1.0/24", "10.0.0.5"). Empty = this computer only.
+    /// First admin setup stays this-computer-only.
+    /// </summary>
+    [Display(Name = "Admin access from other computers")]
+    public List<string> AdminNetworks { get; set; } = new();
+
     [Display(Name = "Sensitive data access Logging")]
     public bool RecordDecipherLogging { get; set; } = false;
     [Display(Name = "Decipher Log Output Path")]

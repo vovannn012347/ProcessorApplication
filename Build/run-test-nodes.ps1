@@ -115,7 +115,7 @@ if ($Build) {
     foreach ($node in $Nodes) {
         $cfg = $nodeTable[$node].Config
         Write-Host "=== Building $node ($cfg, $Rid) ===" -ForegroundColor Cyan
-        & dotnet build $sln -c $cfg -p:RuntimeIdentifier=$Rid --nologo -v minimal
+        & dotnet build $sln -c $cfg -p:BuildRid=$Rid --nologo -v minimal
         if ($LASTEXITCODE -ne 0) { throw "Build of $cfg failed." }
     }
 }

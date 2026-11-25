@@ -5,6 +5,11 @@
 
     <NodeFolderName>$(Configuration)</NodeFolderName>
 
+    <!-- Platform of a whole-solution build:  dotnet build ProcessorApplication.sln -c Release -p:BuildRid=linux-x64
+         The SDK refuses a RuntimeIdentifier given for the whole solution (NETSDK1134, also with -p:RuntimeIdentifier),
+         so it is set here for each project instead. Without BuildRid: win-x64 for the Node* configurations (below). -->
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' AND '$(BuildRid)' != ''">$(BuildRid)</RuntimeIdentifier>
+
   </PropertyGroup>
 
   <!--

@@ -36,7 +36,7 @@ public class NoneSandboxPython : ISandboxProcessing
     /// Launches the standalone executor for a specific sub-job step.
     /// </summary>
     /// <param name="orchestrationId">The ID of the OrchestratedTaskSubJob (Step).</param>
-    public async Task ExecuteJobAsync(Guid orchestrationId)
+    public async Task ExecuteJobAsync(Guid orchestrationId, CancellationToken stopToken = default)
     {
         using var db = await _factory.CreateDbContextAsync();
 
@@ -90,7 +90,17 @@ public class NoneSandboxPython : ISandboxProcessing
             // Drain both pipes while waiting, otherwise a chatty script fills the buffer and hangs
             var stdoutTask = process.StandardOutput.ReadToEndAsync();
             var stderrTask = process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
+            try
+            {
+                await process.WaitForExitAsync(stopToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // Stop: kill the executor and everything it started
+                try { process.Kill(entireProcessTree: true); } catch { /* already gone */ }
+                await process.WaitForExitAsync();
+                throw new OperationCanceledException("Stopped while running.", stopToken);
+            }
             await Task.WhenAll(stdoutTask, stderrTask);
 
             if (process.ExitCode != 0)

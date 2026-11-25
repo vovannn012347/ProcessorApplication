@@ -264,6 +264,17 @@ public class P2PRouterService : IP2PRouterService, IDisposable
             return;
         }
 
+        if (frame.CommandType.StartsWith("Response-", StringComparison.OrdinalIgnoreCase) &&
+            !_progressiveTransfers.ContainsKey(frame.MessageId))
+        {
+            // The request already timed out (or was never ours). If this happens a lot the link is fine but slow.
+            // Response-Ping is skipped: PingNodesAsync sends fire-and-forget pings whose answers nobody waits for.
+            if (string.Equals(frame.CommandType, "Response-Ping", StringComparison.OrdinalIgnoreCase)) return;
+            _logger.LogInformation("[P2P Router] Late answer {Command} from {Sender}: arrived {Ms} ms after it was sent; the request had already given up.",
+                frame.CommandType, senderNodeId, (int)(DateTime.UtcNow - frame.CreatedUtc).TotalMilliseconds);
+            return;
+        }
+
         // B. Segmented/Progressive callback match
         if (_progressiveTransfers.TryGetValue(frame.MessageId, out var context))
         {
@@ -324,7 +335,7 @@ public class P2PRouterService : IP2PRouterService, IDisposable
                     // Looking the connection up by the id written in the request instead can miss it - e.g. a peer
                     // whose node id changed is still connected under the id it was dialled with - and the answer
                     // was then silently dropped: the asker saw a timeout (failed heartbeat) on a healthy link.
-                    if (!_connectionManager.SendMessageRaw(senderNodeId, JsonSerializer.Serialize(responseEnvelope), channelLabel))
+                    if (!_connectionManager.SendReplyRaw(senderNodeId, JsonSerializer.Serialize(responseEnvelope), channelLabel))
                     {
                         _logger.LogWarning("[P2P Router] Could not send the answer to {Command} back to {Peer} (channel '{Channel}' not open).",
                             frame.CommandType, senderNodeId, channelLabel);
@@ -429,7 +440,7 @@ public class P2PRouterService : IP2PRouterService, IDisposable
             CreatedUtc = DateTime.UtcNow
         };
 
-        _connectionManager.SendMessageRaw(targetNodeId, JsonSerializer.Serialize(responseEnvelope), "p2p-control-channel");
+        _connectionManager.SendReplyRaw(targetNodeId, JsonSerializer.Serialize(responseEnvelope), "p2p-control-channel");
     }
 
     public async Task<RouterResult> SendRequestAsync(string targetNodeId, string commandType, string payloadJson, RouteSettings? settings = null)
@@ -581,7 +592,7 @@ public class P2PRouterService : IP2PRouterService, IDisposable
     private void SendErrorResponse(string connectionNodeId, string targetNodeId, Guid messageId, string errorReason, string channelLabel)
     {
         var errorFrame = new P2PPacketEnvelope { MessageId = messageId, SenderNodeId = _identity.GetLocalNodeId(), TargetNodeId = targetNodeId, CommandType = "Response-Error", ErrorMessage = errorReason, Ttl = 8, CreatedUtc = DateTime.UtcNow };
-        _connectionManager.SendMessageRaw(connectionNodeId, JsonSerializer.Serialize(errorFrame), channelLabel);
+        _connectionManager.SendReplyRaw(connectionNodeId, JsonSerializer.Serialize(errorFrame), channelLabel);
     }
 
     private void CleanupDedicatedChannelDeferred(string targetNodeId, string label, bool useDedicated)

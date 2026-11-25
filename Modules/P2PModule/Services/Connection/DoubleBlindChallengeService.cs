@@ -788,6 +788,7 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
         try
         {
             if (envelope == null) return false;
+            if (IsMisdirectedOrSelf(envelope)) return false;
 
             if (envelope.CommandType == "HandshakeRequest")
             {
@@ -863,6 +864,7 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
     {
         var envelope = await request.ReadFromJsonAsync<P2PPacketEnvelope>();
         if (envelope == null) return string.Empty;
+        if (IsMisdirectedOrSelf(envelope)) return string.Empty;
 
         try
         {
@@ -989,6 +991,16 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
             if (envelope.CommandType == "HandshakeResponse")
             {
                 var handshakeResponse = JsonSerializer.Deserialize<HandshakeChallengeResponse>(envelope.SerializedPayload);
+                string? answeredAs = handshakeResponse?.Identity?.NodeId;
+                if (handshakeResponse != null && !string.Equals(answeredAs, nodeId, StringComparison.OrdinalIgnoreCase))
+                {
+                    // The endpoint belongs to a different node (or to us: our own tunnel/LAN address listed for a peer)
+                    _logger.LogWarning("[Challenge Engine] {Endpoint} answered as {Answered}, not {Expected}. Handshake dropped.",
+                        targetEndpoint, string.Equals(answeredAs, _identity.NodeId, StringComparison.OrdinalIgnoreCase) ? "this node" : answeredAs, nodeId);
+                    _handshakeSessions.TryRemove(handshakeReq.HandShakeId, out _);
+                    _nodeHandshakes.TryRemove(nodeId, out _);
+                    return null;
+                }
                 if (handshakeResponse != null)
                 {
                     // STEP 2: Audit response (Checks decryption correctness, skips Signature 2 validation)
@@ -1021,5 +1033,27 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// A handshake message from this node itself (we reached our own endpoint), or one addressed to a different node
+    /// (the caller dialed us thinking we are someone else). Both are refused.
+    /// </summary>
+    private bool IsMisdirectedOrSelf(P2PPacketEnvelope envelope)
+    {
+        string self = _identity.NodeId;
+        if (string.IsNullOrEmpty(self)) return false;
+
+        if (string.Equals(envelope.SenderNodeId, self, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogDebug("[Challenge Engine] Refused a handshake from this node itself (own endpoint dialed).");
+            return true;
+        }
+        if (!string.IsNullOrEmpty(envelope.TargetNodeId) && !string.Equals(envelope.TargetNodeId, self, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogDebug("[Challenge Engine] Refused a handshake addressed to {Target} (this node is {Self}).", envelope.TargetNodeId, self);
+            return true;
+        }
+        return false;
     }
 }

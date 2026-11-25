@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 using ProcessorApplication.Attributes;
@@ -11,7 +11,7 @@ namespace ProcessorApplication.Controllers;
 /// Admin page: every stored setting of every module in one list (edit, add, delete), next to the settings files'
 /// values, plus re-ingest of the settings files. /Main/SettingsIngest/Index
 /// </summary>
-[Authorize(Policy = "AdminLocalPolicy")]
+[AdminAccess]
 [ModuleRoute("Main")]
 [Route("/[area]/[controller]/[action]/{id?}")]
 public class SettingsIngestController : Controller

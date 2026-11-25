@@ -152,6 +152,9 @@ public sealed class EndpointAdvertiserService : BackgroundService, IEndpointChan
         using var scope = _scopeFactory.CreateScope();
         foreach (var provider in scope.ServiceProvider.GetServices<IEndpointProvider>())
         {
+            // Picker-only providers (LAN addresses) are added by hand in the settings, never advertised automatically
+            if (provider is IManualEndpointProvider) continue;
+
             IEnumerable<string> sources;
             try { sources = provider.GetEndpointSources() ?? Enumerable.Empty<string>(); }
             catch (Exception ex)

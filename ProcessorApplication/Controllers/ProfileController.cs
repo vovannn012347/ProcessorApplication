@@ -294,8 +294,11 @@ public class ProfileController : Controller
                 sessionKey, 
                 tempPath);
 
-            if (filePath != null && filePath.Count > 0 && !System.IO.File.Exists(Path.Combine(tempPath, filePath[0]))) 
-                return NotFound("Export generation failed.");
+            if (filePath == null || filePath.Count == 0 || !System.IO.File.Exists(Path.Combine(tempPath, filePath[0])))
+            {
+                TempData["StatusMessage"] = "Export failed: the identity file could not be created.";
+                return RedirectToAction("Index");
+            }
 
             var fileBytes = await System.IO.File.ReadAllBytesAsync(Path.Combine(tempPath, filePath[0]));
             var fileName = $"Identity_{user.UserName}_{DateTime.Now:yyyyMMdd}.json";

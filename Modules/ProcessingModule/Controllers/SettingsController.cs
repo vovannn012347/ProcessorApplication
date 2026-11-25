@@ -19,7 +19,7 @@ using ProcessingModule.Services.Sandboxing;
 
 namespace ProcessingModule.Controllers;
 
-[Authorize(Policy = "AdminLocalPolicy")]
+[AdminAccess]
 [ModuleRoute(ProcessorModuleEntryPoint.MODULE_ID)]
 [Route("[controller]/[action]/{id?}")]
 public class SettingsController : Controller
@@ -140,6 +140,11 @@ public class SettingsController : Controller
         await _settingsService.SetAsync(ModuleId, $"{nameof(ProcessorSettings)}:{nameof(model.SandboxingType)}", model.SandboxingType);
         await _settingsService.SetAsync(ModuleId, $"{nameof(ProcessorSettings)}:{nameof(model.RequireSandboxing)}", model.RequireSandboxing);
         await _settingsService.SetAsync(ModuleId, $"{nameof(ProcessorSettings)}:{nameof(model.ValidateSandboxOnStartup)}", model.ValidateSandboxOnStartup);
+        await _settingsService.SetAsync(ModuleId, $"{nameof(ProcessorSettings)}:{nameof(model.MaxScriptUploadMb)}", model.MaxScriptUploadMb);
+        await _settingsService.SetAsync(ModuleId, $"{nameof(ProcessorSettings)}:{nameof(model.MaxScriptExtractedMb)}", model.MaxScriptExtractedMb);
+        await _settingsService.SetAsync(ModuleId, $"{nameof(ProcessorSettings)}:{nameof(model.MaxScriptEntryMb)}", model.MaxScriptEntryMb);
+        await _settingsService.SetAsync(ModuleId, $"{nameof(ProcessorSettings)}:{nameof(model.MaxScriptArchiveEntries)}", model.MaxScriptArchiveEntries);
+        await _settingsService.SetAsync(ModuleId, $"{nameof(ProcessorSettings)}:{nameof(model.MaxScriptCompressionRatio)}", model.MaxScriptCompressionRatio);
     }
 
     private async Task SavePython(PythonProcessingSettings model)

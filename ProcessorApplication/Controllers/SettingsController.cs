@@ -16,7 +16,7 @@ using ProcessorApplication.ViewModels.User;
 
 namespace ProcessorApplication.Controllers;
 
-[Authorize(Policy = "AdminLocalPolicy")]
+[AdminAccess]
 [ModuleRoute("Main")]
 [Route("/[area]/[controller]/[action]/{id?}")]
 public class SettingsController : Controller
@@ -158,6 +158,13 @@ public class SettingsController : Controller
             ModelState.AddModelError($"Security.{nameof(model.Security.HashStampBackupFilePath)}", "Backup path is required if backup is enabled.");
         }
 
+        var badNetworks = ProcessorApplication.Policy.AdminNetworkRules.InvalidEntries(model.Security.AdminNetworks);
+        if (badNetworks.Count > 0)
+        {
+            ModelState.AddModelError($"Security.{nameof(model.Security.AdminNetworks)}",
+                $"Not an IP address or network (address/prefix): {string.Join(", ", badNetworks)}");
+        }
+
         if (model.Security.RecordDecipherLogging && string.IsNullOrWhiteSpace(model.Security.RecordDecipherLogPath))
         {
             ModelState.AddModelError($"Security.{nameof(model.Security.RecordDecipherLogPath)}", "Log path is required if accss logging is enabled.");
@@ -172,6 +179,8 @@ public class SettingsController : Controller
         await _settings.SetAsync(MainModule.MODULE_ID, $"{nameof(SecuritySettings)}:{nameof(SecuritySettings.HashStampBackupFilePath)}", security.HashStampBackupFilePath);
         await _settings.SetAsync(MainModule.MODULE_ID, $"{nameof(SecuritySettings)}:{nameof(SecuritySettings.RecordDecipherLogging)}", security.RecordDecipherLogging);
         await _settings.SetAsync(MainModule.MODULE_ID, $"{nameof(SecuritySettings)}:{nameof(SecuritySettings.RecordDecipherLogPath)}", security.RecordDecipherLogPath);
+        await _settings.SetAsync(MainModule.MODULE_ID, $"{nameof(SecuritySettings)}:{nameof(SecuritySettings.AdminNetworks)}",
+            ProcessorApplication.Policy.AdminNetworkRules.Clean(security.AdminNetworks));
     }
 
     private void TryValidateEmail(SettingsViewModel model, ModelStateDictionary modelState)

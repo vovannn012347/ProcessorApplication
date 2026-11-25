@@ -69,7 +69,7 @@ if ($Stop) { Stop-Swarm; return }
 
 if ($Build) {
     Write-Host "=== Building NodeTrackerSwarm ($Rid) ===" -ForegroundColor Cyan
-    & dotnet build $sln -c NodeTrackerSwarm -p:RuntimeIdentifier=$Rid --nologo -v minimal
+    & dotnet build $sln -c NodeTrackerSwarm -p:BuildRid=$Rid --nologo -v minimal
     if ($LASTEXITCODE -ne 0) { throw 'Build of NodeTrackerSwarm failed.' }
 }
 

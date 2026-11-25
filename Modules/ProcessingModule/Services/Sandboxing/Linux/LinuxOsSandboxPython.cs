@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 
@@ -62,7 +62,7 @@ public sealed class LinuxOsSandboxPython : ISandboxProcessing, IDisposable
         _logger = logger;
     }
 
-    public async Task ExecuteJobAsync(Guid orchestrationId)
+    public async Task ExecuteJobAsync(Guid orchestrationId, CancellationToken stopToken = default)
     {
         var genConfig = _settings.CurrentValue;
         var names = LinuxSandboxNames.From(_osSandboxSettings.CurrentValue);
@@ -149,8 +149,18 @@ public sealed class LinuxOsSandboxPython : ISandboxProcessing, IDisposable
                 // Drain both pipes while waiting, otherwise a chatty script fills the buffer and hangs
                 var stdoutTask = process.StandardOutput.ReadToEndAsync();
                 var stderrTask = process.StandardError.ReadToEndAsync();
-                await process.WaitForExitAsync();
+
+                // Stop: sudo runs as root and the script as the worker, so the app can't signal them itself. Kill, as the
+                // worker, only this step's processes: the step id is in their command line (--manifest-file .../<id>.json).
+                string stepPattern = subJob.Id.ToString();
+                using (stopToken.Register(() => _ = LinuxShell.RunAsync("sudo", "-n", "-u", names.Worker, "pkill", "-KILL", "-u", names.Worker, "-f", stepPattern)))
+                {
+                    await process.WaitForExitAsync();
+                }
                 await Task.WhenAll(stdoutTask, stderrTask);
+
+                if (stopToken.IsCancellationRequested)
+                    throw new OperationCanceledException("Stopped while running.", stopToken);
 
                 int exit = process.ExitCode;
                 string stderr = stderrTask.Result;

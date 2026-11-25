@@ -10,7 +10,7 @@ namespace ScriptProvisioning.Controllers;
 /// <summary>Script exchange page: publish installed builds, find and install packages from other nodes.</summary>
 [ModuleRoute(ScriptProvisioningModuleEntryPoint.MODULE_ID)]
 [Route("/[area]/[controller]/[action]/{id?}")]
-[Authorize(Policy = "AdminLocalPolicy", Roles = "Admin")]
+[AdminAccess]
 [ApiExplorerSettings(IgnoreApi = true)]
 public class ExchangeController : Controller
 {

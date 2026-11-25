@@ -12,7 +12,7 @@ using ProviderlessModule.Services;
 
 namespace ProviderlessModule.Controllers;
 
-[Authorize(Roles = "Admin")]
+[AdminAccess]
 [Route("")]
 [Route("Providerless")]
 [ModuleRoute("Providerless")]
@@ -80,7 +80,7 @@ public class HomeController : Controller
         Uri.TryCreate(value, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp);
 
     [HttpPost]
-    [Authorize(Policy = "AdminLocalPolicy")]
+    [AdminAccess]
     public async Task<IActionResult> Reestablish()
     {
         var provider = _selector.GetActiveProvider();

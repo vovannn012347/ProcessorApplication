@@ -37,6 +37,7 @@ public class ConsensusInitiatorHostedService : BackgroundService
     private readonly ILogger<ConsensusInitiatorHostedService> _logger;
 
     private string _lastExecutedDateKey = string.Empty;
+    private string _noPeersLoggedDateKey = string.Empty;
     private const int TargetScheduledHourUtc = 23; // Default 23:00 UTC daily consensus window
     private const int MaxRandomJitterMinutes = 5; // Stagger startups up to 5 minutes
 
@@ -71,6 +72,12 @@ public class ConsensusInitiatorHostedService : BackgroundService
                     {
                         _logger.LogInformation("[Consensus Initiator] Consensus session for {DateKey} is already running (triggered via ping or manual override). Skipping scheduled launch.", todayKey);
                         _lastExecutedDateKey = todayKey;
+                    }
+                    else if (!_protocolHandler.HasConnectedPeers())
+                    {
+                        // Nobody to merge with: don't start. Not marked as done, so it still starts later in the
+                        // window if a peer connects. Logged once a day only.
+                        LogNoPeersOnce(todayKey);
                     }
                     else
                     {
@@ -118,6 +125,13 @@ public class ConsensusInitiatorHostedService : BackgroundService
             return;
         }
 
+        // Peers may have dropped while we waited
+        if (!_protocolHandler.HasConnectedPeers())
+        {
+            LogNoPeersOnce(todayKey);
+            return;
+        }
+
         _logger.LogInformation("[Consensus Initiator] Jitter delay elapsed. Triggering active consensus workflow loop for {DateKey}...", todayKey);
 
         bool started = await _protocolHandler.TriggerConsensusAsync(stoppingToken);
@@ -130,5 +144,12 @@ public class ConsensusInitiatorHostedService : BackgroundService
         {
             _logger.LogWarning("[Consensus Initiator] Failed to acquire session locks for scheduled consensus launch on {DateKey}.", todayKey);
         }
+    }
+
+    private void LogNoPeersOnce(string todayKey)
+    {
+        if (string.Equals(_noPeersLoggedDateKey, todayKey, StringComparison.Ordinal)) return;
+        _noPeersLoggedDateKey = todayKey;
+        _logger.LogInformation("[Consensus Initiator] No peers connected - skipping consensus for {DateKey} (retried quietly until the window closes).", todayKey);
     }
 }

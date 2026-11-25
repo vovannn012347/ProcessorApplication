@@ -39,6 +39,21 @@
                     </div>
                 </div>
                 <div>
+                    <h3>Self-heartbeat <span class="tip" tabindex="0" data-tip="The node calls its own public URL (tunnel URL + /api/Heartbeat) to check that it is reachable from outside. The result shows in the dashboard access widget."></span></h3>
+                    <div class="f row">
+                        <label asp-for="General.SelfCheckEnabled">Check own endpoint <span class="tip" tabindex="0" data-tip="Off: no self-checks; the dashboard shows reachability as not checked."></span></label>
+                        <input asp-for="General.SelfCheckEnabled" type="checkbox" />
+                    </div>
+                    <div class="f row">
+                        <label asp-for="General.SelfCheckLogFailuresOnly">Log only failed checks <span class="tip" tabindex="0" data-tip="Off: every successful check is logged too, with its response time."></span></label>
+                        <input asp-for="General.SelfCheckLogFailuresOnly" type="checkbox" />
+                    </div>
+                    <div class="f">
+                        <label asp-for="General.SelfCheckIntervalSeconds">Check interval (s) <span class="tip" tabindex="0" data-tip="How often the own endpoint is checked (minimum 5 s)."></span></label>
+                        <input asp-for="General.SelfCheckIntervalSeconds" type="number" min="5" style="width:90px" />
+                    </div>
+                </div>
+                <div>
                     <div class="f">
                         <label asp-for="General.EnforcedPCIdentifier">Clinic ID <span class="tip" tabindex="0" data-tip="Generated from this machine; also used as the tunnel subdomain."></span></label>
                         <input asp-for="General.EnforcedPCIdentifier" class="mono" readonly />

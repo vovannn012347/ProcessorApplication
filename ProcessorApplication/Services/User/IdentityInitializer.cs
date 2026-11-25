@@ -5,7 +5,9 @@ using Common.Interfaces;
 
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Options;
 
+using ProcessorApplication.Configuration.Settings;
 using ProcessorApplication.Database.Models;
 using ProcessorApplication.Infrastructure;
 using ProcessorApplication.Services.User;
@@ -17,14 +19,17 @@ public class IdentityInitializer : BackgroundService
     private readonly IServiceProvider _sp;
     private readonly IEnumerable<IModule> _modules;
     private readonly ILogger<IdentityInitializer> _logger;
+    private readonly AdminSeedFile _seedFile;
 
     public IdentityInitializer(
         IServiceProvider sp,
         IEnumerable<IModule> modules,
+        AdminSeedFile seedFile,
         ILogger<IdentityInitializer> log)
     {
         _sp = sp;
         _modules = modules;
+        _seedFile = seedFile;
         _logger = log;
     }
 
@@ -66,15 +71,24 @@ public class IdentityInitializer : BackgroundService
 
         var admin = await userManager.FindByNameAsync("Admin");
 
+        if (_seedFile.MissingExplicitPath != null)
+        {
+            _logger.LogWarning("[Admin seed] {Setting} points to {Path}, but there is no file there.", AdminSeedFile.SettingKey, _seedFile.MissingExplicitPath);
+        }
+
         if (admin != null)
         {
+            if (_seedFile.Exists)
+            {
+                _logger.LogWarning("[Admin seed] Admin already exists, {Path} ignored. It holds a password in clear text: delete it once every node has started.", _seedFile.Path);
+            }
             adminState.SetAdminConfigured();
             if(!(await userManager.IsInRoleAsync(admin, "Admin")))
             {
                 await userManager.AddToRoleAsync(admin, "Admin");
             }
         }
-        else if (await TrySeedAdminAsync(userManager, roleManager))
+        else if (await TrySeedAdminAsync(scope.ServiceProvider, userManager, roleManager))
         {
             adminState.SetAdminConfigured();
         }
@@ -87,32 +101,31 @@ public class IdentityInitializer : BackgroundService
         _logger.LogInformation("admin checked");
     }
 
-    /// <summary>File in the node home that creates the Admin user on a fresh database (used by the swarm setup).</summary>
-    public const string AdminSeedFileName = "admin-seed.json";
-
     private sealed class AdminSeed
     {
         public string Name { get; set; } = "Admin";
         public string Surname { get; set; } = "";
         public string Email { get; set; } = "";
         public string Password { get; set; } = "";
+        /// <summary>Overrides the default (node home: delete; shared file: keep).</summary>
+        public bool? DeleteAfterUse { get; set; }
     }
 
     /// <summary>
-    /// A node with no Admin yet and an admin-seed.json in its node home creates the Admin user from it (same as the
-    /// first-run admin registration page) and deletes the file, so the password doesn't stay on disk. The user gets
-    /// this node's own keys: the key chain is created for this database, not copied from anywhere.
+    /// A node with no Admin yet creates the Admin user from the admin file (see <see cref="AdminSeedFile"/>), the same way
+    /// as the first-run admin registration page: all roles, the node's own keys, and the e-mail as sender address if
+    /// none is set. A file in the node home is deleted afterwards; a shared one is kept (other nodes still need it).
     /// </summary>
-    private async Task<bool> TrySeedAdminAsync(UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager)
+    private async Task<bool> TrySeedAdminAsync(IServiceProvider services, UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager)
     {
-        string path = Path.Combine(NodeHome.Folder, AdminSeedFileName);
-        if (!File.Exists(path)) return false;
+        if (!_seedFile.Exists) return false;
+        string path = _seedFile.Path;
 
         AdminSeed? seed;
         try
         {
             seed = JsonSerializer.Deserialize<AdminSeed>(await File.ReadAllTextAsync(path),
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true, ReadCommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
         }
         catch (Exception ex)
         {
@@ -138,7 +151,7 @@ public class IdentityInitializer : BackgroundService
         var result = await userManager.CreateAsync(user, seed.Password);
         if (!result.Succeeded)
         {
-            _logger.LogError("[Admin seed] Admin not created: {Errors}", string.Join("; ", result.Errors.Select(e => e.Description)));
+            _logger.LogError("[Admin seed] Admin not created from {Path}: {Errors}", path, string.Join("; ", result.Errors.Select(e => e.Description)));
             return false;
         }
 
@@ -149,8 +162,28 @@ public class IdentityInitializer : BackgroundService
                 await userManager.AddToRoleAsync(user, role);
         }
 
-        try { File.Delete(path); } catch (Exception ex) { _logger.LogWarning(ex, "[Admin seed] Could not delete {Path}; delete it by hand.", path); }
-        _logger.LogInformation("[Admin seed] Admin user created from {File}.", AdminSeedFileName);
+        // Same as the registration page: the admin's e-mail becomes the sender address if none is configured yet
+        try
+        {
+            var email = services.GetService<IOptionsMonitor<EmailSettings>>();
+            string current = email?.Get(MainModule.MODULE_ID).Identity.Email ?? "";
+            if (!string.IsNullOrEmpty(seed.Email) && string.IsNullOrEmpty(current))
+            {
+                await services.GetRequiredService<ISettingService>().SetAsync(MainModule.MODULE_ID, "EmailSettings:Email", seed.Email);
+            }
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "[Admin seed] Could not store the admin e-mail as sender address."); }
+
+        bool delete = seed.DeleteAfterUse ?? !_seedFile.IsShared;
+        if (delete)
+        {
+            try { File.Delete(path); _logger.LogInformation("[Admin seed] Admin user created from {Path}; file deleted.", path); }
+            catch (Exception ex) { _logger.LogWarning(ex, "[Admin seed] Admin user created, but {Path} could not be deleted; delete it by hand.", path); }
+        }
+        else
+        {
+            _logger.LogWarning("[Admin seed] Admin user created from shared file {Path} (kept for the other nodes). It holds a password in clear text: delete it once every node has started.", path);
+        }
         return true;
     }
 }

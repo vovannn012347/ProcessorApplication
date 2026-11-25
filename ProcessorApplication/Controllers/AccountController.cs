@@ -134,19 +134,19 @@ public class AccountController : Controller
         if (profileFile == null)
         {
             ModelState.AddModelError("", "Profile file is required.");
-            return View();
+            return View("Register", new RegisterViewModel());
         }
 
         if (string.IsNullOrEmpty(password) || string.IsNullOrEmpty(confirmPassword))
         {
             ModelState.AddModelError("Password", "Passwords must be present.");
-            return View();
+            return View("Register", new RegisterViewModel());
         }
 
         if (password != confirmPassword)
         {
             ModelState.AddModelError("Password", "Passwords must be equal.");
-            return View();
+            return View("Register", new RegisterViewModel());
         }
 
         try
@@ -154,13 +154,36 @@ public class AccountController : Controller
             using var stream = new StreamReader(profileFile.OpenReadStream());
             var json = await stream.ReadToEndAsync();
             var model = JsonSerializer.Deserialize<ProfileExportModel>(json);
+            if (model == null || string.IsNullOrEmpty(model.UserName) || string.IsNullOrEmpty(model.PersonalHashKey))
+            {
+                ModelState.AddModelError(string.Empty, "This is not a valid identity file.");
+                return View("Register", new RegisterViewModel());
+            }
 
             var passwordValidator = _userManager.PasswordValidators.First();
 
             var uniqueUserName = model.UserName;
-            if (_userManager.FindByNameAsync(uniqueUserName) != null)
+            // (the missing await made this always true, so every import showed "already exists")
+            if (await _userManager.FindByNameAsync(uniqueUserName) != null)
             {
-                ModelState.AddModelError(string.Empty, "User with this identifier already exists");
+                ModelState.AddModelError(string.Empty, "User with this identifier already exists. Use 'Log in with file' instead.");
+                return View("Register", new RegisterViewModel());
+            }
+
+            // The file holds the personal key locked by the user's password: unlock it, and check it against the
+            // user name locked by that key. The key itself (not the locked copy) becomes the new account's key.
+            string phsk;
+            try { phsk = SecurityHelperUtil.DecryptData(model.PersonalHashKey, password); }
+            catch { phsk = string.Empty; }
+            string fileUserName = string.Empty;
+            if (!string.IsNullOrEmpty(phsk))
+            {
+                try { fileUserName = SecurityHelperUtil.DecryptData(model.UserIdLockedByPHSK, phsk); } catch { }
+            }
+            if (string.IsNullOrEmpty(phsk) || fileUserName != model.UserName)
+            {
+                ModelState.AddModelError("Password", "The password doesn't match this identity file (use the password the file was created with).");
+                return View("Register", new RegisterViewModel());
             }
 
             var tempUser = new ApplicationUser { UserName = model.Name };
@@ -174,7 +197,7 @@ public class AccountController : Controller
                 {
                     ModelState.AddModelError("Password", error.Description);
                 }
-                return View(model);
+                return View("Register", new RegisterViewModel());
             }
 
             var user = new ApplicationUser
@@ -185,7 +208,7 @@ public class AccountController : Controller
                 Email = model.Email,
                 DisplayNickname = model.DisplayNickname ??
                 (!string.IsNullOrWhiteSpace($"{model.Name} {model.Surname}") ? $"{model.Name} {model.Surname}" : uniqueUserName),
-                EncryptionHash = model.PersonalHashKey,
+                EncryptionHash = phsk,
                 IsEncrypted = false
             };
 
@@ -207,12 +230,13 @@ public class AccountController : Controller
             }
 
             foreach (var error in result.Errors) ModelState.AddModelError(string.Empty, error.Description);
-            return View("Register");
+            return View("Register", new RegisterViewModel());
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Register from file failed.");
             ModelState.AddModelError("", "Import failed: " + ex.Message);
-            return View();
+            return View("Register", new RegisterViewModel());
         }
     }
 

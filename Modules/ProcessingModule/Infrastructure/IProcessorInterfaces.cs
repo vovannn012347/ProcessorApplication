@@ -32,7 +32,9 @@ public interface ISandboxProvider
 public interface ISandboxProcessing
 {
     public SandboxType GetSandboxType();
-    public Task ExecuteJobAsync(Guid subjobId);
+    /// <summary>Runs one step. <paramref name="stopToken"/> is cancelled by Stop: the script's processes are killed and
+    /// an <see cref="OperationCanceledException"/> is thrown.</summary>
+    public Task ExecuteJobAsync(Guid subjobId, CancellationToken stopToken = default);
     public Task<int> GetActiveJobs();
     public Task<string> GetJobStatusAsync(Guid jobId);
 }

@@ -23,7 +23,7 @@ namespace P2PModule.Controllers;
 /// </summary>
 [ModuleRoute("P2P")]
 [Route("/[area]/[controller]/[action]/{id?}")]
-[Authorize(Policy = "AdminLocalPolicy", Roles = "Admin")]
+[AdminAccess]
 [ApiExplorerSettings(IgnoreApi = true)]
 public class SettingsController : Controller
 {

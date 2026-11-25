@@ -21,7 +21,7 @@ using ProviderlessModule.Services;
 
 namespace ProviderlessModule.Controllers;
 
-[Authorize(Policy = "AdminLocalPolicy")]
+[AdminAccess]
 [ModuleRoute("Providerless")]
 [Route("/[area]/[controller]/[action]/{id?}")]
 public class SettingsController : Controller

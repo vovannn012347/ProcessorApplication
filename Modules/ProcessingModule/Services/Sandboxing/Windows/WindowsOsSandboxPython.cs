@@ -17,7 +17,6 @@ using ProcessingModule.Infrastructure;
 using ProcessingModule.Infrastructure.Util;
 using ProcessingModule.Services.Runtime;
 
-using static Org.BouncyCastle.Math.EC.ECCurve;
 
 namespace ProcessingModule.Services.Sandboxing.Windows;
 
@@ -67,7 +66,7 @@ public class WindowsOsSandboxPython : ISandboxProcessing, IDisposable
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    public async Task ExecuteJobAsync(Guid orchestrationId)
+    public async Task ExecuteJobAsync(Guid orchestrationId, CancellationToken stopToken = default)
     {
         var osConfig = _osSandboxSettings.CurrentValue;
         var genConfig = _settings.CurrentValue;
@@ -176,17 +175,20 @@ public class WindowsOsSandboxPython : ISandboxProcessing, IDisposable
             var stdoutTask = process.StandardOutput.ReadToEndAsync();
             var stderrTask = process.StandardError.ReadToEndAsync();
 
-            bool timedOut = false;
-            using (var timeout = timeoutMinutes > 0 ? new CancellationTokenSource(TimeSpan.FromMinutes(timeoutMinutes)) : new CancellationTokenSource())
+            bool timedOut = false, stopped = false;
+            // Ends on Job Timeout or on Stop (stopToken), whichever comes first
+            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(stopToken))
             {
+                if (timeoutMinutes > 0) timeout.CancelAfter(TimeSpan.FromMinutes(timeoutMinutes));
                 try
                 {
                     await process.WaitForExitAsync(timeout.Token);
                 }
                 catch (OperationCanceledException)
                 {
-                    timedOut = true;
-                    if (!(inStepJob && TerminateJobObject(stepJob, 1460 /* ERROR_TIMEOUT */)))
+                    stopped = stopToken.IsCancellationRequested;
+                    timedOut = !stopped;
+                    if (!(inStepJob && TerminateJobObject(stepJob, stopped ? 1223u /* ERROR_CANCELLED */ : 1460u /* ERROR_TIMEOUT */)))
                     {
                         try { process.Kill(entireProcessTree: true); } catch { /* already gone */ }
                     }
@@ -194,6 +196,9 @@ public class WindowsOsSandboxPython : ISandboxProcessing, IDisposable
                 }
             }
             await Task.WhenAll(stdoutTask, stderrTask);
+
+            if (stopped)
+                throw new OperationCanceledException("Stopped while running.", stopToken);
 
             if (timedOut)
                 throw new InvalidOperationException(

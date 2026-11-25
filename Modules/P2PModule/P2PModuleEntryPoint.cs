@@ -11,6 +11,7 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 
 using P2PModule.Configuration;
+using P2PModule.Infrastructure;
 using P2PModule.Infrastructure.Endpoints;
 using P2PModule.Interfaces;
 using P2PModule.Services.Connection;
@@ -110,6 +111,9 @@ public class P2PModuleEntryPoint : IModule
         services.AddModuleSettings<StorageSettings>(config, ModuleId);
 
         services.TryAddHttpClient();
+        // Node-to-node HTTP client: accepts self-signed certificates from private LAN addresses only (LanCertificatePolicy)
+        services.AddHttpClient(LanCertificatePolicy.HttpClientName)
+            .ConfigurePrimaryHttpMessageHandler(LanCertificatePolicy.CreateHandler);
 
         // 2. Core Security & Identity Services
         services.AddSingleton<IDynamicEndpointStore, DynamicEndpointStore>();
@@ -123,11 +127,13 @@ public class P2PModuleEntryPoint : IModule
         services.AddSingleton<IPeerTracker, PeerTracker>();
 
         // 4. Transport & Peer Connectivity
-        services.AddSingleton<IPeerConnectionManager, PeerConnectionManager>();
+        services.AddSingleton<IPeerConnectionManager>(sp => ActivatorUtilities.CreateInstance<PeerConnectionManager>(sp,
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(LanCertificatePolicy.HttpClientName)));
         services.AddSingleton<IP2PRouterService, P2PRouterService>();
 
         // 5. Mesh Orchestration & Management
-        services.AddSingleton<ManagementService>();
+        services.AddSingleton<ManagementService>(sp => ActivatorUtilities.CreateInstance<ManagementService>(sp,
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(LanCertificatePolicy.HttpClientName)));
         services.AddSingleton<IMeshManagementService>(sp => sp.GetRequiredService<ManagementService>());
         services.AddHostedService(sp => sp.GetRequiredService<ManagementService>());
         services.AddHostedService<MeshOrchestratorService>();
@@ -139,6 +145,8 @@ public class P2PModuleEntryPoint : IModule
         // it re-reads the providers and re-announces the identity when the list changes
         services.AddSingleton<EndpointAdvertiserService>();
         services.AddSingleton<IEndpointChangeNotifier>(sp => sp.GetRequiredService<EndpointAdvertiserService>());
+        // This node's LAN addresses, offered in the settings endpoint picker only (never auto-advertised)
+        services.AddScoped<IEndpointProvider, LocalNetworkEndpointProvider>();
         services.AddHostedService(sp => sp.GetRequiredService<EndpointAdvertiserService>());
         services.AddHostedService<GossipNodeUpdatesHandler>();
 

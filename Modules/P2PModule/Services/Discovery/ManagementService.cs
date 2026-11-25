@@ -457,20 +457,30 @@ public class ManagementService : BackgroundService, IMeshManagementService, IDis
         }
     }
 
-    public async Task<bool> SendHeartbeatAsync(string nodeId)
+    public async Task<bool> SendHeartbeatAsync(string nodeId, int timeoutSeconds = 5)
     {
         var activeConn = _connectionManager.GetConnection(nodeId);
         if (activeConn != null && activeConn.PeerConnection != null)
         {
             if (activeConn.PeerConnection.connectionState == SIPSorcery.Net.RTCPeerConnectionState.connected)
             {
-                var result = await _p2pRouter.SendRequestAsync(nodeId, "Ping", "{}", new RouteSettings { Timeout = TimeSpan.FromSeconds(5) });
+                var started = DateTime.UtcNow;
+                var result = await _p2pRouter.SendRequestAsync(nodeId, "Ping", "{}", new RouteSettings { Timeout = TimeSpan.FromSeconds(timeoutSeconds) });
                 if (result.IsSuccess)
                 {
                     await _peerTracker.UpdatePeerActivityAsync(nodeId);
                     return true;
                 }
-                _logger.LogInformation("[P2P Heartbeat] Ping to {NodeId} failed: {Error}", nodeId, result.Error);
+
+                // Enough context to tell a dead link from a busy node: channel state, how old this connection is,
+                // and whether the thread pool is backed up (late answers then show up as "late response" in the router log).
+                activeConn.DataChannels.TryGetValue("p2p-control-channel", out var controlChannel);
+                _logger.LogInformation(
+                    "[P2P Heartbeat] Ping to {NodeId} failed after {Ms} ms: {Error} (pc={PcState}, control channel={DcState}, connection age={AgeS}s, threadpool queue={Queue}, threads={Threads})",
+                    nodeId, (int)(DateTime.UtcNow - started).TotalMilliseconds, result.Error,
+                    activeConn.PeerConnection.connectionState, controlChannel?.readyState.ToString() ?? "none",
+                    (int)(DateTime.UtcNow - activeConn.ConnectedAt).TotalSeconds,
+                    ThreadPool.PendingWorkItemCount, ThreadPool.ThreadCount);
             }
         }
 

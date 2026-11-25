@@ -14,7 +14,7 @@ namespace ProcessorApplication.Controllers;
 [ModuleRoute("Main")]
 [Route("/[area]/[controller]/[action]/{id?}")]
 [SessionKeyRequired("UselessInfoHash")]
-[Authorize(Policy = "AdminLocalPolicy", Roles = "Admin")]
+[AdminAccess]
 public class UsersController : Controller
 {
     private readonly ProcessorApplicationUserManager _userManager;

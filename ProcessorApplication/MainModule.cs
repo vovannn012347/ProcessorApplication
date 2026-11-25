@@ -173,6 +173,13 @@ public class MainModule : IModule
                 policy.Requirements.Add(new LocalRequirement());
             });
 
+            // [AdminAccess] (any role, default Admin): signed in + this computer or an allowed network
+            options.AddPolicy(ProcessorApplication.Attributes.AdminAccessAttribute.PolicyName, policy =>
+            {
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new LocalRequirement());
+            });
+
             options.AddPolicy("AdminLocalPolicy", policy =>
             {
                 policy.RequireAuthenticatedUser();

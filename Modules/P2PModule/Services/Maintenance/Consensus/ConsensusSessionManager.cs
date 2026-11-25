@@ -68,6 +68,15 @@ public class ChainSignature
 /// Snapshots local active daily keys at session start to ensure immutable signing across key rotations.
 /// One of these exists per (currently) active consensus channel - see ChannelId.
 /// </summary>
+/// <summary>Outcome of RegisterDownloadedDeltaAsync. Only InvalidSignature is evidence of tampering.</summary>
+public enum DeltaRegistration
+{
+    Registered,
+    InvalidSignature,
+    UnverifiableSigner,
+    Failed
+}
+
 public class ConsensusMergeSession
 {
     public Guid SessionId { get; set; } = Guid.NewGuid();
@@ -92,10 +101,19 @@ public class ConsensusMergeSession
 
     public HashSet<string> PastSyncSet { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public HashSet<string> CurrentSyncSet { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Nodes whose updates we hold for this session: we merged with them (either side of the swap),
+    /// or a valid delta from them (or signed by them) reached us through other nodes.
+    /// Popping a node from the queue, a failed connection or a BUSY answer does NOT make it visited.
+    /// </summary>
     public HashSet<string> VisitedNodes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Nodes we stopped trying to reach this session (retries used up). Not visited - just not chased any more.</summary>
+    public HashSet<string> GaveUpNodes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public ConcurrentDictionary<string, ChainSignature> SyncSetSignatures { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public ConcurrentQueue<string> NodesToVisit { get; set; } = new();
+    /// <summary>How often a node was put back into the queue because it was busy (see RequeueNodeForRetry).</summary>
+    public Dictionary<string, int> VisitRetries { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public ConcurrentDictionary<string, ConsensusSessionDeltaItem> LocalDeltas { get; set; } = new();
     public ConcurrentDictionary<string, ConsensusSessionDeltaItem> PendingDeltasToMerge { get; set; } = new();
@@ -122,13 +140,21 @@ public interface IConsensusSessionManager
     void QueueNodesToVisit(IEnumerable<string> nodeIds, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     bool TryPopNextNodeToVisit(out string? nodeId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     void MarkNodeAsVisited(string nodeId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    /// <summary>Puts a node that answered BUSY back at the end of the queue; false once it used up its retries.</summary>
+    bool RequeueNodeForRetry(string nodeId, int maxRetries, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    /// <summary>Stop chasing a node for this session without claiming we have its updates.</summary>
+    void GiveUpNode(string nodeId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    bool IsNodeVisited(string nodeId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    bool HasNodesToVisit(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     void RegisterNodesInCurrentSyncSet(IEnumerable<string> nodeIds, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     void AddSyncSetSignature(string signerNodeId, string targetNodeId, byte[] signature, int order = 0, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    /// <summary>Stores a chain link exactly as it was signed (its own timestamp - the signature covers it).</summary>
+    void AddSyncSetSignature(ChainSignature link, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     List<ChainSignature> GetSyncSetSignatures(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     List<string> GetPastSyncSetNodes(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     Task<ConsensusSessionDeltaItem?> CreateLocalDeltaAsync(List<ChainSignature>? signatureChain = null, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     bool PrepareDownloadedDeltaFolder(out string deltaId, out string destFolderPath, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
-    Task<bool> RegisterDownloadedDeltaAsync(string sourceNodeId, string downloadedFolderPath, List<ChainSignature>? signatureChain = null, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
+    Task<DeltaRegistration> RegisterDownloadedDeltaAsync(string sourceNodeId, string downloadedFolderPath, List<ChainSignature>? signatureChain = null, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     List<ConsensusSessionDeltaItem> GetPendingDeltasToMerge(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     bool HasPendingDeltas(string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
     bool RemovePendingDelta(string deltaId, bool deleteFolder = false, string channelId = PeerTrustConsensusChannel.CHANNEL_ID);
@@ -287,10 +313,12 @@ public class ConsensusSessionManager : IConsensusSessionManager
             foreach (var id in nodeIds)
             {
                 if (string.IsNullOrWhiteSpace(id)) continue;
+                if (string.Equals(id, _identity.NodeId, StringComparison.OrdinalIgnoreCase)) continue;
 
+                // Knowing a node's records (sync sets) is not the same as having merged with it,
+                // so only nodes already visited are skipped - otherwise nodes learned in a merge never get visited.
                 if (!session.VisitedNodes.Contains(id) &&
-                    !session.PastSyncSet.Contains(id) &&
-                    !session.CurrentSyncSet.Contains(id) &&
+                    !session.GaveUpNodes.Contains(id) &&
                     !session.NodesToVisit.Contains(id, StringComparer.OrdinalIgnoreCase))
                 {
                     session.NodesToVisit.Enqueue(id);
@@ -316,10 +344,10 @@ public class ConsensusSessionManager : IConsensusSessionManager
                 if (string.IsNullOrWhiteSpace(candidate)) continue;
 
                 if (!session.VisitedNodes.Contains(candidate) &&
-                    !session.PastSyncSet.Contains(candidate) &&
-                    !session.CurrentSyncSet.Contains(candidate))
+                    !session.GaveUpNodes.Contains(candidate) &&
+                    !string.Equals(candidate, _identity.NodeId, StringComparison.OrdinalIgnoreCase))
                 {
-                    session.VisitedNodes.Add(candidate);
+                    // Not marked visited here: only a finished merge or a valid delta from the node does that.
                     session.LastActivityUtc = DateTime.UtcNow;
                     nodeId = candidate;
                     return true;
@@ -339,6 +367,56 @@ public class ConsensusSessionManager : IConsensusSessionManager
 
             session.VisitedNodes.Add(nodeId);
             session.LastActivityUtc = DateTime.UtcNow;
+        }
+    }
+
+    public bool RequeueNodeForRetry(string nodeId, int maxRetries, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
+    {
+        lock (_sessionLock)
+        {
+            if (!_activeSessionsByChannel.TryGetValue(channelId, out var session) || string.IsNullOrWhiteSpace(nodeId)) return false;
+
+            if (session.VisitedNodes.Contains(nodeId)) return false;   // got its updates meanwhile
+
+            session.VisitRetries.TryGetValue(nodeId, out var tries);
+            if (tries >= maxRetries)
+            {
+                session.GaveUpNodes.Add(nodeId);
+                return false;
+            }
+
+            session.VisitRetries[nodeId] = tries + 1;
+            if (!session.NodesToVisit.Contains(nodeId, StringComparer.OrdinalIgnoreCase))
+            {
+                session.NodesToVisit.Enqueue(nodeId);
+            }
+            session.LastActivityUtc = DateTime.UtcNow;
+            return true;
+        }
+    }
+
+    public void GiveUpNode(string nodeId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
+    {
+        lock (_sessionLock)
+        {
+            if (!_activeSessionsByChannel.TryGetValue(channelId, out var session) || string.IsNullOrWhiteSpace(nodeId)) return;
+            session.GaveUpNodes.Add(nodeId);
+        }
+    }
+
+    public bool IsNodeVisited(string nodeId, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
+    {
+        lock (_sessionLock)
+        {
+            return _activeSessionsByChannel.TryGetValue(channelId, out var session) && session.VisitedNodes.Contains(nodeId);
+        }
+    }
+
+    public bool HasNodesToVisit(string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
+    {
+        lock (_sessionLock)
+        {
+            return _activeSessionsByChannel.TryGetValue(channelId, out var session) && !session.NodesToVisit.IsEmpty;
         }
     }
 
@@ -375,10 +453,34 @@ public class ConsensusSessionManager : IConsensusSessionManager
                 TimestampUtc = DateTime.UtcNow
             };
 
-            session.SyncSetSignatures[signerNodeId] = item;
+            session.SyncSetSignatures[ChainLinkKey(item)] = item;
             session.LastActivityUtc = DateTime.UtcNow;
         }
     }
+
+    public void AddSyncSetSignature(ChainSignature link, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
+    {
+        lock (_sessionLock)
+        {
+            if (link == null || string.IsNullOrWhiteSpace(link.SignerNodeId) || link.Signature == null || link.Signature.Length == 0) return;
+            if (!_activeSessionsByChannel.TryGetValue(channelId, out var session)) return;
+
+            // Keyed per link, not per signer: one node signs several links in a session (one per merge),
+            // and overwriting the earlier ones broke every chain that pointed at them.
+            session.SyncSetSignatures[ChainLinkKey(link)] = new ChainSignature
+            {
+                Order = link.Order,
+                SignerNodeId = link.SignerNodeId,
+                TargetNodeId = link.TargetNodeId,
+                TimestampUtc = link.TimestampUtc,
+                Signature = link.Signature
+            };
+            session.LastActivityUtc = DateTime.UtcNow;
+        }
+    }
+
+    private static string ChainLinkKey(ChainSignature link) =>
+        $"{link.Order}|{link.SignerNodeId}|{link.TargetNodeId}";
 
     public List<ChainSignature> GetSyncSetSignatures(string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
@@ -412,6 +514,9 @@ public class ConsensusSessionManager : IConsensusSessionManager
         string iterDir = session.StagingOperation.IterDir;
         string mergeDir = session.StagingOperation.MergeDir;
 
+        // Same gate as the merge engine: a swap may be staging into IterDir right now.
+        using var gate = await session.StagingOperation.LockAsync();
+
         if (!Directory.Exists(iterDir)) return null;
 
         var diffNodes = new List<PeerNodeHistoric>();
@@ -425,15 +530,7 @@ public class ConsensusSessionManager : IConsensusSessionManager
                 string iterJson = await File.ReadAllTextAsync(iterFile);
 
                 PeerNodeHistoric? iterNode = null;
-                try
-                {
-                    var weighted = JsonSerializer.Deserialize<WeightedConsensusNode>(iterJson);
-                    iterNode = weighted?.NodeData;
-                }
-                catch
-                {
-                    iterNode = JsonSerializer.Deserialize<PeerNodeHistoric>(iterJson);
-                }
+                iterNode = ConsensusNodeJson.ReadHistoric(iterJson);
 
                 if (iterNode?.Identity == null || string.IsNullOrEmpty(iterNode.Identity.NodeId))
                     continue;
@@ -449,15 +546,7 @@ public class ConsensusSessionManager : IConsensusSessionManager
                 {
                     string mergeJson = await File.ReadAllTextAsync(mergeFile);
                     PeerNodeHistoric? mergeNode = null;
-                    try
-                    {
-                        var weightedMerge = JsonSerializer.Deserialize<WeightedConsensusNode>(mergeJson);
-                        mergeNode = weightedMerge?.NodeData;
-                    }
-                    catch
-                    {
-                        mergeNode = JsonSerializer.Deserialize<PeerNodeHistoric>(mergeJson);
-                    }
+                    mergeNode = ConsensusNodeJson.ReadHistoric(mergeJson);
 
                     if (mergeNode?.Identity == null ||
                         iterNode.Identity.SignatureTime > mergeNode.Identity.SignatureTime ||
@@ -556,7 +645,7 @@ public class ConsensusSessionManager : IConsensusSessionManager
         }
     }
 
-    public async Task<bool> RegisterDownloadedDeltaAsync(string sourceNodeId, string downloadedFolderPath, List<ChainSignature>? signatureChain = null, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
+    public async Task<DeltaRegistration> RegisterDownloadedDeltaAsync(string sourceNodeId, string downloadedFolderPath, List<ChainSignature>? signatureChain = null, string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
     {
         ConsensusMergeSession? session;
         lock (_sessionLock)
@@ -564,7 +653,7 @@ public class ConsensusSessionManager : IConsensusSessionManager
             _activeSessionsByChannel.TryGetValue(channelId, out session);
         }
 
-        if (session == null || !Directory.Exists(downloadedFolderPath)) return false;
+        if (session == null || !Directory.Exists(downloadedFolderPath)) return DeltaRegistration.Failed;
 
         string deltaId = Path.GetFileName(downloadedFolderPath);
         var nodeVerifyKeys = LoadNodeVerifyKeysFromDeltaFolder(downloadedFolderPath);
@@ -586,16 +675,24 @@ public class ConsensusSessionManager : IConsensusSessionManager
 
         var chain = signatureChain ?? incomingMetadata?.SignatureChain ?? new List<ChainSignature>();
 
-        bool isChainValid = await VerifySignatureChainAsync(chain, nodeVerifyKeys, session);
-        if (!isChainValid)
+        var (chainCheck, unknownSigner) = await VerifySignatureChainAsync(chain, nodeVerifyKeys, session);
+        if (chainCheck != DeltaRegistration.Registered)
         {
-            _logger.LogWarning("[Session Manager] Early verification failed for downloaded delta {DeltaId} from {SourceNodeId}. Purging folder.", deltaId, sourceNodeId);
+            if (chainCheck == DeltaRegistration.UnverifiableSigner)
+            {
+                _logger.LogInformation("[Session Manager] Delta {DeltaId} from {SourceNodeId} skipped: signer {Signer} is not known here yet, so its signature can't be checked (no penalty).",
+                    deltaId, sourceNodeId, unknownSigner);
+            }
+            else
+            {
+                _logger.LogWarning("[Session Manager] Early verification failed for downloaded delta {DeltaId} from {SourceNodeId}. Purging folder.", deltaId, sourceNodeId);
+            }
             try
             {
                 Directory.Delete(downloadedFolderPath, recursive: true);
             }
             catch { }
-            return false;
+            return chainCheck;
         }
 
         var deltaItem = new ConsensusSessionDeltaItem
@@ -614,7 +711,7 @@ public class ConsensusSessionManager : IConsensusSessionManager
         session.LastActivityUtc = DateTime.UtcNow;
 
         _logger.LogInformation("[Session Manager] Early verification passed. Registered downloaded delta {DeltaId} from {SourceNodeId}.", deltaId, sourceNodeId);
-        return true;
+        return DeltaRegistration.Registered;
     }
 
     public List<ConsensusSessionDeltaItem> GetPendingDeltasToMerge(string channelId = PeerTrustConsensusChannel.CHANNEL_ID)
@@ -716,15 +813,7 @@ public class ConsensusSessionManager : IConsensusSessionManager
                     {
                         string json = await File.ReadAllTextAsync(deltaNodeFile);
                         PeerNodeHistoric? peerFromDelta = null;
-                        try
-                        {
-                            var weighted = JsonSerializer.Deserialize<WeightedConsensusNode>(json);
-                            peerFromDelta = weighted?.NodeData;
-                        }
-                        catch
-                        {
-                            peerFromDelta = JsonSerializer.Deserialize<PeerNodeHistoric>(json);
-                        }
+                        peerFromDelta = ConsensusNodeJson.ReadHistoric(json);
 
                         if (peerFromDelta != null) return peerFromDelta;
                     }
@@ -868,15 +957,7 @@ public class ConsensusSessionManager : IConsensusSessionManager
             {
                 string json = File.ReadAllText(file);
                 PeerNodeHistoric? peer = null;
-                try
-                {
-                    var weighted = JsonSerializer.Deserialize<WeightedConsensusNode>(json);
-                    peer = weighted?.NodeData;
-                }
-                catch
-                {
-                    peer = JsonSerializer.Deserialize<PeerNodeHistoric>(json);
-                }
+                peer = ConsensusNodeJson.ReadHistoric(json);
 
                 if (peer?.Identity != null && !string.IsNullOrEmpty(peer.Identity.NodeId) && peer.Identity.PublicVerifyKey?.Length > 0)
                 {
@@ -890,16 +971,45 @@ public class ConsensusSessionManager : IConsensusSessionManager
     }
 
     /// <summary>Async so the historic-key fallback lookup is awaited instead of blocked on (was .GetAwaiter().GetResult()).</summary>
-    private async Task<bool> VerifySignatureChainAsync(List<ChainSignature> chain, Dictionary<string, byte[]> nodeVerifyKeys, ConsensusMergeSession? session)
+    /// <summary>
+    /// Registered = every link checks out; InvalidSignature = a link fails against a KNOWN key (tampering);
+    /// UnverifiableSigner = a signer's key is not known here (e.g. a node only the sender has met): not proof of
+    /// tampering, so the caller skips the delta without a reputation penalty.
+    /// </summary>
+    private static byte[] ChainLinkHash(byte[]? previousSignature, ChainSignature sig)
     {
-        if (chain == null || chain.Count == 0) return true;
+        using var ms = new MemoryStream();
+        using var writer = new BinaryWriter(ms);
 
-        var sortedChain = chain.OrderBy(x => x.Order).ToList();
-        byte[]? previousSignature = null;
+        if (previousSignature != null && previousSignature.Length > 0)
+        {
+            writer.Write(previousSignature.Length);
+            writer.Write(previousSignature);
+        }
+
+        writer.Write(sig.Order);
+        writer.Write(sig.SignerNodeId);
+        writer.Write(sig.TargetNodeId ?? string.Empty);
+        writer.Write(sig.TimestampUtc.Ticks);
+        writer.Flush();
+
+        return SHA256.HashData(ms.ToArray());
+    }
+
+    private async Task<(DeltaRegistration Result, string? UnknownSigner)> VerifySignatureChainAsync(List<ChainSignature> chain, Dictionary<string, byte[]> nodeVerifyKeys, ConsensusMergeSession? session)
+    {
+        if (chain == null || chain.Count == 0) return (DeltaRegistration.Registered, null);
+
+        // The links of one session form a tree, not one line: every merge adds a link of order n+1 that
+        // points at SOME link of order n, and several merges in parallel produce several links of the same
+        // order. So each link must verify against at least one link of the previous order (or none at the start).
+        var sortedChain = chain.Where(x => x != null).OrderBy(x => x.Order).ToList();
+        if (sortedChain.Count != chain.Count) return (DeltaRegistration.InvalidSignature, null);
+        int minOrder = sortedChain[0].Order;
 
         foreach (var sig in sortedChain)
         {
-            if (sig == null || string.IsNullOrEmpty(sig.SignerNodeId)) return false;
+            if (sig == null || string.IsNullOrEmpty(sig.SignerNodeId)) return (DeltaRegistration.InvalidSignature, null);
 
             if (!nodeVerifyKeys.TryGetValue(sig.SignerNodeId, out var publicVerifyKey) || publicVerifyKey == null || publicVerifyKey.Length == 0)
             {
@@ -921,35 +1031,36 @@ public class ConsensusSessionManager : IConsensusSessionManager
                     }
                     else
                     {
-                        return false;
+                        return (DeltaRegistration.UnverifiableSigner, sig.SignerNodeId);
                     }
                 }
             }
 
-            using var ms = new MemoryStream();
-            using var writer = new BinaryWriter(ms);
+            var candidates = sortedChain
+                .Where(x => x.Order == sig.Order - 1 && x.Signature != null && x.Signature.Length > 0)
+                .Select(x => (byte[]?)x.Signature)
+                .ToList();
+            // First link of the session, or the predecessor isn't in this chain (it came from a part of the tree we didn't get)
+            if (candidates.Count == 0 || sig.Order == minOrder) candidates.Add(null);
 
-            if (previousSignature != null && previousSignature.Length > 0)
+            bool ok = false;
+            foreach (var previousSignature in candidates)
             {
-                writer.Write(previousSignature.Length);
-                writer.Write(previousSignature);
+                if (P2PCrypto.TestSignature(ChainLinkHash(previousSignature, sig), publicVerifyKey, sig.Signature))
+                {
+                    ok = true;
+                    break;
+                }
             }
 
-            writer.Write(sig.Order);
-            writer.Write(sig.SignerNodeId);
-            writer.Write(sig.TargetNodeId ?? string.Empty);
-            writer.Write(sig.TimestampUtc.Ticks);
-            writer.Flush();
-
-            byte[] payloadHash = SHA256.HashData(ms.ToArray());
-            if (!P2PCrypto.TestSignature(payloadHash, publicVerifyKey, sig.Signature))
+            if (!ok)
             {
-                return false;
+                _logger.LogWarning("[Session Manager] Chain link {Order} {Signer}->{Target} does not verify against any link of order {Prev}.",
+                    sig.Order, sig.SignerNodeId, sig.TargetNodeId, sig.Order - 1);
+                return (DeltaRegistration.InvalidSignature, null);
             }
-
-            previousSignature = sig.Signature;
         }
 
-        return true;
+        return (DeltaRegistration.Registered, null);
     }
 }

@@ -9,7 +9,7 @@ using ProcessorApplication.Attributes;
 namespace P2PModule.Controllers;
 [ModuleRoute("P2P")]
 [Route("/[area]/[controller]/[action]/{id?}")]
-[Authorize(Roles = "NetworkAdmin")]
+[AdminAccess("NetworkAdmin")]
 [ApiExplorerSettings(IgnoreApi = true)]
 public class HistoryMonitorController : Controller
 {
@@ -87,6 +87,10 @@ public class HistoryMonitorController : Controller
             if (started)
             {
                 return Json(new { success = true, message = "Consensus session triggered successfully." });
+            }
+            if (!_protocolHandler.HasConnectedPeers())
+            {
+                return Json(new { success = false, message = "No peers connected - consensus was not started." });
             }
             return Json(new { success = false, message = "Failed to trigger consensus - session is already busy." });
         }

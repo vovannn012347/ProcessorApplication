@@ -19,6 +19,27 @@ public class ConsensusMergeOperation
     public string MergeDir { get; set; } = string.Empty;        // ConsensusCurrentMerge (finalized iteration results)
     public string IterDir { get; set; } = string.Empty;         // ConsensusCurrentIter (temporary uncommitted staging)
     public string BasePath { get; set; } = string.Empty;
+
+    /// <summary>
+    /// One gate per staging workspace. Incoming swaps are staged on a background task while the
+    /// workflow loop finalizes iterations, so every read/write of IterDir/MergeDir goes through this -
+    /// otherwise Windows refuses File.Delete on a file another task still has open.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public SemaphoreSlim Gate { get; } = new(1, 1);
+
+    public async Task<IDisposable> LockAsync()
+    {
+        await Gate.WaitAsync();
+        return new Releaser(Gate);
+    }
+
+    private sealed class Releaser : IDisposable
+    {
+        private SemaphoreSlim? _gate;
+        public Releaser(SemaphoreSlim gate) => _gate = gate;
+        public void Dispose() => Interlocked.Exchange(ref _gate, null)?.Release();
+    }
 }
 
 /// <summary>
@@ -206,6 +227,8 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
             return false;
         }
 
+        using var gate = await operation.LockAsync();
+
         _logger.LogInformation("[Consensus Engine] Staging incoming node set from {RemoteNodeId} into IterDir. Count: {Count}.",
             remoteNodeId, remoteNodes.Count);
 
@@ -335,6 +358,12 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
     {
         if (operation == null) return;
 
+        using var gate = await operation.LockAsync();
+        await FinalizeIterationCoreAsync(operation);
+    }
+
+    private async Task FinalizeIterationCoreAsync(ConsensusMergeOperation operation)
+    {
         _logger.LogInformation("[Consensus Engine] Finalizing iteration. Promoting IterDir -> MergeDir milestone for date {Date}.", operation.TargetDate);
 
         try
@@ -347,8 +376,8 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
                     string mergeFile = Path.Combine(operation.MergeDir, fileName);
 
                     // Overwrite iteration changes into MergeDir milestone checkpoint
-                    File.Copy(iterFile, mergeFile, overwrite: true);
-                    File.Delete(iterFile); // Clear IterDir staging
+                    await RetryIoAsync(() => File.Copy(iterFile, mergeFile, overwrite: true));
+                    await RetryIoAsync(() => File.Delete(iterFile)); // Clear IterDir staging
                 }
             }
 
@@ -373,10 +402,12 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
 
         _logger.LogInformation("[Consensus Engine] Finalizing total consensus merge for date {Date}. Committing MergeDir to ConsensusStore.", operation.TargetDate);
 
+        using var gate = await operation.LockAsync();
+
         try
         {
             // Promote any remaining uncommitted iteration files to the milestone directory
-            await FinalizeIterationAsync(operation);
+            await FinalizeIterationCoreAsync(operation);
 
             // Read all validated milestone files from MergeDir and write to ConsensusStore
             if (Directory.Exists(operation.MergeDir))
@@ -388,15 +419,7 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
 
                     // Unpack WeightedConsensusNode or fallback PeerNodeHistoric
                     PeerNodeHistoric? peerToStore = null;
-                    try
-                    {
-                        var weighted = JsonSerializer.Deserialize<WeightedConsensusNode>(json);
-                        peerToStore = weighted?.NodeData;
-                    }
-                    catch
-                    {
-                        peerToStore = JsonSerializer.Deserialize<PeerNodeHistoric>(json);
-                    }
+                    peerToStore = ConsensusNodeJson.ReadHistoric(json);
 
                     if (peerToStore != null && !string.IsNullOrEmpty(nodeId))
                     {
@@ -427,9 +450,11 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
     /// <summary>
     /// 5. Reset Iteration: Drops uncommitted IterDir files and restores files from the MergeDir milestone.
     /// </summary>
-    public Task ResetIterationMergeAsync(ConsensusMergeOperation operation)
+    public async Task ResetIterationMergeAsync(ConsensusMergeOperation operation)
     {
-        if (operation == null) return Task.CompletedTask;
+        if (operation == null) return;
+
+        using var gate = await operation.LockAsync();
 
         _logger.LogWarning("[Consensus Engine] Iteration rollback triggered for date {Date}. Resetting IterDir to MergeDir milestone state.", operation.TargetDate);
 
@@ -458,16 +483,16 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
         {
             _logger.LogError(ex, "[Consensus Engine] Exception encountered during iteration rollback procedure for date {Date}.", operation.TargetDate);
         }
-
-        return Task.CompletedTask;
     }
 
     /// <summary>
     /// 6. Drop Merge: Completely purges the staging workspace (IterDir & MergeDir) without modifying ConsensusStore.
     /// </summary>
-    public Task AbortMergeOperationAsync(ConsensusMergeOperation operation)
+    public async Task AbortMergeOperationAsync(ConsensusMergeOperation operation)
     {
-        if (operation == null) return Task.CompletedTask;
+        if (operation == null) return;
+
+        using var gate = await operation.LockAsync();
 
         _logger.LogWarning("[Consensus Engine] Aborting consensus merge operation for date {Date}. Purging staging workspace.", operation.TargetDate);
 
@@ -482,8 +507,16 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
         {
             _logger.LogError(ex, "[Consensus Engine] Exception during abort merge operation for date {Date}.", operation.TargetDate);
         }
+    }
 
-        return Task.CompletedTask;
+    /// <summary>A virus scanner or indexer can hold a freshly written file for a moment on Windows.</summary>
+    private static async Task RetryIoAsync(Action action, int attempts = 5)
+    {
+        for (int i = 1; ; i++)
+        {
+            try { action(); return; }
+            catch (IOException) when (i < attempts) { await Task.Delay(50 * i); }
+        }
     }
 
     /// <summary>
@@ -492,6 +525,8 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
     /// </summary>
     public async Task<PeerNodeHistoric?> GetNodeFromStagingHierarchyAsync(ConsensusMergeOperation operation, string nodeId)
     {
+        if (operation == null) return null;
+        using var gate = await operation.LockAsync();
         var weighted = await GetWeightedNodeFromStagingHierarchyAsync(operation, nodeId);
         return weighted?.NodeData;
     }

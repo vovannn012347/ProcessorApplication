@@ -47,6 +47,13 @@ public interface IPeerConnectionManager
     bool SendMessageRaw(string nodeId, string payload, string channelLabel = "p2p-control-channel");
     /// <summary>For answers: sends over the channel the node's last message arrived on, if it is open; else like SendMessageRaw.</summary>
     bool SendReplyRaw(string nodeId, string payload, string channelLabel = "p2p-control-channel");
+    /// <summary>True if anything arrived from the node within the given time (any channel).</summary>
+    bool HeardFromRecently(string nodeId, TimeSpan within);
+    /// <summary>
+    /// The link to the node is dead (heartbeats failed): drop it and get ONE new connection between the two nodes.
+    /// The node with the smaller id dials; the other waits for that dial and dials itself only if nothing comes.
+    /// </summary>
+    Task RecoverDeadLinkAsync(string nodeId, string[] signalingEndpoints);
     Task<string?> HandleIncomingSignalingHttpAsync(string senderNodeId, string offerSdp, Guid handshakeId);
     void HandleRelaySignaling(string senderNodeId, P2PPacketEnvelope frame);
     Task<string> GetEndpointActiveAsync(string endpoint);
@@ -88,6 +95,20 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
     /// heartbeats failed for good. SendMessageRaw falls back to this channel then.
     /// </summary>
     private readonly ConcurrentDictionary<string, RTCDataChannel> _lastInboundChannel = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>When anything last arrived from each node, on any channel.</summary>
+    private readonly ConcurrentDictionary<string, DateTime> _lastInboundUtc = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>A connection that has carried nothing from the node for this long may be replaced by a new dial.</summary>
+    private static readonly TimeSpan SilentConnectionLimit = TimeSpan.FromSeconds(20);
+    /// <summary>Nodes we are dialling right now (outbound offer not answered yet).</summary>
+    private readonly ConcurrentDictionary<string, byte> _dialsInProgress = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// One connection per pair of nodes. When both dial each other at once, the dial of the node with the
+    /// smaller id wins on BOTH sides: the smaller node turns the other's offer away, the larger node accepts
+    /// the smaller's offer and drops its own dial. Before this each side kept a different connection.
+    /// </summary>
+    private bool OurDialWins(string otherNodeId) =>
+        string.Compare(_identityService.NodeId, otherNodeId, StringComparison.OrdinalIgnoreCase) < 0;
 
     public event Action<string, string, P2PPacketEnvelope>? OnRawMessageReceived;
     public event Action<string, string, RTCDataChannel>? OnUnmanagedChannelReceived;
@@ -525,6 +546,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                                 envelope.CreatedUtc = envelope.CreatedUtc.AddMilliseconds(-connRef.ClockOffsetMs);
                             }
                             _lastInboundChannel[$"{nodeId}|{cleanLabel}"] = upgradedChannel;
+                            _lastInboundUtc[nodeId] = DateTime.UtcNow;
                             OnRawMessageReceived?.Invoke(nodeId, cleanLabel, envelope);
                         }
                     }
@@ -623,6 +645,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                                                         envelope.CreatedUtc = envelope.CreatedUtc.AddMilliseconds(conn.ClockOffsetMs);
                                                     }
                                                     _lastInboundChannel[$"{nodeId}|{label}"] = upgradedChannel;
+                                                    _lastInboundUtc[nodeId] = DateTime.UtcNow;
                                                     OnRawMessageReceived?.Invoke(nodeId, label, envelope);
                                                 }
                                             }
@@ -783,8 +806,9 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
         _logger.LogInformation("[P2P Transport] Establishing WebRTC session with {NodeId}.", nodeId);
 
-        if (_connections.TryGetValue(nodeId, out var existingConn) && 
-            existingConn.PeerConnection.connectionState == RTCPeerConnectionState.connected)
+        if (_connections.TryGetValue(nodeId, out var existingConn) &&
+            existingConn.PeerConnection.connectionState == RTCPeerConnectionState.connected &&
+            !(connectionType == "temporary" && IsSilent(nodeId)))
         {
             if (!existingConn.ConnectionTypes.Contains(connectionType))
                 existingConn.ConnectionTypes.Add(connectionType);
@@ -851,10 +875,21 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                 }
             }
 
+            if (handshakeId != null &&
+                _connections.TryGetValue(nodeId, out var arrived) &&
+                arrived.PeerConnection?.connectionState == RTCPeerConnectionState.connected &&
+                !IsSilent(nodeId))
+            {
+                // The other node dialled us while we were handshaking: use that connection, don't make a second one
+                if (!arrived.ConnectionTypes.Contains(connectionType)) arrived.ConnectionTypes.Add(connectionType);
+                return arrived;
+            }
+
             if(handshakeId != null)
             {
                 var configuration = new RTCConfiguration { iceServers = _settings.CurrentValue.StunServers?.Select(stun => new RTCIceServer { urls = stun }).ToList() ?? new List<RTCIceServer>() };
                 var pc = new RTCPeerConnection(configuration);
+                _dialsInProgress[nodeId] = 0;
 
                 if (!_connections.TryGetValue(nodeId, out var conn))
                 {
@@ -906,6 +941,14 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                         var answer = await response.Content.ReadFromJsonAsync<WebRTCSignalPayload>();
                         if (answer != null && !string.IsNullOrEmpty(answer.Sdp))
                         {
+                            _dialsInProgress.TryRemove(nodeId, out _);
+                            if (!ReferenceEquals(conn.PeerConnection, pc))
+                            {
+                                // The other node's dial won the tie-break while ours was in flight: keep theirs
+                                try { pc.close(); } catch { }
+                                return conn;
+                            }
+
                             pc.setRemoteDescription(new RTCSessionDescriptionInit { sdp = answer.Sdp, type = RTCSdpType.answer });
 
                             await BumpPeerConnectivityAsync(nodeId);
@@ -920,6 +963,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                 
                 }
 
+                _dialsInProgress.TryRemove(nodeId, out _);
                 pc.close();
             }
 
@@ -1094,6 +1138,34 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
         return null;
     }
 
+    public async Task RecoverDeadLinkAsync(string nodeId, string[] signalingEndpoints)
+    {
+        // A connection that failed its heartbeats is not kept: close it on our side right away
+        await KillConnectionAsync(nodeId, "heartbeats failed");
+
+        if (OurDialWins(nodeId))
+        {
+            _logger.LogInformation("[P2P Transport] Link to {NodeId} was dead; dialling it again (smaller id dials).", nodeId);
+            await ConnectPeerAsync(nodeId, signalingEndpoints, "outbound");
+            return;
+        }
+
+        // The other node has the smaller id and will dial us; give it time, then dial ourselves only if it didn't
+        _logger.LogInformation("[P2P Transport] Link to {NodeId} was dead; waiting for it to dial us (it has the smaller id).", nodeId);
+        await Task.Delay(TimeSpan.FromSeconds(15));
+        if (_connections.TryGetValue(nodeId, out var back) && back.PeerConnection?.connectionState == RTCPeerConnectionState.connected)
+            return;
+
+        _logger.LogInformation("[P2P Transport] {NodeId} did not dial back within 15 s; dialling it ourselves.", nodeId);
+        await ConnectPeerAsync(nodeId, signalingEndpoints, "outbound");
+    }
+
+    public bool HeardFromRecently(string nodeId, TimeSpan within) =>
+        _lastInboundUtc.TryGetValue(nodeId, out var last) && DateTime.UtcNow - last <= within;
+
+    private bool IsSilent(string nodeId) =>
+        !_lastInboundUtc.TryGetValue(nodeId, out var last) || DateTime.UtcNow - last > SilentConnectionLimit;
+
     public async Task<bool> KillConnectionAsync(string nodeId, string terminationReason = "")
     {
         foreach (var key in _lastInboundChannel.Keys.Where(k => k.StartsWith(nodeId + "|", StringComparison.OrdinalIgnoreCase)).ToList())
@@ -1148,10 +1220,35 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
             };
         }
         else
+        if (_dialsInProgress.ContainsKey(senderNodeId) &&
+            conn.PeerConnection != null &&
+            conn.PeerConnection.connectionState != RTCPeerConnectionState.connected)
+        {
+            if (OurDialWins(senderNodeId))
+            {
+                // We are dialling it too and our id is smaller: our offer wins, theirs is turned away
+                _logger.LogInformation("[P2P Transport] {NodeId} dialled us while we dial it; our dial wins (smaller id).", senderNodeId);
+                return null;
+            }
+            // Its id is smaller: its offer wins, our own dial is dropped
+            _logger.LogInformation("[P2P Transport] {NodeId} dialled us while we dial it; its dial wins (smaller id). Dropping ours.", senderNodeId);
+            try { conn.PeerConnection.close(); } catch { }
+        }
+        else
         if(conn.PeerConnection.connectionState == RTCPeerConnectionState.connected)
         {
-            //what ARE you thinking?
-            return null;
+            // A connection that reports "connected" but has carried nothing from this node for a while is a
+            // dead end left by crossed dials: both sides kept one that the other no longer reads, nothing got
+            // through in either direction, and every re-dial was turned away here. Let the new dial replace it.
+            if (!IsSilent(senderNodeId))
+            {
+                //what ARE you thinking?
+                return null;
+            }
+
+            _logger.LogWarning("[P2P Transport] {NodeId} dialled again and nothing has arrived from it for {Seconds}s on the current connection. Replacing it.",
+                senderNodeId, (int)SilentConnectionLimit.TotalSeconds);
+            try { conn.PeerConnection.close(); } catch { }
         }
 
         conn.PeerConnection = pc;

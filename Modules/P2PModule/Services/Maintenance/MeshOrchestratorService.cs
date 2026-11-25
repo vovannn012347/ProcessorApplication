@@ -194,12 +194,19 @@ public class MeshOrchestratorService : BackgroundService
                 }
                 if (!isalive)
                 {
-                    _logger.LogWarning("[P2P Mesh Management] Link heartbeat failed for {NodeId}. Re-dialing...", conn.NodeId);
+                    // Heartbeats failed twice (normal + patient): the connection is dropped, not kept, and the
+                    // two nodes agree on who dials the single new one (smaller id; see RecoverDeadLinkAsync).
+                    _logger.LogWarning("[P2P Mesh Management] Link heartbeat failed for {NodeId}. Dropping the connection and reconnecting.", conn.NodeId);
 
-                    ActivePeerConnection? reconnected = null;
                     if (peer != null)
                     {
-                        await _connectionManager.ConnectPeerAsync(peer.Identity.NodeId, peer.Identity.SignalingEndpoints.ToArray(), "temporary");
+                        var endpoints = peer.Identity.SignalingEndpoints.ToArray();
+                        var deadNodeId = conn.NodeId;
+                        _ = Task.Run(() => _connectionManager.RecoverDeadLinkAsync(deadNodeId, endpoints));
+                    }
+                    else
+                    {
+                        await _connectionManager.KillConnectionAsync(conn.NodeId, "heartbeats failed");
                     }
                 }
                 await _management.CheckEndpointsALiveAsync(conn.NodeId);

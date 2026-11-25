@@ -117,6 +117,8 @@ public class P2PRouterService : IP2PRouterService, IDisposable
     }
 
     private readonly ConcurrentDictionary<Guid, TaskCompletionSource<string>> _pendingRequests = new();
+    /// <summary>Requests that gave up waiting: id -> (when we sent it, how long we waited).</summary>
+    private readonly ConcurrentDictionary<Guid, (DateTime SentUtc, TimeSpan Waited)> _timedOutRequests = new();
     private readonly ConcurrentDictionary<Guid, ProgressiveTransferContext> _progressiveTransfers = new();
     private readonly ConcurrentDictionary<string, Func<string, P2PPacketEnvelope, CancellationToken, Task<string>>> _commandHandlers = new();
 
@@ -267,11 +269,13 @@ public class P2PRouterService : IP2PRouterService, IDisposable
         if (frame.CommandType.StartsWith("Response-", StringComparison.OrdinalIgnoreCase) &&
             !_progressiveTransfers.ContainsKey(frame.MessageId))
         {
-            // The request already timed out (or was never ours). If this happens a lot the link is fine but slow.
-            // Response-Ping is skipped: PingNodesAsync sends fire-and-forget pings whose answers nobody waits for.
-            if (string.Equals(frame.CommandType, "Response-Ping", StringComparison.OrdinalIgnoreCase)) return;
-            _logger.LogInformation("[P2P Router] Late answer {Command} from {Sender}: arrived {Ms} ms after it was sent; the request had already given up.",
-                frame.CommandType, senderNodeId, (int)(DateTime.UtcNow - frame.CreatedUtc).TotalMilliseconds);
+            // Answers to fire-and-forget messages (SendMessage: delta pings, finished signals, fanned-out pings)
+            // also come back here and nobody waits for them - not worth a line. Only an answer to a request that
+            // really timed out is reported, with how long after OUR request it came (the old "arrived N ms after
+            // it was sent" was the answer's own travel time, which is why it said 0 ms).
+            if (!_timedOutRequests.TryRemove(frame.MessageId, out var timedOut)) return;
+            _logger.LogInformation("[P2P Router] Late answer {Command} from {Sender}: came {Ms} ms after we sent the request; we had waited {Waited} ms and given up.",
+                frame.CommandType, senderNodeId, (int)(DateTime.UtcNow - timedOut.SentUtc).TotalMilliseconds, (int)timedOut.Waited.TotalMilliseconds);
             return;
         }
 
@@ -506,6 +510,7 @@ public class P2PRouterService : IP2PRouterService, IDisposable
             {
                 _pendingRequests.TryRemove(envelope.MessageId, out _);
                 CleanupDedicatedChannelDeferred(targetNodeId, channelLabel, activeSettings.UseDedicatedChannel);
+                RememberTimedOut(envelope.MessageId, envelope.CreatedUtc, activeSettings.Timeout);
                 return new RouterResult { Error = activeSettings.CancellationToken.IsCancellationRequested ? "Cooperative cancellation triggered." : "Request timed out." };
             }
         }
@@ -583,6 +588,17 @@ public class P2PRouterService : IP2PRouterService, IDisposable
                     cancelledContext.Callback(null, "Cooperative cancellation triggered.", 0, true);
                 }
             });
+        }
+    }
+
+    private void RememberTimedOut(Guid messageId, DateTime sentUtc, TimeSpan waited)
+    {
+        _timedOutRequests[messageId] = (sentUtc, waited);
+        if (_timedOutRequests.Count > 2000)
+        {
+            var now = DateTime.UtcNow;
+            foreach (var old in _timedOutRequests.Where(kv => now - kv.Value.SentUtc > TimeSpan.FromMinutes(5)).Select(kv => kv.Key).ToList())
+                _timedOutRequests.TryRemove(old, out _);
         }
     }
 

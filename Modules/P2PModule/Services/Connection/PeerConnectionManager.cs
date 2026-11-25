@@ -365,16 +365,10 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
     public bool SendMessageRaw(string nodeId, string payload, string channelLabel = "p2p-control-channel")
     {
-        // Talk to a node over the channel it last talked to us on. After two dials crossed, the connection
-        // stored for the node can be a half-dead one that still reports connected/open on our side while the
-        // node reads only the other: everything the node sent us arrived, but every request we sent it
-        // (pings, start pings, swaps) vanished - minutes of failed heartbeats and NO_RESPONSE in consensus.
-        if (_lastInboundChannel.TryGetValue($"{nodeId}|{channelLabel}", out var preferred) && preferred.readyState == RTCDataChannelState.open)
-        {
-            preferred.send(payload);
-            return true;
-        }
-
+        // The current connection's channel first. (Preferring the channel the node last talked on was tried and
+        // made things worse: after a reconnect that pointed at the OLD connection's channel, which still said
+        // "open", so control messages went into it while the new connection sat idle - the time-sync channel,
+        // sent directly, kept working on the same link.) The inbound channel is only a fallback below.
         if (_connections.TryGetValue(nodeId, out var conn))
         {
             if (conn.DataChannels.TryGetValue(channelLabel, out var dc) && dc.readyState == RTCDataChannelState.open)
@@ -1081,6 +1075,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
             {
                 var configuration = new RTCConfiguration { iceServers = _settings.CurrentValue.StunServers?.Select(stun => new RTCIceServer { urls = stun }).ToList() ?? new List<RTCIceServer>() };
                 var pc = new RTCPeerConnection(configuration);
+                ForgetInbound(nodeId);   // a new connection: channels of the old one must not be used any more
                 _dialsInProgress[nodeId] = 0;
 
                 if (!_connections.TryGetValue(nodeId, out var conn))
@@ -1247,6 +1242,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
             iceServers = _settings.CurrentValue.StunServers?.Select(stun => new RTCIceServer { urls = stun }).ToList() ?? new List<RTCIceServer>()
         };
         var pc = new RTCPeerConnection(configuration);
+        ForgetInbound(targetNodeId);   // a new connection: channels of the old one must not be used any more
 
         if (!_connections.TryGetValue(targetNodeId, out var conn))
         {
@@ -1356,6 +1352,12 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
     public bool HeardFromRecently(string nodeId, TimeSpan within) =>
         _lastInboundUtc.TryGetValue(nodeId, out var last) && DateTime.UtcNow - last <= within;
 
+    private void ForgetInbound(string nodeId)
+    {
+        foreach (var key in _lastInboundChannel.Keys.Where(k => k.StartsWith(nodeId + "|", StringComparison.OrdinalIgnoreCase)).ToList())
+            _lastInboundChannel.TryRemove(key, out _);
+    }
+
     private bool IsSilent(string nodeId) =>
         !_lastInboundUtc.TryGetValue(nodeId, out var last) || DateTime.UtcNow - last > SilentConnectionLimit;
 
@@ -1401,6 +1403,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
         var configuration = new RTCConfiguration { iceServers = _settings.CurrentValue.StunServers?.Select(stun => new RTCIceServer { urls = stun }).ToList() ?? new List<RTCIceServer>() };
         var pc = new RTCPeerConnection(configuration);
+        ForgetInbound(senderNodeId);   // a new connection: channels of the old one must not be used any more
 
         if (!_connections.TryGetValue(senderNodeId, out var conn))
         {
@@ -1510,6 +1513,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
     {
         var configuration = new RTCConfiguration { iceServers = _settings.CurrentValue.StunServers?.Select(stun => new RTCIceServer { urls = stun }).ToList() ?? new List<RTCIceServer>() };
         var pc = new RTCPeerConnection(configuration);
+        ForgetInbound(senderNodeId);   // a new connection: channels of the old one must not be used any more
 
         if (!_connections.TryGetValue(senderNodeId, out var conn))
         {

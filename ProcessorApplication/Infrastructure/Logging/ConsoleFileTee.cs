@@ -28,6 +28,15 @@ public static class ConsoleFileTee
             Console.SetOut(TextWriter.Synchronized(new TeeWriter(Console.Out)));
             Console.SetError(TextWriter.Synchronized(new TeeWriter(Console.Error)));
             WriteToFile($"===== {DateTime.Now:yyyy-MM-dd HH:mm:ss} start, pid {Environment.ProcessId} ====={Environment.NewLine}");
+
+            // A crash prints its reason through the runtime's own stderr, not through Console.Error, so it never
+            // reached this file (a node just vanished with nothing in its log). Write it here ourselves.
+            AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+                WriteToFile($"{Environment.NewLine}===== {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} FATAL: unhandled exception, the process is terminating ====={Environment.NewLine}{e.ExceptionObject}{Environment.NewLine}");
+            TaskScheduler.UnobservedTaskException += (_, e) =>
+                WriteToFile($"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} [unobserved task exception] {e.Exception}{Environment.NewLine}");
+            AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+                WriteToFile($"===== {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} exit, code {Environment.ExitCode} ====={Environment.NewLine}");
         }
         catch
         {

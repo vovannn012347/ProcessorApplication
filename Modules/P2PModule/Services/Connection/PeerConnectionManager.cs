@@ -131,43 +131,77 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
     private bool HasLinkKey(string nodeId, Guid id) =>
         _linkKeys.TryGetValue(nodeId, out var key) && key.Id == id && key.ExpiresUtc > DateTime.UtcNow;
 
-    private static string LinkResumeText(Guid linkId, string signer, string other, long ticks) =>
-        $"p2p-link-resume|{linkId:N}|{signer}|{other}|{ticks}";
+    // ---- Link resume, encrypted end to end ------------------------------------------------------------------
+    // Both nodes exchanged their public keys in the first handshake, so a reconnect can be done like TLS:
+    //   request : Encrypt(peer's public ENCRYPTION key, [linkKey | nonceA | time]) + Sign(our private SIGNATURE key)
+    //   answer  : Encrypt(our public ENCRYPTION key,  [nonceA | nonceB])            + Sign(its private SIGNATURE key)
+    // Only the real peer can decrypt (private key), only the real peer can sign; the old link key never travels
+    // in clear text. Both then switch to a NEW link key derived from (old key, nonceA, nonceB), which is the
+    // handshake id of the reconnect - so every reconnect rotates it.
+
+    private const int LinkPayloadSize = 64;   // multiple of the AES block size (P2PCrypto.Encrypt pads nothing)
+
+    private static string LinkResumeText(string signer, string other, long ticks, byte[] envelope) =>
+        $"p2p-link-resume|{signer}|{other}|{ticks}|{Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(envelope))}";
+
+    private static Guid NextLinkKey(Guid oldKey, byte[] nonceA, byte[] nonceB)
+    {
+        var material = oldKey.ToByteArray().Concat(nonceA).Concat(nonceB).ToArray();
+        return new Guid(System.Security.Cryptography.SHA256.HashData(material).AsSpan(0, 16));
+    }
 
     public LinkResumeResponse? HandleLinkResume(LinkResumeRequest request)
     {
         try
         {
-            if (request == null || string.IsNullOrEmpty(request.SenderNodeId) || request.Signature == null) return null;
+            if (request == null || string.IsNullOrEmpty(request.SenderNodeId) || request.Signature == null || request.Envelope == null) return null;
             if (!string.Equals(request.TargetNodeId, _identityService.NodeId, StringComparison.OrdinalIgnoreCase)) return null;
             if ((DateTime.UtcNow - request.TimestampUtc).Duration() > LinkResumeClockSkew) return null;
 
-            if (!HasLinkKey(request.SenderNodeId, request.LinkId))
+            var sender = _peerTracker.GetPeer(request.SenderNodeId)?.Identity;
+            if (sender?.PublicVerifyKey == null || sender.PublicVerifyKey.Length == 0 ||
+                sender.PublicEncryptionKey == null || sender.PublicEncryptionKey.Length == 0) return null;
+
+            // 1. it is really the sender (signature over the encrypted envelope)
+            var signed = LinkResumeText(request.SenderNodeId, _identityService.NodeId, request.TimestampUtc.Ticks, request.Envelope);
+            if (!P2PModule.Infrastructure.P2PCrypto.TestSignature(signed, sender.PublicVerifyKey, request.Signature))
+            {
+                _logger.LogWarning("[P2P Transport] Link resume from {NodeId} refused: signature does not verify.", request.SenderNodeId);
+                return null;
+            }
+
+            // 2. only we can open it (our private encryption key)
+            var payload = P2PModule.Infrastructure.P2PCrypto.Decrypt(request.Envelope, _identityService.PrivateKey);
+            if (payload.Length != LinkPayloadSize) return null;
+            var linkId = new Guid(payload.AsSpan(0, 16));
+            var nonceA = payload.AsSpan(16, 32).ToArray();
+            long ticks = BitConverter.ToInt64(payload, 48);
+            if (ticks != request.TimestampUtc.Ticks) return null;   // envelope belongs to this request
+
+            // 3. we still hold the same link key
+            if (!HasLinkKey(request.SenderNodeId, linkId))
             {
                 _logger.LogInformation("[P2P Transport] Link resume from {NodeId} refused: we don't hold that link key (lost or expired). A full handshake follows.", request.SenderNodeId);
                 _linkKeys.TryRemove(request.SenderNodeId, out _);
                 return null;
             }
 
-            var publicKey = _peerTracker.GetPeer(request.SenderNodeId)?.Identity?.PublicVerifyKey;
-            if (publicKey == null || publicKey.Length == 0) return null;
-            var text = LinkResumeText(request.LinkId, request.SenderNodeId, _identityService.NodeId, request.TimestampUtc.Ticks);
-            if (!P2PModule.Infrastructure.P2PCrypto.TestSignature(text, publicKey, request.Signature))
-            {
-                _logger.LogWarning("[P2P Transport] Link resume from {NodeId} refused: signature does not verify.", request.SenderNodeId);
-                return null;
-            }
-
+            var nonceB = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+            var answerPayload = nonceA.Concat(nonceB).ToArray();   // 64 bytes
+            var envelope = P2PModule.Infrastructure.P2PCrypto.Encrypt(answerPayload, sender.PublicEncryptionKey);
             var now = DateTime.UtcNow;
-            _resumeApprovals[request.SenderNodeId] = new LinkKey(request.LinkId, now + TimeSpan.FromSeconds(30));
-            var answerText = LinkResumeText(request.LinkId, _identityService.NodeId, request.SenderNodeId, now.Ticks);
-            _logger.LogInformation("[P2P Transport] Link resume from {NodeId} accepted: both sides still hold link key {Key}.", request.SenderNodeId, request.LinkId);
+
+            var nextKey = NextLinkKey(linkId, nonceA, nonceB);
+            _resumeApprovals[request.SenderNodeId] = new LinkKey(nextKey, now + TimeSpan.FromSeconds(30));
+
+            _logger.LogInformation("[P2P Transport] Link resume from {NodeId} accepted: both sides hold the same link key (checked encrypted + signed).", request.SenderNodeId);
             return new LinkResumeResponse
             {
                 SenderNodeId = _identityService.NodeId,
-                LinkId = request.LinkId,
                 TimestampUtc = now,
-                Signature = P2PModule.Infrastructure.P2PCrypto.SignData(answerText, _identityService.PrivateSignatureKey)
+                Envelope = envelope,
+                Signature = P2PModule.Infrastructure.P2PCrypto.SignData(
+                    LinkResumeText(_identityService.NodeId, request.SenderNodeId, now.Ticks, envelope), _identityService.PrivateSignatureKey)
             };
         }
         catch (Exception ex)
@@ -177,21 +211,35 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
         }
     }
 
-    /// <summary>Asks the node at targetUrl to confirm it still holds our link key. True = both hold it, signatures checked.</summary>
-    private async Task<bool> TryResumeLinkAsync(string nodeId, string targetUrl)
+    /// <summary>
+    /// Asks the node at targetUrl to confirm, encrypted and signed, that it still holds our link key.
+    /// Returns the NEW link key both sides switch to (the handshake id of this reconnect), or null.
+    /// </summary>
+    private async Task<Guid?> TryResumeLinkAsync(string nodeId, string targetUrl)
     {
-        if (!_linkKeys.TryGetValue(nodeId, out var key) || key.ExpiresUtc <= DateTime.UtcNow) return false;
+        if (!_linkKeys.TryGetValue(nodeId, out var key) || key.ExpiresUtc <= DateTime.UtcNow) return null;
         try
         {
+            var peer = _peerTracker.GetPeer(nodeId)?.Identity;
+            if (peer?.PublicVerifyKey == null || peer.PublicVerifyKey.Length == 0 ||
+                peer.PublicEncryptionKey == null || peer.PublicEncryptionKey.Length == 0) return null;
+
             var now = DateTime.UtcNow;
+            var nonceA = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+            var payload = new byte[LinkPayloadSize];
+            key.Id.ToByteArray().CopyTo(payload, 0);
+            nonceA.CopyTo(payload, 16);
+            BitConverter.GetBytes(now.Ticks).CopyTo(payload, 48);   // 56..63 stay zero
+
+            var envelope = P2PModule.Infrastructure.P2PCrypto.Encrypt(payload, peer.PublicEncryptionKey);
             var request = new LinkResumeRequest
             {
                 SenderNodeId = _identityService.NodeId,
                 TargetNodeId = nodeId,
-                LinkId = key.Id,
                 TimestampUtc = now,
+                Envelope = envelope,
                 Signature = P2PModule.Infrastructure.P2PCrypto.SignData(
-                    LinkResumeText(key.Id, _identityService.NodeId, nodeId, now.Ticks), _identityService.PrivateSignatureKey)
+                    LinkResumeText(_identityService.NodeId, nodeId, now.Ticks, envelope), _identityService.PrivateSignatureKey)
             };
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -199,23 +247,33 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
             if (!response.IsSuccessStatusCode)
             {
                 _linkKeys.TryRemove(nodeId, out _);   // the other side no longer has it: start over
-                return false;
+                return null;
             }
 
             var answer = await response.Content.ReadFromJsonAsync<LinkResumeResponse>(cancellationToken: cts.Token);
-            var publicKey = _peerTracker.GetPeer(nodeId)?.Identity?.PublicVerifyKey;
-            if (answer == null || answer.LinkId != key.Id || answer.Signature == null || publicKey == null || publicKey.Length == 0) return false;
-            if ((DateTime.UtcNow - answer.TimestampUtc).Duration() > LinkResumeClockSkew) return false;
+            if (answer?.Envelope == null || answer.Signature == null) return null;
+            if ((DateTime.UtcNow - answer.TimestampUtc).Duration() > LinkResumeClockSkew) return null;
 
-            var text = LinkResumeText(key.Id, nodeId, _identityService.NodeId, answer.TimestampUtc.Ticks);
-            bool ok = P2PModule.Infrastructure.P2PCrypto.TestSignature(text, publicKey, answer.Signature);
-            if (!ok) _logger.LogWarning("[P2P Transport] Link resume answer from {NodeId} does not verify; running a full handshake.", nodeId);
-            return ok;
+            var signed = LinkResumeText(nodeId, _identityService.NodeId, answer.TimestampUtc.Ticks, answer.Envelope);
+            if (!P2PModule.Infrastructure.P2PCrypto.TestSignature(signed, peer.PublicVerifyKey, answer.Signature))
+            {
+                _logger.LogWarning("[P2P Transport] Link resume answer from {NodeId} does not verify; running a full handshake.", nodeId);
+                return null;
+            }
+
+            var answerPayload = P2PModule.Infrastructure.P2PCrypto.Decrypt(answer.Envelope, _identityService.PrivateKey);
+            if (answerPayload.Length != LinkPayloadSize || !answerPayload.AsSpan(0, 32).SequenceEqual(nonceA))
+            {
+                _logger.LogWarning("[P2P Transport] Link resume answer from {NodeId} did not return our nonce; running a full handshake.", nodeId);
+                return null;
+            }
+
+            return NextLinkKey(key.Id, nonceA, answerPayload.AsSpan(32, 32).ToArray());
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "[P2P Transport] Link resume with {NodeId} failed; running a full handshake.", nodeId);
-            return false;
+            return null;
         }
     }
 
@@ -988,9 +1046,10 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
             {
                 foreach (var targetUrl in activeEndpoints)
                 {
-                    if (await TryResumeLinkAsync(nodeId, targetUrl))
+                    var nextKey = await TryResumeLinkAsync(nodeId, targetUrl);
+                    if (nextKey != null)
                     {
-                        handshakeId = linkKey.Id;
+                        handshakeId = nextKey;
                         target = targetUrl;
                         _logger.LogInformation("[P2P Transport] Reconnecting to {NodeId} on the kept link key (no full handshake).", nodeId);
                         break;
@@ -1533,21 +1592,27 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
     }
 }
 
-/// <summary>"Do you still hold our link key?" - signed by the sender's private signature key.</summary>
+/// <summary>
+/// "Do you still hold our link key?" Envelope = [link key | nonceA | time] encrypted with the TARGET's public
+/// encryption key; Signature = sender's private signature key over (sender, target, time, hash of envelope).
+/// </summary>
 public class LinkResumeRequest
 {
     public string SenderNodeId { get; set; } = string.Empty;
     public string TargetNodeId { get; set; } = string.Empty;
-    public Guid LinkId { get; set; }
     public DateTime TimestampUtc { get; set; }
+    public byte[]? Envelope { get; set; }
     public byte[]? Signature { get; set; }
 }
 
-/// <summary>"Yes, the same one" - signed by the answering node's private signature key.</summary>
+/// <summary>
+/// "Yes, the same one." Envelope = [nonceA | nonceB] encrypted with the REQUESTER's public encryption key;
+/// Signature = answering node's private signature key over (answerer, requester, time, hash of envelope).
+/// </summary>
 public class LinkResumeResponse
 {
     public string SenderNodeId { get; set; } = string.Empty;
-    public Guid LinkId { get; set; }
     public DateTime TimestampUtc { get; set; }
+    public byte[]? Envelope { get; set; }
     public byte[]? Signature { get; set; }
 }

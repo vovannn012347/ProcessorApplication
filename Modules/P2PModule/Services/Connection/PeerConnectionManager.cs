@@ -56,6 +56,13 @@ public interface IPeerConnectionManager
     Task RecoverDeadLinkAsync(string nodeId, string[] signalingEndpoints);
     /// <summary>Answers a link-resume request (see /p2p/link/resume); null = not accepted.</summary>
     LinkResumeResponse? HandleLinkResume(LinkResumeRequest request);
+    /// <summary>
+    /// The control channel to the node isn't delivering: open a new one on the same peer connection and switch to it.
+    /// The other node switches too when the new channel reaches it. Sends to the node wait while this runs.
+    /// </summary>
+    Task<bool> RestartControlChannelAsync(string nodeId);
+    /// <summary>Waits (up to max) while the node's control channel is being recreated; true if it can be sent on now.</summary>
+    Task<bool> WaitUntilSendableAsync(string nodeId, string channelLabel, TimeSpan max);
     Task<string?> HandleIncomingSignalingHttpAsync(string senderNodeId, string offerSdp, Guid handshakeId);
     void HandleRelaySignaling(string senderNodeId, P2PPacketEnvelope frame);
     Task<string> GetEndpointActiveAsync(string endpoint);
@@ -101,6 +108,72 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
     private readonly ConcurrentDictionary<string, DateTime> _lastInboundUtc = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>A connection that has carried nothing from the node for this long may be replaced by a new dial.</summary>
     private static readonly TimeSpan SilentConnectionLimit = TimeSpan.FromSeconds(20);
+    /// <summary>Control-channel restarts in progress per node; sends to that node wait on these.</summary>
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _channelRestarts = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly TimeSpan ChannelOpenWait = TimeSpan.FromSeconds(8);
+
+    public async Task<bool> RestartControlChannelAsync(string nodeId)
+    {
+        if (!_connections.TryGetValue(nodeId, out var conn) || conn.PeerConnection?.connectionState != RTCPeerConnectionState.connected)
+            return false;
+
+        var mine = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_channelRestarts.TryAdd(nodeId, mine))
+        {
+            // already being recreated (by us): wait for that one
+            var running = _channelRestarts.TryGetValue(nodeId, out var r) ? r.Task : Task.FromResult(false);
+            return await Task.WhenAny(running, Task.Delay(ChannelOpenWait)) == running && running.Result;
+        }
+
+        bool ok = false;
+        try
+        {
+            conn.DataChannels.TryGetValue(ControlChannel, out var old);
+            _logger.LogWarning("[P2P Transport] Control channel to {NodeId} is not delivering; opening a new one on the same connection (sends to it wait meanwhile).", nodeId);
+
+            var dc = await conn.PeerConnection.createDataChannel(ControlChannel);
+            if (dc == null) return false;
+            ForgetInbound(nodeId);
+            RegisterAndBindDataChannel(nodeId, dc);   // becomes conn.DataChannels[control]; same message handling
+
+            var until = DateTime.UtcNow + ChannelOpenWait;
+            while (dc.readyState != RTCDataChannelState.open && DateTime.UtcNow < until)
+                await Task.Delay(100);
+
+            ok = dc.readyState == RTCDataChannelState.open;
+            if (ok)
+            {
+                if (old != null && !ReferenceEquals(old, dc)) { try { old.close(); } catch { } }
+                _logger.LogInformation("[P2P Transport] New control channel to {NodeId} is open; queued sends continue on it.", nodeId);
+            }
+            else
+            {
+                _logger.LogWarning("[P2P Transport] New control channel to {NodeId} did not open within {Seconds}s; the connection itself is dead.", nodeId, (int)ChannelOpenWait.TotalSeconds);
+            }
+            return ok;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[P2P Transport] Could not recreate the control channel to {NodeId}.", nodeId);
+            return false;
+        }
+        finally
+        {
+            _channelRestarts.TryRemove(nodeId, out _);
+            mine.TrySetResult(ok);
+        }
+    }
+
+    public async Task<bool> WaitUntilSendableAsync(string nodeId, string channelLabel, TimeSpan max)
+    {
+        if (_channelRestarts.TryGetValue(nodeId, out var restart))
+            await Task.WhenAny(restart.Task, Task.Delay(max));
+
+        return _connections.TryGetValue(nodeId, out var conn) &&
+               conn.DataChannels.TryGetValue(channelLabel, out var dc) &&
+               dc.readyState == RTCDataChannelState.open;
+    }
+
     /// <summary>Nodes we are dialling right now (outbound offer not answered yet).</summary>
     private readonly ConcurrentDictionary<string, byte> _dialsInProgress = new(StringComparer.OrdinalIgnoreCase);
 
@@ -758,6 +831,18 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
         if (_connections.TryGetValue(nodeId, out var conn))
         {
+            if (conn.IsHandshaked &&
+                conn.DataChannels.TryGetValue(label, out var previous) &&
+                previous != null && !ReferenceEquals(previous, dc))
+            {
+                // The other node recreated the control channel (its sends weren't getting through): use the new one
+                // from our side too, so both ends talk on the same channel again.
+                _logger.LogInformation("[P2P Transport] {NodeId} opened a new control channel; switching to it and closing the old one.", nodeId);
+                ForgetInbound(nodeId);
+                var old = previous;
+                dc.onopen += () => { try { old.close(); } catch { } };
+            }
+
             conn.DataChannels[label] = dc;
             if(!conn.IsHandshaked)
             {

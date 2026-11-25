@@ -190,7 +190,10 @@ public class MeshOrchestratorService : BackgroundService
                     // One slow answer (busy node, consensus traffic) is not a dead link. Re-dialing a link that is
                     // still up on the other side replaces our connection and kills theirs - which then fails ITS
                     // heartbeat and re-dials us: the links kept flapping for minutes. Ask once more, more patiently.
-                    isalive = await _management.SendHeartbeatAsync(conn.NodeId, timeoutSeconds: 15);
+                    // First step: the peer connection may be fine and only the control channel stuck. Open a new
+                    // channel on the same connection (the other node switches to it when it arrives), then ask again.
+                    bool channelRestarted = await _connectionManager.RestartControlChannelAsync(conn.NodeId);
+                    isalive = await _management.SendHeartbeatAsync(conn.NodeId, timeoutSeconds: channelRestarted ? 10 : 15);
                 }
                 if (!isalive)
                 {

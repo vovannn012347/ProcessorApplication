@@ -153,8 +153,12 @@ public class P2PRouterService : IP2PRouterService, IDisposable
             _ = SendEnvelopeDirectOrRelayedAsync(fullEnvelope.TargetNodeId, fullEnvelope);
         }
     }
+    /// <summary>How long a send waits while the target's control channel is being recreated.</summary>
+    private static readonly TimeSpan ChannelRestartWait = TimeSpan.FromSeconds(10);
+
     private async Task SendEnvelopeDirectOrRelayedAsync(string targetNodeId, P2PPacketEnvelope envelope)
     {
+        await _connectionManager.WaitUntilSendableAsync(targetNodeId, "p2p-control-channel", ChannelRestartWait);
         var conn = _connectionManager.GetConnection(targetNodeId);
         if (conn != null && conn.PeerConnection != null && conn.PeerConnection.connectionState == SIPSorcery.Net.RTCPeerConnectionState.connected)
         {
@@ -339,6 +343,7 @@ public class P2PRouterService : IP2PRouterService, IDisposable
                     // Looking the connection up by the id written in the request instead can miss it - e.g. a peer
                     // whose node id changed is still connected under the id it was dialled with - and the answer
                     // was then silently dropped: the asker saw a timeout (failed heartbeat) on a healthy link.
+                    await _connectionManager.WaitUntilSendableAsync(senderNodeId, channelLabel, ChannelRestartWait);
                     if (!_connectionManager.SendReplyRaw(senderNodeId, JsonSerializer.Serialize(responseEnvelope), channelLabel))
                     {
                         _logger.LogWarning("[P2P Router] Could not send the answer to {Command} back to {Peer} (channel '{Channel}' not open).",
@@ -402,6 +407,7 @@ public class P2PRouterService : IP2PRouterService, IDisposable
         };
 
         string serialized = JsonSerializer.Serialize(envelope);
+        await _connectionManager.WaitUntilSendableAsync(targetNodeId, "p2p-control-channel", ChannelRestartWait);
         _connectionManager.SendMessageRaw(targetNodeId, serialized, "p2p-control-channel");
     }
 
@@ -444,6 +450,7 @@ public class P2PRouterService : IP2PRouterService, IDisposable
             CreatedUtc = DateTime.UtcNow
         };
 
+        await _connectionManager.WaitUntilSendableAsync(targetNodeId, "p2p-control-channel", ChannelRestartWait);
         _connectionManager.SendReplyRaw(targetNodeId, JsonSerializer.Serialize(responseEnvelope), "p2p-control-channel");
     }
 
@@ -475,6 +482,10 @@ public class P2PRouterService : IP2PRouterService, IDisposable
                 return new RouterResult { Error = $"Failed to open dedicated WebRTC sub-channel: {tempChannel.Error}" };
             }
         }
+
+        // While the channel is being recreated the request waits here (paused, not failed); its own timeout
+        // starts only once it has actually been sent (timeoutCts below).
+        await _connectionManager.WaitUntilSendableAsync(targetNodeId, channelLabel, ChannelRestartWait);
 
         try
         {
@@ -535,6 +546,9 @@ public class P2PRouterService : IP2PRouterService, IDisposable
             Ttl = activeSettings.Ttl,
             CreatedUtc = DateTime.UtcNow
         };
+
+        // Paused while the channel is being recreated; the inactivity timer is armed only after this
+        await _connectionManager.WaitUntilSendableAsync(targetNodeId, "p2p-control-channel", ChannelRestartWait);
 
         var context = new ProgressiveTransferContext
         {

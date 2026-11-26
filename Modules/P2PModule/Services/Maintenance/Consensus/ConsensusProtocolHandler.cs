@@ -565,6 +565,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         if (refusal != null) return refusal;
         List<string>? senderHeld = null;
         try { senderHeld = JsonSerializer.Deserialize<ConsensusRequest>(frame.SerializedPayload!)?.HeldNodeIds; } catch { }
+        foreach (var id in senderHeld ?? new List<string>()) session.KnownIds.TryAdd(id, 0);
 
         if (!string.IsNullOrEmpty(session.TargetNodeId) && !string.Equals(session.TargetNodeId, senderNodeId, StringComparison.OrdinalIgnoreCase))
         {
@@ -1365,7 +1366,10 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
             DeltaVerifyKey = session.DayKeyVerifyKey,
             SignatureChain = _evil.TamperChain(_sessionManager.GetSyncSetSignatures()),
             SourceSignatureChain = _sessionManager.GetSyncSetSignatures(),
-            Nodes = new HashSet<string>(session.CurrentSyncSet)
+            // Every node id we hold, not just this merge's: receivers learn which nodes exist and can pull the
+            // records they lack (ids only - cheap). With only the sync set, a node whose partners never saw a
+            // node simply never knew it existed and finished one short.
+            Nodes = new HashSet<string>(session.CurrentSyncSet.Concat(HeldNodeIds(session)), StringComparer.OrdinalIgnoreCase)
         };
 
         string payload = JsonSerializer.Serialize(ping);
@@ -1690,6 +1694,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         try { req = JsonSerializer.Deserialize<ConsensusNodePullRequest>(frame.SerializedPayload ?? string.Empty); } catch { }
         if (req?.NodeIds == null || req.NodeIds.Count == 0) return "[]";
         var wanted = new HashSet<string>(req.NodeIds.Take(MaxPullIds), StringComparer.OrdinalIgnoreCase);
+        foreach (var id in wanted) session.KnownIds.TryAdd(id, 0);   // being asked for a node tells us it exists
         var nodes = _evil.TamperOutgoingNodes(senderNodeId, (await LoadLocalNodesForSwapAsync(session)).Where(n => wanted.Contains(n.Identity.NodeId)).ToList());
         _logger.LogInformation("[Consensus Protocol] {Sender} asked for {Asked} record(s) ({Ids}); we hold {Have}.", senderNodeId, wanted.Count,
             string.Join(", ", wanted.Take(8)), nodes.Count);

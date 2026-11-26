@@ -123,6 +123,8 @@ public class ConsensusMergeSession
     /// <summary>Missing records: when we last asked for them, and how many rounds we asked neighbours without success.</summary>
     public DateTime LastMissingPullUtc { get; set; } = DateTime.MinValue;
     public int MissingPullRounds { get; set; }
+    /// <summary>Who sent us the deltas/records folded into the current iteration: our next delta does not go back to them.</summary>
+    public ConcurrentDictionary<string, byte> IterationSources { get; } = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>How often a node was put back into the queue because it was busy (see RequeueNodeForRetry).</summary>
     public Dictionary<string, int> VisitRetries { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 

@@ -1354,9 +1354,24 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         var deltaItem = await _sessionManager.CreateLocalDeltaAsync();
         if (deltaItem == null) return;
 
-        // Deltas go to OLD nodes only (earlier iterations' sync sets). The nodes of the merge that just
-        // happened received our full merged state in the swap and don't need it again.
-        var pastNodes = _sessionManager.GetPastSyncSetNodes();
+        // Deltas go to OLD nodes (earlier iterations' sync sets) and to our live neighbours: whatever we learned
+        // since our last delta is pushed on, so records cross between groups of nodes that never merged with each
+        // other (a delta only to old partners stayed inside its own merge tree, and a node whose partners all lacked
+        // a record never got it). Not to the nodes of the merge that just happened (they got our full state in the
+        // swap), and not back to whoever sent us what this delta contains. It stops by itself: a node that learns
+        // nothing new makes no delta.
+        var exclude = new HashSet<string>(session.CurrentSyncSet, StringComparer.OrdinalIgnoreCase);
+        exclude.UnionWith(session.IterationSources.Keys);
+        exclude.Add(_identity.NodeId);
+        session.IterationSources.Clear();
+        var neighbours = _connectionManager.GetActiveConnections()
+            .Where(c => c?.NodeId != null && c.PeerConnection?.connectionState == SIPSorcery.Net.RTCPeerConnectionState.connected)
+            .Select(c => c.NodeId);
+        var pastNodes = _sessionManager.GetPastSyncSetNodes()
+            .Concat(neighbours)
+            .Where(id => !exclude.Contains(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
         if (pastNodes.Count == 0) return;
 
         var ping = new ConsensusDeltaPing
@@ -1373,7 +1388,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         };
 
         string payload = JsonSerializer.Serialize(ping);
-        _logger.LogInformation("[Consensus Protocol] Delta {DeltaId} ({Count} node record(s) changed) announced to {Targets} old partner(s): {Nodes}.",
+        _logger.LogInformation("[Consensus Protocol] Delta {DeltaId} ({Count} node record(s) changed) pushed to {Targets} old partner(s) and neighbour(s): {Nodes}.",
             deltaItem.DeltaId, session.CurrentSyncSet.Count, pastNodes.Count, string.Join(", ", pastNodes.Take(12)));
 
         foreach (var nodeId in pastNodes)
@@ -1418,6 +1433,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
 
         foreach (var delta in pendingDeltas)
         {
+            if (!string.IsNullOrEmpty(delta.SourceNodeId)) session.IterationSources.TryAdd(delta.SourceNodeId, 0);
             try
             {
                 string deltaNodesDir = Path.Combine(delta.DeltaFolderPath, "nodes");
@@ -1674,6 +1690,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                 return 0;
             }
             await _mergeEngine.StageIncomingNodeSetAsync(session.StagingOperation, fromNodeId, nodes);
+            session.IterationSources.TryAdd(fromNodeId, 0);
             foreach (var n in nodes) await _peerTracker.UpdatePeerWasSeenByAsync(n.Identity.NodeId, fromNodeId);
             _logger.LogInformation("[Consensus Protocol] Pulled {Count} record(s) from {From}: {Nodes}.", nodes.Count, fromNodeId, string.Join(", ", nodes.Select(n => n.Identity.NodeId).Take(8)));
             LogConsensusEvent("pull", new Dictionary<string, object?> { ["peer"] = fromNodeId, ["nodes"] = nodes.Select(n => n.Identity.NodeId).ToList() });
@@ -1718,10 +1735,12 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
             .Where(id => !held.Contains(id) && !id.Equals(_identity.NodeId, StringComparison.OrdinalIgnoreCase)).ToList();
         if (single.Count == 0 && missing.Count == 0) return;
 
-        // Single-source records: asked once per distinct set. Missing records: asked again every 10 s until they arrive.
+        // Single-source records: asked once per distinct set. Missing records are normally pushed to us by deltas
+        // (whoever learns something new passes it on); asking is only the fallback, every 30 s, for a record that
+        // nobody near us happens to push.
         string setKey = string.Join(",", single.Select(x => x.NodeId).OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
         bool askSingle = setKey != session.LastCorroborationKey;
-        bool askMissing = missing.Count > 0 && DateTime.UtcNow - session.LastMissingPullUtc > TimeSpan.FromSeconds(10);
+        bool askMissing = missing.Count > 0 && DateTime.UtcNow - session.LastMissingPullUtc > TimeSpan.FromSeconds(30);
         if (!askSingle && !askMissing) return;
         session.LastCorroborationKey = setKey;
         if (askMissing) session.LastMissingPullUtc = DateTime.UtcNow;

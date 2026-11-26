@@ -115,6 +115,7 @@ const key = (a, b) => a < b ? a * 4096 + b : b * 4096 + a;
 const ends = k => [Math.floor(k / 4096), k % 4096];
 
 let run = null, step = 0, playing = false, timer = null, S = null, sAt = -1, P = [], budget = 0;
+let Gn, calm = 0, settled = false;   // t-SNE gains per coordinate; how many quiet iterations in a row; layout at rest
 let Y, V, cam = { yaw: .7, pitch: .35, dist: 3.4 }, fitR = 10, W = 800, H = 500, hover = -1;
 const cv = $("cv"), ctx = cv.getContext("2d"), fig = $("fig");
 
@@ -224,6 +225,7 @@ function rebuildP() {
   const ref = lats.length ? lats[lats.length >> 1] : 50;
   for (const k of st.conn) { const l = st.lat.get(k); add(k, ws("conn") * (l == null ? 1 : 2 * ref / (ref + l))); }
   let total = 0; for (const v of w.values()) total += v;
+  settled = false; calm = 0;                                      // new links: the layout has somewhere to go again
   P = total > 0 ? [...w].map(([k, v]) => { const [a, b] = ends(k); return [a, b, v / (2 * total)]; }) : [];
 }
 
@@ -234,7 +236,7 @@ function tsneIter() {
     const dx = Y[3 * i] - Y[3 * j], dy = Y[3 * i + 1] - Y[3 * j + 1], dz = Y[3 * i + 2] - Y[3 * j + 2];
     const q = 1 / (1 + dx * dx + dy * dy + dz * dz); num[i * N + j] = q; Z += 2 * q;
   }
-  const g = new Float64Array(3 * N), exag = 4;
+  const g = new Float64Array(3 * N), exag = 2;
   for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {          // everyone repels: -q_ij * num_ij
     const nm = num[i * N + j], c = -4 * nm * nm / Z;
     for (let d = 0; d < 3; d++) { const f = c * (Y[3 * i + d] - Y[3 * j + d]); g[3 * i + d] += f; g[3 * j + d] -= f; }
@@ -243,12 +245,23 @@ function tsneIter() {
     const c = 4 * exag * p * num[Math.min(a, b) * N + Math.max(a, b)];
     for (let d = 0; d < 3; d++) { const f = c * (Y[3 * a + d] - Y[3 * b + d]); g[3 * a + d] += f; g[3 * b + d] -= f; }
   }
-  for (let i = 0; i < 3 * N; i++) {                                         // small gravity keeps strays in view
-    g[i] += .002 * Y[i];
-    V[i] = .6 * V[i] - 25 * g[i];
-    if (V[i] > .2) V[i] = .2; else if (V[i] < -.2) V[i] = -.2;
-    Y[i] += V[i];
+  // Size of the mesh right now: steps are capped relative to it, so a small, tight mesh is not
+  // thrown back and forth by steps sized for a big one (that was the oscillation).
+  const c = [0, 0, 0]; for (let i = 0; i < N; i++) for (let d = 0; d < 3; d++) c[d] += Y[3 * i + d] / N;
+  let spread = 0; for (let i = 0; i < N; i++) spread += (Y[3 * i] - c[0]) ** 2 + (Y[3 * i + 1] - c[1]) ** 2 + (Y[3 * i + 2] - c[2]) ** 2;
+  spread = Math.sqrt(spread / N) + .05;
+  const cap = .03 * spread;
+  let moved = 0;
+  for (let i = 0; i < 3 * N; i++) {
+    g[i] += .002 * (Y[i] - c[i % 3]);                                       // small gravity keeps strays in view
+    // t-SNE gains: grow while the gradient keeps its direction, shrink fast when it flips (damps back-and-forth)
+    Gn[i] = Math.sign(g[i]) !== Math.sign(V[i]) ? Gn[i] + .1 : Math.max(.05, Gn[i] * .7);
+    V[i] = .5 * V[i] - 20 * Gn[i] * g[i];
+    if (V[i] > cap) V[i] = cap; else if (V[i] < -cap) V[i] = -cap;
+    Y[i] += V[i]; moved += V[i] * V[i];
   }
+  // At rest: tiny steps for a while -> stop until the links change
+  if (Math.sqrt(moved / N) < .002 * spread) { if (++calm > 12) { settled = true; budget = 0; } } else calm = 0;
 }
 
 // ---- drawing
@@ -338,7 +351,7 @@ function load(raw) {
   run = build(raw); S = null; sAt = -1; step = 0;
   const { N, steps, t0 } = run;
   let seed = 7; const rnd = () => (seed = seed * 16807 % 2147483647) / 2147483647;
-  Y = new Float64Array(3 * N); V = new Float64Array(3 * N);
+  Y = new Float64Array(3 * N); V = new Float64Array(3 * N); Gn = new Float64Array(3 * N).fill(1); settled = false; calm = 0;
   for (let i = 0; i < 3 * N; i++) Y[i] = (rnd() - .5) * 4 * Math.cbrt(Math.max(N, 1));
   fitR = 2 * Math.cbrt(Math.max(N, 1));
   $("scrub").max = steps.length;
@@ -420,7 +433,7 @@ load(Array.isArray(data) ? data : []);
 const still = matchMedia("(prefers-reduced-motion: reduce)");
 const loop = () => {
   if (run && run.N) {
-    const n = budget > 0 ? Math.min(budget, 1) : ($("settle").checked ? 1 : 0);
+    const n = settled ? 0 : budget > 0 ? Math.min(budget, 1) : ($("settle").checked ? 1 : 0);
     for (let i = 0; i < n; i++) tsneIter();
     budget = Math.max(0, budget - n);
     if ($("spin").checked && !still.matches && !ptrs.size) cam.yaw += .0025;

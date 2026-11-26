@@ -9,7 +9,7 @@
 <style>
 /* VOICE work: a lab readout of one swarm run
    IDEA a culture seen under a dark-field microscope - nodes are spores floating in 3D, links of each kind glow in their own colour
-   PICTURE the live 3D mesh: t-SNE on the links known so far (seeds, connections with their latency, merges, deltas), small steps per event
+   PICTURE the live 3D mesh: t-SNE on the links known so far (seeds, connections with their latency, merges, deltas), small eased steps per event; recent links bright, old ones fade
    COLOUR page white / night navy; the plate is always dark so grey, green, red and yellow links all read; magenta for "now"
    TYPE Red Hat Display + Red Hat Text
    LAYOUT plate full width under a modest title with the readout beside it on a laptop; phone: title, plate, controls, readout */
@@ -181,8 +181,16 @@ function commonPrefix(names) {
   return p.replace(/[^-_ .]*$/, "");
 }
 
-function fresh(r) { return { held: r.names.map((_, i) => new Set([i])), seed: new Set(), cons: new Set(), delta: new Set(), conn: new Set(), lat: new Map() }; }
+function fresh(r) { return { held: r.names.map((_, i) => new Set([i])), seed: new Set(), cons: new Set(), delta: new Set(), conn: new Set(), lat: new Map(), when: new Map(), act: new Int32Array(r.N).fill(-1e6), n: 0 }; }
+const LI = { seed: 0, cons: 1, delta: 2, conn: 3 };
 function apply(r, st, s) {
+  const idx = ++st.n, mark = (layer, k) => st.when.set(k * 4 + LI[layer], idx);
+  if (s.a !== undefined) st.act[s.a] = idx;
+  if (s.b !== undefined) st.act[s.b] = idx;
+  if (s.k === "seeds") for (const k of s.pairs) mark("seed", k);
+  else if (s.k === "up") mark("conn", key(s.a, s.b));
+  else if (s.k === "merge") mark("cons", key(s.a, s.b));
+  else if (s.k === "delta") mark("delta", key(s.a, s.b));
   for (const [a, b, ms] of s.rtts || []) { const k = key(a, b), o = st.lat.get(k); st.lat.set(k, o == null ? ms : o * .7 + ms * .3); }
   if (s.k === "seeds") for (const k of s.pairs) st.seed.add(k);
   else if (s.k === "up") st.conn.add(key(s.a, s.b));
@@ -237,15 +245,17 @@ function tsneIter() {
   }
   for (let i = 0; i < 3 * N; i++) {                                         // small gravity keeps strays in view
     g[i] += .002 * Y[i];
-    V[i] = .5 * V[i] - 60 * g[i];
-    if (V[i] > .6) V[i] = .6; else if (V[i] < -.6) V[i] = -.6;
+    V[i] = .6 * V[i] - 25 * g[i];
+    if (V[i] > .2) V[i] = .2; else if (V[i] < -.2) V[i] = -.2;
     Y[i] += V[i];
   }
 }
 
 // ---- drawing
+let D = null, viewC = null;
+const tint = (hex, t) => { const n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255, m = v => Math.round(v + (255 - v) * t); return `rgb(${m(r)},${m(g)},${m(b)})`; };
 function project(i, c, R) {
-  const x = (Y[3 * i] - c[0]) / R, y = (Y[3 * i + 1] - c[1]) / R, z = (Y[3 * i + 2] - c[2]) / R;
+  const x = (D[3 * i] - c[0]) / R, y = (D[3 * i + 1] - c[1]) / R, z = (D[3 * i + 2] - c[2]) / R;
   const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw), cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
   const x1 = x * cy - z * sy, z1 = x * sy + z * cy, y1 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
   const f = cam.dist / (cam.dist + z2), s = Math.min(W, H) * .5;
@@ -258,21 +268,29 @@ function draw() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
   if (!run || !run.N) return;
   const N = run.N, st = stateAt(step), c = [0, 0, 0];
-  for (let i = 0; i < N; i++) for (let d = 0; d < 3; d++) c[d] += Y[3 * i + d] / N;
-  const ds = []; for (let i = 0; i < N; i++) ds.push(Math.hypot(Y[3 * i] - c[0], Y[3 * i + 1] - c[1], Y[3 * i + 2] - c[2]));
+  if (!D || D.length !== Y.length) D = Float64Array.from(Y);
+  for (let i = 0; i < D.length; i++) D[i] += (Y[i] - D[i]) * .12;          // ease toward the simulation: no jumps
+  for (let i = 0; i < N; i++) for (let d = 0; d < 3; d++) c[d] += D[3 * i + d] / N;
+  if (!viewC) viewC = c.slice();
+  for (let d = 0; d < 3; d++) viewC[d] += (c[d] - viewC[d]) * .03;
+  const ds = []; for (let i = 0; i < N; i++) ds.push(Math.hypot(D[3 * i] - viewC[0], D[3 * i + 1] - viewC[1], D[3 * i + 2] - viewC[2]));
   ds.sort((a, b) => a - b);
-  fitR += ((ds[Math.floor(ds.length * .92)] || 1) * 1.15 - fitR) * .05;
-  const pr = []; for (let i = 0; i < N; i++) pr.push(project(i, c, Math.max(fitR, .5)));
+  const want = (ds[Math.floor(ds.length * .92)] || 1) * 1.15;
+  if (Math.abs(want - fitR) > fitR * .04) fitR += (want - fitR) * .04;     // re-fit only on a real change, slowly
+  const pr = []; for (let i = 0; i < N; i++) pr.push(project(i, viewC, Math.max(fitR, .5)));
+  const tau = Math.max(6, run.steps.length / 25), now = st.n;
   const cur = run.steps[step - 1], curKey = cur && cur.b !== undefined ? key(cur.a, cur.b) : -1;
   const sets = { seed: st.seed, cons: st.cons, conn: st.conn, delta: st.delta };
   ctx.lineCap = "round";
   for (const L of LAYERS) {
     if (!$("on-" + L.id).checked) continue;
-    for (const k of sets[L.id]) {
+    const list = [...sets[L.id]].map(k => [k, Math.exp(-(now - (st.when.get(k * 4 + LI[L.id]) ?? -1e6)) / tau)]).sort((x, y) => x[1] - y[1]);
+    for (const [k, fresh] of list) {                                          // older first, newest on top
       const [a, b] = ends(k), p = pr[a], q = pr[b], depth = (p[2] + q[2]) / 2;
-      ctx.globalAlpha = L.alpha * Math.max(.25, Math.min(1, .75 - depth * .45));
-      ctx.strokeStyle = L.col; ctx.lineWidth = L.width * (p[3] + q[3]) / 2;
-      ctx.shadowBlur = k === curKey ? 14 : 0; ctx.shadowColor = L.col;
+      const deep = Math.max(.35, Math.min(1, .8 - depth * .4));
+      ctx.globalAlpha = Math.min(1, L.alpha * deep * (.22 + .78 * fresh));
+      ctx.strokeStyle = tint(L.col, .45 * fresh * fresh); ctx.lineWidth = L.width * (p[3] + q[3]) / 2 * (.8 + .8 * fresh);
+      ctx.shadowBlur = k === curKey ? 16 : fresh > .6 ? 8 * fresh : 0; ctx.shadowColor = L.col;
       ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
     }
   }
@@ -282,8 +300,11 @@ function draw() {
     const [x, y, z, f] = pr[i], share = st.held[i].size / N, r = (3.5 + 7 * Math.sqrt(share)) * f;
     const light = Math.round(120 + 135 * share), gr = ctx.createRadialGradient(x - r * .35, y - r * .35, r * .1, x, y, r);
     gr.addColorStop(0, "#ffffff"); gr.addColorStop(1, `rgb(${light - 40},${light - 25},${light})`);
-    ctx.globalAlpha = Math.max(.45, Math.min(1, .9 - z * .3));
+    const act = Math.exp(-(now - st.act[i]) / tau);
+    ctx.globalAlpha = Math.max(.45, Math.min(1, .7 - z * .3 + .3 * act));
+    ctx.shadowBlur = 12 * act; ctx.shadowColor = "#ffffff";
     ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
     if (share === 1) { ctx.strokeStyle = "#2bd46f"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, r + 2.5, 0, Math.PI * 2); ctx.stroke(); }
     if (cur && (i === cur.a || i === cur.b)) {
       const ph = (performance.now() % 1200) / 1200;
@@ -332,6 +353,7 @@ function load(raw) {
   if (N && missing.length) f += ` These logs have no ${missing.join(", ")} (older build or not collected).`;
   $("finding").textContent = f;
   $("list").innerHTML = steps.map((s, i) => `<li data-i="${i + 1}">${esc(describe(s))}</li>`).join("");
+  D = null; viewC = null;
   rebuildP(); budget = 60; show();
 }
 
@@ -398,7 +420,7 @@ load(Array.isArray(data) ? data : []);
 const still = matchMedia("(prefers-reduced-motion: reduce)");
 const loop = () => {
   if (run && run.N) {
-    const n = budget > 0 ? Math.min(budget, 3) : ($("settle").checked ? 1 : 0);
+    const n = budget > 0 ? Math.min(budget, 1) : ($("settle").checked ? 1 : 0);
     for (let i = 0; i < n; i++) tsneIter();
     budget = Math.max(0, budget - n);
     if ($("spin").checked && !still.matches && !ptrs.size) cam.yaw += .0025;

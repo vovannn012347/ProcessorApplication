@@ -679,6 +679,61 @@ def _parse_t(t):
     return datetime.strptime(t.replace("Z", ""), "%Y-%m-%dT%H:%M:%S.%f").replace(tzinfo=timezone.utc)
 
 
+RUNS_COLUMNS = ["run", "nodes", "evil", "attacks", "merges", "merges_per_node", "deltas", "pulls", "chain_depth",
+                "t_conv_s", "bytes_total", "bytes_per_node", "rec_bytes", "omega", "consistency_pct", "caught", "false_positives"]
+
+
+def run_metrics(events, names, evil_nodes):
+    """Numbers for one run, from the nodes' consensus events (since the trigger)."""
+    n = len(names)
+    starts = [e for e in events if e["ev"] == "start"]
+    if not starts:
+        return None
+    t0 = _parse_t(starts[0]["t"])
+    start_bytes = {}
+    for e in starts:
+        start_bytes.setdefault(e["_node"], e.get("bytes", 0) or 0)
+    # when each node first held all the others, and its traffic by then
+    done_at, bytes_at = {}, {}
+    for e in events:
+        if e["ev"] == "progress" and e["_node"] not in done_at and (e.get("held") or 0) >= n - 1:
+            done_at[e["_node"]] = _parse_t(e["t"])
+            bytes_at[e["_node"]] = (e.get("bytes") or 0) - start_bytes.get(e["_node"], 0)
+    for e in events:  # nodes that converged without a progress line after it: their finish traffic
+        if e["ev"] == "finish" and e["_node"] not in bytes_at:
+            bytes_at[e["_node"]] = (e.get("bytes") or 0) - start_bytes.get(e["_node"], 0)
+    swaps, last = 0, {}
+    for e in events:
+        if e["ev"] in ("merge", "merge_in") and e.get("ok", True) and e.get("peer"):
+            k = tuple(sorted((e["_node"], e["peer"])))
+            t = _parse_t(e["t"])
+            if k in last and (t - last[k]).total_seconds() < 3:
+                continue
+            last[k] = t
+            swaps += 1
+    depth = max([e.get("order") or 0 for e in events if e["ev"] == "merge_in"], default=0)
+    rec = sorted(e.get("rec_bytes") for e in events if e["ev"] == "finish" and e.get("rec_bytes"))
+    rec_bytes = rec[len(rec) // 2] if rec else None
+    total = sum(max(0, b) for b in bytes_at.values())
+    complete = sum(1 for x in names if x in done_at)
+    t_conv = (max(done_at.values()) - t0).total_seconds() if complete == n else None
+    found = [e for e in events if e["ev"] == "evidence"]
+    return {
+        "run": starts[0]["t"], "nodes": n, "evil": len(evil_nodes), "attacks": "",
+        "merges": swaps, "merges_per_node": round(swaps / n, 2) if n else 0,
+        "deltas": sum(1 for e in events if e["ev"] == "delta"),
+        "pulls": sum(1 for e in events if e["ev"] == "pull"),
+        "chain_depth": depth,
+        "t_conv_s": round(t_conv, 2) if t_conv is not None else "",
+        "bytes_total": total, "bytes_per_node": round(total / n) if n else 0,
+        "rec_bytes": rec_bytes or "",
+        "omega": round(total / (n * (n - 1) * rec_bytes), 2) if rec_bytes and n > 1 else "",
+        "consistency_pct": round(100.0 * complete / n, 1) if n else 0,
+        "caught": len({e.get("peer") for e in found if e.get("peer") in evil_nodes}),
+        "false_positives": len({e.get("peer") for e in found if e.get("peer") not in evil_nodes}),
+    }
+
+
 def analyze(args):
     log = convergence_log(args.rid)
     entries = read_lines(log)
@@ -733,6 +788,25 @@ def analyze(args):
             ok = sum(v[0] for v in merges.values())
             total = sum(v[1] for v in merges.values())
             print(f"  pairwise merges: {total} ({ok} ok, {total - ok} failed), {total / max(1, len(merges)):.1f} per node")
+        # ---- run metrics (table / figure columns)
+        evil_line0 = next((e for e in reversed(read_lines(log)) if e.get("kind") == "evil_nodes"), None)
+        m = run_metrics(events, names, set(evil_line0.get("nodes", [])) if evil_line0 else set())
+        if m:
+            if evil_line0:
+                m["attacks"] = "+".join(evil_line0.get("attacks", []))
+            print(f"\n  run: N={m['nodes']}, merges {m['merges']} ({m['merges_per_node']}/node), deltas {m['deltas']}, pulls {m['pulls']}, "
+                  f"chain depth {m['chain_depth']}, T_conv {m['t_conv_s'] or 'not converged'} s, consensus traffic {m['bytes_total'] / 1024:.1f} KB "
+                  f"({m['bytes_per_node'] / 1024:.1f} KB/node), record {m['rec_bytes'] or '?'} B, omega {m['omega'] or '?'}, consistency {m['consistency_pct']} %")
+            if getattr(args, "record", False):
+                runs = out_dir / "runs.csv"
+                new = not runs.exists()
+                with open(runs, "a", newline="", encoding="utf-8") as f:
+                    w = csv.DictWriter(f, fieldnames=RUNS_COLUMNS)
+                    if new:
+                        w.writeheader()
+                    w.writerow({k: m.get(k, "") for k in RUNS_COLUMNS})
+                print(f"  recorded in {runs}")
+
         # ---- attack test: what the evil nodes did, and who caught them
         evil_line = next((e for e in reversed(read_lines(log)) if e.get("kind") == "evil_nodes"), None)
         evil_nodes = set(evil_line.get("nodes", [])) if evil_line else set()
@@ -945,8 +1019,28 @@ def test(args):
     print("\n=== report")
     args.all = False
     args.since = ""
+    args.record = not getattr(args, "no_record", False)
     analyze(args)
     print("\nNodes keep running (consoles stay open). Stop them with: swarm.bat stop")
+
+
+def bench(args):
+    """Runs the whole test for several node counts, a few times each; every run appends a row to runs.csv."""
+    counts = [int(c) for c in args.counts.split(",") if c.strip()]
+    args.yes = True
+    args.no_record = False
+    total = len(counts) * args.repeat
+    k = 0
+    for c in counts:
+        for r in range(args.repeat):
+            k += 1
+            print(f"\n################ bench run {k}/{total}: {c} nodes, repeat {r + 1}/{args.repeat}")
+            args.count = c
+            test(args)
+            args.no_build = True          # build once
+            time.sleep(5)
+    stop(args)
+    print(f"\nBench done. Rows in {group_root(args.rid) / 'runs.csv'}; table and figure: python Build\\swarm\\figures.py")
 
 
 # ---------------------------------------------------------------- CLI
@@ -1019,7 +1113,22 @@ def main():
                         "a big number = wait for a full mesh, capped at count-1)")
     p.add_argument("--interval", type=float, default=15, help="seconds between convergence snapshots (default 15)")
     p.add_argument("--timeout", type=float, default=30, help="minutes to wait for convergence (default 30)")
+    p.add_argument("--no-record", action="store_true", help="don't append this run's numbers to <group>/runs.csv")
+    p = sub.add_parser("bench")
+    prep_options(p)
+    start_options(p)
+    p.add_argument("--counts", default="5,10,20,50", help="node counts to run (default 5,10,20,50)")
+    p.add_argument("--repeat", type=int, default=3, help="runs per node count (default 3)")
+    p.add_argument("--no-build", action="store_true", help="use the existing build")
+    p.add_argument("--admin-user", default="Admin")
+    p.add_argument("--node", default="")
+    p.add_argument("--settle", type=float, default=60)
+    p.add_argument("--settle-max", type=float, default=600)
+    p.add_argument("--min-known", type=int, default=1)
+    p.add_argument("--interval", type=float, default=5)
+    p.add_argument("--timeout", type=float, default=15)
     p = sub.add_parser("analyze")
+    p.add_argument("--record", action="store_true", help="append this run's numbers to <group>/runs.csv")
     p.add_argument("--all", action="store_true", help="everything in the logs, not only since the last trigger")
     p.add_argument("--since", default="", help="UTC start, e.g. 2026-11-24T02:10:00")
 
@@ -1037,7 +1146,7 @@ def main():
         start(args)
     else:
         {"build": build, "prepare": prepare, "fresh": fresh, "start": start, "stop": stop, "status": status,
-         "consensus": consensus, "check": check, "analyze": analyze, "test": test, "viz": viz}[args.command](args)
+         "consensus": consensus, "check": check, "analyze": analyze, "test": test, "viz": viz, "bench": bench}[args.command](args)
 
 
 if __name__ == "__main__":

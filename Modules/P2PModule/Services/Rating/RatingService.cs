@@ -36,14 +36,17 @@ public class RatingService : IRatingService, IDisposable
     private readonly IPeerRatingOverrideService _overrideService;
     private readonly IOptionsMonitor<RatingSettings> _ratingSettings;
     private readonly ILogger<RatingService> _logger;
+    private readonly IOptionsMonitor<P2PModule.Configuration.P2PSettings> _p2p;
     private readonly ConcurrentDictionary<string, double> _localObservationMatrix = new();
 
     public RatingService(
         ILogger<RatingService> logger,
         IOptionsMonitor<RatingSettings> settings,
         IPeerTracker peerTracker,
-        IPeerRatingOverrideService overrideService)
+        IPeerRatingOverrideService overrideService,
+        IOptionsMonitor<P2PModule.Configuration.P2PSettings> p2p)
     {
+        _p2p = p2p;
         _logger = logger;
         _ratingSettings = settings;
         _peerTracker = peerTracker;
@@ -100,6 +103,8 @@ public class RatingService : IRatingService, IDisposable
 
         _logger.LogInformation("[RatingService] Updated Node {NodeId}: BaseAmount={BaseAmount} (Effective={EffectiveDelta:F2}, Trapdoor={IsTrapdoor}). Prev={Prev}, Decayed={Decayed}, NewScore={NewScore}",
             nodeIdTo, baseAmount, effectiveDelta, isTrapdoor, currentBaseScore, decayedScore, localRating);
+        P2PModule.Services.Maintenance.ConsensusEventLog.WriteRating(_p2p.CurrentValue.DataStoragePath,
+            _p2p.CurrentValue.EnforcedNodeIdentifier, nodeIdTo, effectiveDelta, localRating);
     }
 
     /// <summary>

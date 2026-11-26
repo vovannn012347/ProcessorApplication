@@ -278,7 +278,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
 
         SeedVisitQueueFromPeerTracker();
         RegisterConsensusNetworkHandlers();
-        LogConsensusEvent("start", new Dictionary<string, object?> { ["role"] = "initiator", ["known"] = KnownPeerCount() });
+        LogConsensusEvent("start", new Dictionary<string, object?> { ["role"] = "initiator", ["known"] = KnownPeerCount(), ["bytes"] = TrafficCounter.ConsensusBytes, ["msgs"] = TrafficCounter.ConsensusMessages });
 
         _sessionLoopCts?.Cancel();
         _sessionLoopCts = new CancellationTokenSource();
@@ -363,7 +363,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                             {
                                 // What we pulled is new to our old partners too: pass it on as a delta, like a merge result
                                 await CreateAndBroadcastLocalDeltaAsync(session, ct);
-                                await _sessionManager.FinalizeIterationStepAsync();
+                                await FinalizeIterationAndReportAsync(session);
                             }
                             _sessionManager.GiveUpNode(targetNodeId);
                             continue;
@@ -404,7 +404,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                     // Step 3: Ingest pending deltas, generate local delta, finalize iteration
                     await IngestPendingDeltasAsync(session);
                     await CreateAndBroadcastLocalDeltaAsync(session, ct);
-                    await _sessionManager.FinalizeIterationStepAsync();
+                    await FinalizeIterationAndReportAsync(session);
 
                     await Task.Delay(250, ct);
                 }
@@ -436,7 +436,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                         _logger.LogInformation("[Consensus Protocol] Pending deltas detected during idling. Ingesting...");
                         await IngestPendingDeltasAsync(session);
                         await CreateAndBroadcastLocalDeltaAsync(session, ct);
-                        await _sessionManager.FinalizeIterationStepAsync();
+                        await FinalizeIterationAndReportAsync(session);
                         await SyncMergeDirToConsensusStoreAsync(session);
                     }
 
@@ -492,7 +492,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         {
             SeedVisitQueueFromPeerTracker();
             RegisterConsensusNetworkHandlers();
-            LogConsensusEvent("start", new Dictionary<string, object?> { ["role"] = "joined", ["from"] = senderNodeId, ["known"] = KnownPeerCount() });
+            LogConsensusEvent("start", new Dictionary<string, object?> { ["role"] = "joined", ["from"] = senderNodeId, ["known"] = KnownPeerCount(), ["bytes"] = TrafficCounter.ConsensusBytes, ["msgs"] = TrafficCounter.ConsensusMessages });
 
             _sessionLoopCts?.Cancel();
             _sessionLoopCts = new CancellationTokenSource();
@@ -1612,6 +1612,20 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
             }, _logger);
     }
 
+    // ---- measurements for the swarm report: how many nodes this node holds, and the traffic so far
+    private int _lastReportedHeld = -1;
+    private async Task FinalizeIterationAndReportAsync(ConsensusMergeSession session)
+    {
+        await _sessionManager.FinalizeIterationStepAsync();
+        int held = HeldNodeIds(session).Count(id => !id.Equals(_identity.NodeId, StringComparison.OrdinalIgnoreCase));
+        if (held == _lastReportedHeld) return;
+        _lastReportedHeld = held;
+        LogConsensusEvent("progress", new Dictionary<string, object?>
+        {
+            ["held"] = held, ["bytes"] = TrafficCounter.ConsensusBytes, ["msgs"] = TrafficCounter.ConsensusMessages,
+        });
+    }
+
     #region Neighbours, pulls and corroboration (no full mesh)
 
     private bool IsConnected(string nodeId) =>
@@ -1707,7 +1721,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         if (got > 0)
         {
             await CreateAndBroadcastLocalDeltaAsync(session, ct);   // only differences go out (missing ones found)
-            await _sessionManager.FinalizeIterationStepAsync();
+            await FinalizeIterationAndReportAsync(session);
             await SyncMergeDirToConsensusStoreAsync(session);
         }
     }
@@ -1790,7 +1804,23 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
 
     private async Task CompleteAndFinalizeSessionAsync(string reason = "done")
     {
-        LogConsensusEvent("finish", new Dictionary<string, object?> { ["reason"] = reason, ["known"] = KnownPeerCount() });
+        // Average size of one node record as it travels (for the overhead coefficient in the report)
+        int recBytes = 0;
+        try
+        {
+            var s = _sessionManager.GetActiveSession();
+            if (s != null)
+            {
+                var recs = await LoadLocalNodesForSwapAsync(s);
+                if (recs.Count > 0) recBytes = (int)recs.Average(r => JsonSerializer.Serialize(r).Length);
+            }
+        }
+        catch { }
+        LogConsensusEvent("finish", new Dictionary<string, object?>
+        {
+            ["reason"] = reason, ["known"] = KnownPeerCount(),
+            ["bytes"] = TrafficCounter.ConsensusBytes, ["msgs"] = TrafficCounter.ConsensusMessages, ["rec_bytes"] = recBytes,
+        });
         UnregisterConsensusNetworkHandlers();
         await _sessionManager.FinalizeSessionAsync();
 

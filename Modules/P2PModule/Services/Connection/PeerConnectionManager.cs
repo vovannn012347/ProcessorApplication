@@ -453,6 +453,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
     /// <returns></returns>
     public bool SendReplyRaw(string nodeId, string payload, string channelLabel = "p2p-control-channel")
     {
+        P2PModule.Services.Maintenance.TrafficCounter.Count(payload);
         // An answer belongs on the connection the request came in on. After two dials crossed, the connection
         // stored for the node can be another (still "open") one that the node no longer reads: answers sent
         // there vanished and the asker's heartbeats failed until the link was rebuilt.
@@ -461,10 +462,16 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
             inbound.send(payload);
             return true;
         }
-        return SendMessageRaw(nodeId, payload, channelLabel);
+        return SendMessageRawCore(nodeId, payload, channelLabel);
     }
 
     public bool SendMessageRaw(string nodeId, string payload, string channelLabel = "p2p-control-channel")
+    {
+        P2PModule.Services.Maintenance.TrafficCounter.Count(payload);
+        return SendMessageRawCore(nodeId, payload, channelLabel);
+    }
+
+    private bool SendMessageRawCore(string nodeId, string payload, string channelLabel)
     {
         // The current connection's channel first. (Preferring the channel the node last talked on was tried and
         // made things worse: after a reconnect that pointed at the OLD connection's channel, which still said

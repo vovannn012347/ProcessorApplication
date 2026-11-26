@@ -345,6 +345,18 @@ def prepare(args):
     if evil_names:
         print(f"Evil nodes ({', '.join(attacks)}): {', '.join(sorted(evil_names))}")
 
+    # Homes of an earlier, bigger swarm stay on disk, but without swarm-node.json "start" no longer sees them
+    # (a 5-node run used to start all 10).
+    keep = {n["Name"] for n in nodes}
+    retired = 0
+    if root.is_dir():
+        for d in root.iterdir():
+            if d.is_dir() and d.name not in keep and (d / "swarm-node.json").exists():
+                (d / "swarm-node.json").unlink()
+                retired += 1
+    if retired:
+        print(f"{retired} home(s) of nodes not in this swarm set aside (their swarm-node.json removed).")
+
     write_json(group_root(args.rid) / "swarm-homes.json",
                [{"Name": n["Name"], "Port": n["Port"], "Url": n["Url"]} for n in nodes])
 

@@ -882,6 +882,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
 
                                     QueueNeighboursToVisit(nodeIds);
                                     _sessionManager.RegisterNodesInCurrentSyncSet(nodeIds);
+                                    foreach (var id in nodeIds) session.KnownIds.TryAdd(id, 0);
                                   }
                                   catch (Exception ex)
                                   {
@@ -1067,6 +1068,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
             {
                 QueueNeighboursToVisit(req.ExchangedNodeIds);
                 _sessionManager.RegisterNodesInCurrentSyncSet(req.ExchangedNodeIds);
+                foreach (var id in req.ExchangedNodeIds) session.KnownIds.TryAdd(id, 0);
                 foreach (var nodeId in req.ExchangedNodeIds)
                 {
                     await _peerTracker.UpdatePeerWasSeenByAsync(nodeId, senderNodeId);
@@ -1129,6 +1131,9 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
             if (ping == null || string.IsNullOrEmpty(ping.DeltaIdentifier)) return "FUCK_THIS_REQUEST";
 
             string remoteDeltaId = ping.DeltaIdentifier;
+            session.KnownIds.TryAdd(senderNodeId, 0);
+            foreach (var id in ping.Nodes ?? new HashSet<string>()) session.KnownIds.TryAdd(id, 0);
+            foreach (var s in ping.SignatureChain ?? new List<ChainSignature>()) if (!string.IsNullOrEmpty(s?.SignerNodeId)) session.KnownIds.TryAdd(s.SignerNodeId, 0);
 
             if (session.LocalDeltas.ContainsKey(remoteDeltaId) || session.PendingDeltasToMerge.ContainsKey(remoteDeltaId))
                 return "ALREADY_SYNCED";
@@ -1364,6 +1369,8 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         };
 
         string payload = JsonSerializer.Serialize(ping);
+        _logger.LogInformation("[Consensus Protocol] Delta {DeltaId} ({Count} node record(s) changed) announced to {Targets} old partner(s): {Nodes}.",
+            deltaItem.DeltaId, session.CurrentSyncSet.Count, pastNodes.Count, string.Join(", ", pastNodes.Take(12)));
 
         foreach (var nodeId in pastNodes)
         {
@@ -1617,6 +1624,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
     private async Task FinalizeIterationAndReportAsync(ConsensusMergeSession session)
     {
         await _sessionManager.FinalizeIterationStepAsync();
+        if (session.StagingOperation == null || !Directory.Exists(session.StagingOperation.MergeDir)) return;   // session over
         int held = HeldNodeIds(session).Count(id => !id.Equals(_identity.NodeId, StringComparison.OrdinalIgnoreCase));
         if (held == _lastReportedHeld) return;
         _lastReportedHeld = held;
@@ -1656,7 +1664,11 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
             if (!result.IsSuccess || string.IsNullOrEmpty(result.Payload) || !result.Payload.TrimStart().StartsWith("[")) return 0;
             var nodes = JsonSerializer.Deserialize<List<PeerNodeTransferred>>(result.Payload) ?? new List<PeerNodeTransferred>();
             nodes = nodes.Where(n => n?.Identity?.NodeId != null && nodeIds.Contains(n.Identity.NodeId, StringComparer.OrdinalIgnoreCase)).ToList();
-            if (nodes.Count == 0) return 0;
+            if (nodes.Count == 0)
+            {
+                _logger.LogInformation("[Consensus Protocol] {From} has none of the {Count} record(s) we asked for ({Ids}).", fromNodeId, nodeIds.Count, string.Join(", ", nodeIds.Take(8)));
+                return 0;
+            }
             await _mergeEngine.StageIncomingNodeSetAsync(session.StagingOperation, fromNodeId, nodes);
             foreach (var n in nodes) await _peerTracker.UpdatePeerWasSeenByAsync(n.Identity.NodeId, fromNodeId);
             _logger.LogInformation("[Consensus Protocol] Pulled {Count} record(s) from {From}: {Nodes}.", nodes.Count, fromNodeId, string.Join(", ", nodes.Select(n => n.Identity.NodeId).Take(8)));
@@ -1679,6 +1691,8 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         if (req?.NodeIds == null || req.NodeIds.Count == 0) return "[]";
         var wanted = new HashSet<string>(req.NodeIds.Take(MaxPullIds), StringComparer.OrdinalIgnoreCase);
         var nodes = _evil.TamperOutgoingNodes(senderNodeId, (await LoadLocalNodesForSwapAsync(session)).Where(n => wanted.Contains(n.Identity.NodeId)).ToList());
+        _logger.LogInformation("[Consensus Protocol] {Sender} asked for {Asked} record(s) ({Ids}); we hold {Have}.", senderNodeId, wanted.Count,
+            string.Join(", ", wanted.Take(8)), nodes.Count);
         return JsonSerializer.Serialize(nodes);
     }
 
@@ -1692,13 +1706,25 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         var op = session.StagingOperation;
         if (op == null) return;
         var held = HeldNodeIds(session);
+        foreach (var p in _peerTracker.GetLastSeenNodes(PeerTracker.DefaultNodeComparer))
+            if (p?.Identity?.NodeId != null && p.Identity.Roles.Contains("tracker")) session.KnownIds.TryAdd(p.Identity.NodeId, 0);
         var single = op.Observations.SingleSource().Where(x => !x.NodeId.Equals(_identity.NodeId, StringComparison.OrdinalIgnoreCase)).ToList();
-        var missing = session.UnconfirmedSigners.Keys.Where(id => !held.Contains(id) && !id.Equals(_identity.NodeId, StringComparison.OrdinalIgnoreCase)).ToList();
+        var missing = session.UnconfirmedSigners.Keys.Concat(session.KnownIds.Keys).Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(id => !held.Contains(id) && !id.Equals(_identity.NodeId, StringComparison.OrdinalIgnoreCase)).ToList();
         if (single.Count == 0 && missing.Count == 0) return;
 
-        string setKey = string.Join(",", single.Select(x => x.NodeId).Concat(missing).OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
-        if (setKey == session.LastCorroborationKey) return;
+        // Single-source records: asked once per distinct set. Missing records: asked again every 10 s until they arrive.
+        string setKey = string.Join(",", single.Select(x => x.NodeId).OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
+        bool askSingle = setKey != session.LastCorroborationKey;
+        bool askMissing = missing.Count > 0 && DateTime.UtcNow - session.LastMissingPullUtc > TimeSpan.FromSeconds(10);
+        if (!askSingle && !askMissing) return;
         session.LastCorroborationKey = setKey;
+        if (askMissing) session.LastMissingPullUtc = DateTime.UtcNow;
+        if (!askSingle) single = new List<(string NodeId, string Source)>();
+        if (!askMissing) missing = new List<string>();
+        if (missing.Count > 0)
+            _logger.LogInformation("[Consensus Protocol] Holding {Held} of {Known} known node(s); missing: {Missing} (round {Round}).",
+                held.Count, session.KnownIds.Count, string.Join(", ", missing.Take(12)), session.MissingPullRounds + 1);
 
         var neighbours = _connectionManager.GetActiveConnections()
             .Where(c => c?.NodeId != null && c.PeerConnection?.connectionState == SIPSorcery.Net.RTCPeerConnectionState.connected)
@@ -1718,6 +1744,23 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         if (asked > 0)
             _logger.LogInformation("[Consensus Protocol] Asked {Asked} neighbour(s) to confirm {Single} single-source and {Missing} missing record(s); {Got} record(s) came back.",
                 asked, single.Count, missing.Count, got);
+
+        // Still missing after two rounds of asking neighbours: the node itself holds its own record - ask it directly
+        if (missing.Count > 0)
+        {
+            var stillMissing = missing.Where(id => !HeldNodeIds(session).Contains(id)).ToList();
+            if (stillMissing.Count == 0) session.MissingPullRounds = 0;
+            else if (++session.MissingPullRounds >= 2)
+            {
+                foreach (var id in stillMissing.Take(3))
+                {
+                    if (ct.IsCancellationRequested) break;
+                    _logger.LogInformation("[Consensus Protocol] No neighbour has {NodeId}'s record; asking {NodeId} directly.", id, id);
+                    if (await EnsurePeerConnectionAsync(id))
+                        got += await PullNodesAsync(id, new List<string> { id }, session, ct);
+                }
+            }
+        }
         if (got > 0)
         {
             await CreateAndBroadcastLocalDeltaAsync(session, ct);   // only differences go out (missing ones found)

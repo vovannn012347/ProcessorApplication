@@ -118,6 +118,11 @@ public class ConsensusMergeSession
     public ConcurrentDictionary<string, byte> UnconfirmedSigners { get; } = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Last set of node ids we asked neighbours to confirm, so an unchanged set is not asked again.</summary>
     public string LastCorroborationKey { get; set; } = string.Empty;
+    /// <summary>Every node id this session heard of (sync sets, chain signers, delta node lists, pulls): what "complete" means.</summary>
+    public ConcurrentDictionary<string, byte> KnownIds { get; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Missing records: when we last asked for them, and how many rounds we asked neighbours without success.</summary>
+    public DateTime LastMissingPullUtc { get; set; } = DateTime.MinValue;
+    public int MissingPullRounds { get; set; }
     /// <summary>How often a node was put back into the queue because it was busy (see RequeueNodeForRetry).</summary>
     public Dictionary<string, int> VisitRetries { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 

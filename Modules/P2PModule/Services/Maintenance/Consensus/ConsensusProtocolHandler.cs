@@ -194,6 +194,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
     private readonly IRatingService _ratingService;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptionsMonitor<P2PSettings> _p2pSettings;
+    private readonly IEvilBehaviour _evil;
     private readonly ILogger<ConsensusProtocolHandler> _logger;
 
     private CancellationTokenSource? _sessionLoopCts;
@@ -217,8 +218,10 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         IRatingService ratingService,
         IServiceScopeFactory scopeFactory,
         IOptionsMonitor<P2PSettings> p2pSettings,
+        IEvilBehaviour evil,
         ILogger<ConsensusProtocolHandler> logger)
     {
+        _evil = evil;
         _sessionManager = sessionManager;
         _mergeEngine = mergeEngine;
         _consensusStore = consensusStore;
@@ -665,6 +668,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         {
             case SignedRequestVerdict.Ok:
             case SignedRequestVerdict.OkNewKey:
+                _evil.OnSignedRequest(senderNodeId, what == "start ping" ? "ConsensusStartPing" : "ConsensusMergeInitRequest", frame.SerializedPayload ?? string.Empty);
                 return (verdict, null);
 
             case SignedRequestVerdict.Unsigned:
@@ -809,7 +813,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
     {
         try
         {
-            bool hasReceivedData = false;
+            bool hasReceivedData = false, hadError = false;
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
             // The router hands every chunk (and the final "completed" signal) to its own task, in no particular
@@ -839,6 +843,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                     if (!string.IsNullOrEmpty(error))
                     {
                         _logger.LogWarning("[Consensus Protocol] Progressive swap segment error from {Target}: {Error}", targetNodeId, error);
+                        hadError = true;
                         if (isCompleted) tcs.TrySetResult(hasReceivedData);
                         return;
                     }
@@ -918,7 +923,9 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                     targetNodeId, stagedChunks, expectedChunks);
                 return hasReceivedData;
             }
-            return await tcs.Task;
+            bool received = await tcs.Task;
+            if (!received && !hadError) await NoteWithholdingAsync(targetNodeId, session);   // a clean, complete, empty answer
+            return received;
         }
         catch (Exception ex)
         {
@@ -1011,7 +1018,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
             return null!;
         }
 
-        var localNodes = await LoadLocalNodesForSwapAsync(session);
+        var localNodes = _evil.TamperOutgoingNodes(senderNodeId, await LoadLocalNodesForSwapAsync(session));
         int totalNodes = localNodes.Count;
 
         if (totalNodes == 0)
@@ -1351,7 +1358,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
             DeltaFromNode = _identity.NodeId,
             DeltaIdentifier = deltaItem.DeltaId,
             DeltaVerifyKey = session.DayKeyVerifyKey,
-            SignatureChain = _sessionManager.GetSyncSetSignatures(),
+            SignatureChain = _evil.TamperChain(_sessionManager.GetSyncSetSignatures()),
             SourceSignatureChain = _sessionManager.GetSyncSetSignatures(),
             Nodes = new HashSet<string>(session.CurrentSyncSet)
         };
@@ -1584,6 +1591,27 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         _logger.LogInformation("[Consensus Role] Self-demoted from temporary 'tracker' role (IsTemporarilyPromotedTracker=false).");
     }
 
+    // An accepted merge that brings no records at all: a node in a session always holds at least the peers it
+    // knows, so an empty swap is withholding. Once is a hiccup; the second time it is reported.
+    private readonly ConcurrentDictionary<string, int> _withholdStrikes = new(StringComparer.OrdinalIgnoreCase);
+    private async Task NoteWithholdingAsync(string targetNodeId, ConsensusMergeSession session)
+    {
+        int strikes = _withholdStrikes.AddOrUpdate(targetNodeId, 1, (_, n) => n + 1);
+        if (strikes < 2) return;
+        _logger.LogWarning("[Anti-Tamper Guard] {TargetNodeId} accepted a merge and sent no records ({Strikes} times). Penalizing; evidence kept.", targetNodeId, strikes);
+        await _ratingService.ApplyLocalReputationUpdateAsync(targetNodeId, -5);
+        if (session.StagingOperation != null)
+            ConsensusEvidenceStore.Write(session.StagingOperation.EvidenceDir, new ConsensusEvidence
+            {
+                Kind = "withholding",
+                SubjectNodeId = targetNodeId,
+                ConsensusDate = session.StagingOperation.TargetDate,
+                DetectedByNodeId = _identity.NodeId,
+                Reason = $"Accepted a merge and sent no records, {strikes} times this session (not self-proving: local evidence only).",
+                PenalizedNodeIds = new List<string> { targetNodeId },
+            }, _logger);
+    }
+
     #region Neighbours, pulls and corroboration (no full mesh)
 
     private bool IsConnected(string nodeId) =>
@@ -1636,7 +1664,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         try { req = JsonSerializer.Deserialize<ConsensusNodePullRequest>(frame.SerializedPayload ?? string.Empty); } catch { }
         if (req?.NodeIds == null || req.NodeIds.Count == 0) return "[]";
         var wanted = new HashSet<string>(req.NodeIds.Take(MaxPullIds), StringComparer.OrdinalIgnoreCase);
-        var nodes = (await LoadLocalNodesForSwapAsync(session)).Where(n => wanted.Contains(n.Identity.NodeId)).ToList();
+        var nodes = _evil.TamperOutgoingNodes(senderNodeId, (await LoadLocalNodesForSwapAsync(session)).Where(n => wanted.Contains(n.Identity.NodeId)).ToList());
         return JsonSerializer.Serialize(nodes);
     }
 

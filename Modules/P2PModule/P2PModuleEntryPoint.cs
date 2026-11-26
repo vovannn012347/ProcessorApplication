@@ -109,6 +109,9 @@ public class P2PModuleEntryPoint : IModule
         services.AddModuleSettings<RatingSettings>(config, ModuleId);
         services.AddModuleSettings<GossipSettings>(config, ModuleId);
         services.AddModuleSettings<StorageSettings>(config, ModuleId);
+        // Swarm test only: attacks this node performs on purpose (ignored outside NodeTrackerSwarm)
+        services.AddModuleSettings<P2PModule.Services.Maintenance.EvilSettings>(config, ModuleId);
+        services.AddSingleton<P2PModule.Services.Maintenance.IEvilBehaviour, P2PModule.Services.Maintenance.EvilBehaviour>();
 
         services.TryAddHttpClient();
         // Node-to-node HTTP client: accepts self-signed certificates from private LAN addresses only (LanCertificatePolicy)

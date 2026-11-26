@@ -117,6 +117,36 @@ public sealed class ConsensusObservationLedger
         }
     }
 
+    // nodeId -> source -> reported trust score; source -> subjects it was an outlier on
+    private readonly Dictionary<string, Dictionary<string, double>> _trust = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, HashSet<string>> _outliers = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Records a source's trust score for a node. Once at least two OTHER sources reported the same node, a source
+    /// further than <paramref name="threshold"/> from their median is an outlier on that node. Returns the sources
+    /// that became outliers on a new subject, with how many subjects they are outliers on now.
+    /// </summary>
+    public List<(string Source, int Subjects, double Value, double Median)> ObserveTrust(string nodeId, string source, double trust, double threshold = 40)
+    {
+        var result = new List<(string, int, double, double)>();
+        if (string.IsNullOrEmpty(source)) return result;
+        lock (_lock)
+        {
+            if (!_trust.TryGetValue(nodeId, out var bySource)) _trust[nodeId] = bySource = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            bySource[source] = trust;
+            if (bySource.Count < 3) return result;
+            foreach (var (src, value) in bySource)
+            {
+                var others = bySource.Where(kv => !kv.Key.Equals(src, StringComparison.OrdinalIgnoreCase)).Select(kv => kv.Value).OrderBy(v => v).ToList();
+                double median = others.Count % 2 == 1 ? others[others.Count / 2] : (others[others.Count / 2 - 1] + others[others.Count / 2]) / 2;
+                if (Math.Abs(value - median) <= threshold) continue;
+                if (!_outliers.TryGetValue(src, out var subjects)) _outliers[src] = subjects = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (subjects.Add(nodeId)) result.Add((src, subjects.Count, value, median));
+            }
+        }
+        return result;
+    }
+
     /// <summary>Nodes reported by exactly one other node so far, with that source.</summary>
     public List<(string NodeId, string Source)> SingleSource()
     {
@@ -193,6 +223,8 @@ public sealed class ConsensusEvidence
     public object? Chain { get; set; }
     /// <summary>The signed request involved (start ping, merge init).</summary>
     public object? Request { get; set; }
+    /// <summary>Anything else the check used (reported values, medians...).</summary>
+    public object? Details { get; set; }
     public List<string> PenalizedNodeIds { get; set; } = new();
     /// <summary>Not yet handed to gossip.</summary>
     public bool Gossiped { get; set; }
@@ -220,6 +252,16 @@ public static class ConsensusEvidenceStore
                 "|" + (evidence.Request != null ? JsonSerializer.Serialize(evidence.Request) : string.Empty)))).Substring(0, 12);
             string path = Path.Combine(evidenceDir, $"{evidence.Kind}_{evidence.SubjectNodeId}_{tag}.json");
             // Same discrepancy -> same file: a later sighting refreshes the sources and keeps who was penalized before
+            bool first = !File.Exists(path);
+            if (first)
+            {
+                // <data>/consensus_evidence/<date>: one line in the node's consensus events, for analyze and the replay
+                string? dataDir = Path.GetDirectoryName(Path.GetDirectoryName(Path.GetFullPath(evidenceDir)));
+                ConsensusEventLog.Write(dataDir, evidence.DetectedByNodeId, "evidence", null, new Dictionary<string, object?>
+                {
+                    ["kind"] = evidence.Kind, ["peer"] = evidence.SubjectNodeId, ["penalized"] = evidence.PenalizedNodeIds,
+                });
+            }
             if (File.Exists(path))
             {
                 try

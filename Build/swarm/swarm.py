@@ -268,6 +268,13 @@ def prepare(args):
                 picked.append(j)
         node["Seeds"] = [nodes[j]["Url"] for j in picked] + extra
 
+    # Swarm test of attacks: N nodes misbehave on purpose (never the first node: it triggers the consensus)
+    attacks = [a.strip() for a in (getattr(args, "attacks", "") or "").split(",") if a.strip()]
+    evil_count = max(0, min(getattr(args, "evil", 0) or 0, count - 1))
+    evil_names = set(rng.sample(names[1:], evil_count)) if evil_count and attacks else set()
+    if evil_count and not attacks:
+        print("--evil given without --attacks: no node misbehaves.")
+
     public_count = max(0, min(getattr(args, "public", 0) or 0, count))
     worker = None
     if public_count:
@@ -291,14 +298,18 @@ def prepare(args):
         updated += not is_new
         copy_presets(presets, home)
 
-        write_json(home / "Modules" / "P2PModule" / f"appsettings.P2P.{ENVIRONMENT}.json", {
+        p2p_override = {
             "P2PSettings": {
                 "EnforcedNodeIdentifier": node["Name"],
                 # advertised endpoints are kept without a scheme (https is tried first, then http)
                 "Endpoints": [f"localhost:{node['Port']}"],
                 "SeedEndpoints": node["Seeds"],
             }
-        })
+        }
+        node["Evil"] = attacks if node["Name"] in evil_names else []
+        if node["Evil"]:
+            p2p_override["EvilSettings"] = {"Attacks": attacks, "Rate": getattr(args, "evil_rate", 1.0)}
+        write_json(home / "Modules" / "P2PModule" / f"appsettings.P2P.{ENVIRONMENT}.json", p2p_override)
         clinic = home / "Modules" / "ProviderlessModule" / f"appsettings.Providerless.{ENVIRONMENT}.json"
         node["Public"] = nodes.index(node) < public_count
         if node["Public"]:
@@ -325,6 +336,11 @@ def prepare(args):
             seeded += 1
 
         write_json(home / "swarm-node.json", node)
+
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    append_line(convergence_log(args.rid), {"t": stamp, "kind": "evil_nodes", "nodes": sorted(evil_names), "attacks": attacks if evil_names else []})
+    if evil_names:
+        print(f"Evil nodes ({', '.join(attacks)}): {', '.join(sorted(evil_names))}")
 
     write_json(group_root(args.rid) / "swarm-homes.json",
                [{"Name": n["Name"], "Port": n["Port"], "Url": n["Url"]} for n in nodes])
@@ -717,6 +733,32 @@ def analyze(args):
             ok = sum(v[0] for v in merges.values())
             total = sum(v[1] for v in merges.values())
             print(f"  pairwise merges: {total} ({ok} ok, {total - ok} failed), {total / max(1, len(merges)):.1f} per node")
+        # ---- attack test: what the evil nodes did, and who caught them
+        evil_line = next((e for e in reversed(read_lines(log)) if e.get("kind") == "evil_nodes"), None)
+        evil_nodes = set(evil_line.get("nodes", [])) if evil_line else set()
+        acts = [e for e in events if e["ev"] == "evil"]
+        found = [e for e in events if e["ev"] == "evidence"]
+        if evil_nodes or acts or found:
+            print(f"\nAttack test: evil nodes {', '.join(sorted(evil_nodes)) or '-'}" +
+                  (f" ({', '.join(evil_line.get('attacks', []))})" if evil_line and evil_nodes else ""))
+            for n in sorted(evil_nodes | {e["_node"] for e in acts}):
+                mine = [e for e in acts if e["_node"] == n]
+                kinds = {}
+                for e in mine:
+                    kinds[e.get("attack")] = kinds.get(e.get("attack"), 0) + 1
+                caught = [e for e in found if e.get("peer") == n]
+                first_act = min((_parse_t(e["t"]) for e in mine), default=None)
+                first_caught = min((_parse_t(e["t"]) for e in caught), default=None)
+                lag = f", first caught {(first_caught - first_act).total_seconds():.1f} s after its first attack" if first_act and first_caught else ""
+                print(f"  {n}: {len(mine)} attack(s) " + (", ".join(f"{k} {v}" for k, v in kinds.items()) if kinds else "") +
+                      f"; evidence by {len({e['_node'] for e in caught})} node(s) ({', '.join(sorted({e.get('kind') for e in caught})) or 'none'}){lag}")
+            honest_hits = [e for e in found if e.get("peer") not in evil_nodes]
+            if honest_hits:
+                print(f"  false positives: {len(honest_hits)} evidence record(s) about honest nodes: " +
+                      ", ".join(sorted({f'{e.get("peer")} ({e.get("kind")}, by {e["_node"]})' for e in honest_hits}))[:600])
+            else:
+                print("  false positives: none")
+
         with open(out_dir / "consensus_events.csv", "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
             w.writerow(["seconds", "time", "node", "event", "detail"])
@@ -797,7 +839,12 @@ def viz(args):
             if peer and peer != info["Name"]:
                 seeds.append({"t": first_t, "node": info["Name"], "ev": "seed", "peer": peer})
 
-    events = sorted(events + conns + seeds, key=lambda e: e["t"])
+    evil_lines = [e for e in read_lines(convergence_log(args.rid)) if e.get("kind") == "evil_nodes"]
+    evil = []
+    if evil_lines:
+        for name in evil_lines[-1].get("nodes", []):
+            evil.append({"t": first_t, "node": name, "ev": "evil_node", "attacks": evil_lines[-1].get("attacks", [])})
+    events = sorted(events + conns + seeds + evil, key=lambda e: e["t"])
     template = Path(__file__).resolve().parent / "consensus_viz.html"
     slim = [{k: v for k, v in e.items() if k != "session"} for e in events]
     data = json.dumps(slim, separators=(",", ":")).replace("</", "<\\/")
@@ -927,6 +974,10 @@ def main():
         p.add_argument("--admin-surname", default="Swarm")
         p.add_argument("--admin-email", default="")
         p.add_argument("--admin-password", default="", help="else SWARM_ADMIN_PASSWORD, else asked")
+        p.add_argument("--evil", type=int, default=0, help="attack test: this many random nodes (never the first) misbehave")
+        p.add_argument("--attacks", default="",
+                       help="with --evil: comma list of slander, equivocate, forge, corrupt-delta, withhold, mitm")
+        p.add_argument("--evil-rate", type=float, default=1.0, help="with --evil: chance each opportunity is used (default 1)")
 
     def start_options(p):
         p.add_argument("--reingest", choices=["Changed", "Overwrite", "Off"], default="Changed")

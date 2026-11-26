@@ -104,6 +104,7 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
     private readonly IOptionsMonitor<RatingSettings> _ratingSettings;
     private readonly ILogger<ConsensusMergeEngine> _logger;
     private readonly INodeIdentityService _identity;
+    private const int SlanderSubjects = 3;
 
     public ConsensusMergeEngine(
         IConsensusStore consensusStore,
@@ -303,6 +304,29 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
 
             // 2. Check cryptographic lineage against local history
             bool isLineageVerified = VerifyHistoricalSignatures(remoteNode, nodeHash, nodeId);
+
+            // 2a. Trust scores are opinions, not signed facts: one source far from what the others report, on
+            // several different nodes, is slander (or ballot stuffing). Settled by comparison, local evidence only.
+            foreach (var (src, subjects, value, median) in operation.Observations.ObserveTrust(nodeId, remoteNodeId, remoteNode.TrustScore))
+            {
+                if (subjects != SlanderSubjects) continue;
+                _logger.LogWarning("[Consensus Engine] {Source} reports trust scores far from what other sources report on {Subjects} nodes (e.g. {NodeId}: {Value} vs median {Median}). Penalizing; evidence kept.",
+                    src, subjects, nodeId, value, median);
+                var srcNode = await GetWeightedNodeFromStagingHierarchyAsync(operation, src);
+                if (srcNode?.NodeData?.Identity != null && !string.IsNullOrEmpty(srcNode.NodeData.Identity.NodeId))
+                    ApplySenderSlanderPenalty(srcNode, operation, 0.1);
+                await _ratingService.ApplyLocalReputationUpdateAsync(src, -5);
+                ConsensusEvidenceStore.Write(operation.EvidenceDir, new ConsensusEvidence
+                {
+                    Kind = "slander",
+                    SubjectNodeId = src,
+                    ConsensusDate = operation.TargetDate,
+                    DetectedByNodeId = _identity.NodeId,
+                    Reason = $"Trust scores more than 40 points from the median of the other sources, on {subjects} different nodes (opinions, not signed: local evidence).",
+                    Details = new { example = nodeId, value, median },
+                    PenalizedNodeIds = new List<string> { src },
+                }, _logger);
+            }
 
             // 2b. A node we did not know is taken in; one source alone leaves it doubtful (the fusion below firms
             // it up per independent source). Penalties only come from records that contradict each other.

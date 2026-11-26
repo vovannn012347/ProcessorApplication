@@ -114,6 +114,10 @@ public class ConsensusMergeSession
 
     public ConcurrentDictionary<string, ChainSignature> SyncSetSignatures { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public ConcurrentQueue<string> NodesToVisit { get; set; } = new();
+    /// <summary>Chain signers whose key/record we did not have when their delta arrived: candidates for a pull.</summary>
+    public ConcurrentDictionary<string, byte> UnconfirmedSigners { get; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Last set of node ids we asked neighbours to confirm, so an unchanged set is not asked again.</summary>
+    public string LastCorroborationKey { get; set; } = string.Empty;
     /// <summary>How often a node was put back into the queue because it was busy (see RequeueNodeForRetry).</summary>
     public Dictionary<string, int> VisitRetries { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
@@ -685,6 +689,7 @@ public class ConsensusSessionManager : IConsensusSessionManager
             // need valid self-signatures when staged, and they stay doubtful until another source reports them too.
             _logger.LogInformation("[Session Manager] Delta {DeltaId} from {SourceNodeId}: signer(s) {Signers} not known here yet - taken in on trust until another source confirms them.",
                 deltaId, sourceNodeId, string.Join(", ", unconfirmedSigners));
+            foreach (var s in unconfirmedSigners) session.UnconfirmedSigners.TryAdd(s, 0);
         }
         if (chainCheck != DeltaRegistration.Registered)
         {

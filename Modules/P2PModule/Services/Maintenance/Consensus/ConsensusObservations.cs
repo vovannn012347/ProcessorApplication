@@ -117,6 +117,21 @@ public sealed class ConsensusObservationLedger
         }
     }
 
+    /// <summary>Nodes reported by exactly one other node so far, with that source.</summary>
+    public List<(string NodeId, string Source)> SingleSource()
+    {
+        lock (_lock)
+        {
+            var list = new List<(string, string)>();
+            foreach (var (nodeId, versions) in _byNode)
+            {
+                var sources = versions.SelectMany(v => v.Sources).Where(s => !string.IsNullOrEmpty(s)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                if (sources.Count == 1) list.Add((nodeId, sources[0]));
+            }
+            return list;
+        }
+    }
+
     /// <summary>Nodes reported this session: by one source only (taken in, still doubted) and by several.</summary>
     public (int SingleSource, int Corroborated) Summary()
     {

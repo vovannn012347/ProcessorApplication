@@ -122,6 +122,11 @@ public class ConsensusSignatureRequestPayload
 /// <summary>
 /// Notification ping carrying delta availability and source/sending signature chains.
 /// </summary>
+public class ConsensusNodePullRequest
+{
+    public List<string> NodeIds { get; set; } = new();
+}
+
 public class ConsensusDeltaPing
 {
     public string DeltaFromNode { get; set; } = string.Empty;
@@ -197,6 +202,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
     private const int RetryDelayMs = 1500;
     /// <summary>How many times a BUSY node is put back into the visit queue before it is given up for this session.</summary>
     private const int MaxBusyRetries = 20;
+    private const int MaxPullIds = 64;
     /// <summary>How many times an unreachable node is retried before it is given up for this session.</summary>
     private const int MaxConnectRetries = 5;
 
@@ -341,11 +347,21 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                             _sessionManager.SetActiveTargetNode(targetNodeId);
                             isLockedIn = true;
                         }
-                        else if (string.Equals(initStatus, "ALREADY_SYNCED", StringComparison.OrdinalIgnoreCase))
+                        else if (initStatus.StartsWith("ALREADY_SYNCED", StringComparison.OrdinalIgnoreCase))
                         {
-                            // The target already holds OUR updates; that doesn't mean we hold ITS.
-                            // Stop chasing it, but leave it unvisited until a merge or its delta reaches us.
-                            _logger.LogInformation("[Consensus Protocol] Target {TargetNodeId} reports ALREADY_SYNCED. Not chasing it further this session.", targetNodeId);
+                            // The target already holds OUR updates. If it names nodes we lack, pull just those
+                            // records from it instead of a full merge.
+                            var lacking = initStatus.Length > "ALREADY_SYNCED|".Length
+                                ? initStatus.Substring("ALREADY_SYNCED|".Length).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
+                                : new List<string>();
+                            _logger.LogInformation("[Consensus Protocol] Target {TargetNodeId} reports ALREADY_SYNCED{Lacking}.", targetNodeId,
+                                lacking.Count > 0 ? $"; pulling the {lacking.Count} record(s) we lack from it" : ". Not chasing it further this session");
+                            if (lacking.Count > 0 && await PullNodesAsync(targetNodeId, lacking, session, ct) > 0)
+                            {
+                                // What we pulled is new to our old partners too: pass it on as a delta, like a merge result
+                                await CreateAndBroadcastLocalDeltaAsync(session, ct);
+                                await _sessionManager.FinalizeIterationStepAsync();
+                            }
                             _sessionManager.GiveUpNode(targetNodeId);
                             continue;
                         }
@@ -409,6 +425,8 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                         LogConsensusEvent("resume", new Dictionary<string, object?> { ["known"] = KnownPeerCount() });
                         break;
                     }
+
+                    await CorroborateAsync(session, ct);
 
                     if (_sessionManager.HasPendingDeltas())
                     {
@@ -559,8 +577,9 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
             lacking.ExceptWith(senderHeld ?? new List<string>());
             lacking.Remove(senderNodeId); lacking.Remove(_identity.NodeId);
             if (senderHeld == null || lacking.Count == 0) return "ALREADY_SYNCED";
-            _logger.LogInformation("[Consensus Protocol] {SenderNodeId} already reached us, but lacks {Count} node(s) we hold ({Nodes}); merging with it anyway.",
+            _logger.LogInformation("[Consensus Protocol] {SenderNodeId} already reached us but lacks {Count} node(s) we hold ({Nodes}); telling it to pull them.",
                 senderNodeId, lacking.Count, string.Join(", ", lacking.Take(8)));
+            return "ALREADY_SYNCED|" + string.Join(",", lacking.Take(MaxPullIds));
         }
 
         _sessionManager.SetActiveTargetNode(senderNodeId);
@@ -856,7 +875,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                                         }
                                     }
 
-                                    _sessionManager.QueueNodesToVisit(nodeIds);
+                                    QueueNeighboursToVisit(nodeIds);
                                     _sessionManager.RegisterNodesInCurrentSyncSet(nodeIds);
                                   }
                                   catch (Exception ex)
@@ -1039,7 +1058,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
 
             if (req.ExchangedNodeIds != null && req.ExchangedNodeIds.Count > 0)
             {
-                _sessionManager.QueueNodesToVisit(req.ExchangedNodeIds);
+                QueueNeighboursToVisit(req.ExchangedNodeIds);
                 _sessionManager.RegisterNodesInCurrentSyncSet(req.ExchangedNodeIds);
                 foreach (var nodeId in req.ExchangedNodeIds)
                 {
@@ -1477,8 +1496,13 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
 
         if (trackerCandidates.Count > 0)
         {
-            _sessionManager.QueueNodesToVisit(trackerCandidates);
-            _logger.LogInformation("[Consensus Protocol] Seeded visit queue with {Count} tracker node(s).", trackerCandidates.Count);
+            // Merge with neighbours only (nodes we hold a live connection to). Everyone else is reached through
+            // their deltas and, for single gaps, a pull of the missing records - not by dialling every node (O(n^2)).
+            var neighbours = trackerCandidates.Where(IsConnected).ToList();
+            if (neighbours.Count == 0)
+                neighbours = trackerCandidates.OrderBy(_ => Random.Shared.Next()).Take(ConsensusFanout(trackerCandidates.Count)).ToList();
+            _sessionManager.QueueNodesToVisit(neighbours);
+            _logger.LogInformation("[Consensus Protocol] Seeded visit queue with {Count} neighbour(s) of {Total} known tracker node(s).", neighbours.Count, trackerCandidates.Count);
         }
         else
         {
@@ -1560,6 +1584,108 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         _logger.LogInformation("[Consensus Role] Self-demoted from temporary 'tracker' role (IsTemporarilyPromotedTracker=false).");
     }
 
+    #region Neighbours, pulls and corroboration (no full mesh)
+
+    private bool IsConnected(string nodeId) =>
+        _connectionManager.GetConnection(nodeId)?.PeerConnection?.connectionState == SIPSorcery.Net.RTCPeerConnectionState.connected;
+
+    /// <summary>A few nodes to start from when none is connected yet: log2(n) + 1, at least 2.</summary>
+    private static int ConsensusFanout(int known) => Math.Max(2, (int)Math.Ceiling(Math.Log2(Math.Max(2, known))) + 1);
+
+    /// <summary>Nodes learned in a merge are visited only when they are our neighbours; the rest reach us through deltas and pulls.</summary>
+    private void QueueNeighboursToVisit(IEnumerable<string> nodeIds)
+    {
+        var all = nodeIds.Where(id => !string.IsNullOrEmpty(id)).ToList();
+        var neighbours = all.Where(IsConnected).ToList();
+        _sessionManager.QueueNodesToVisit(neighbours);
+        if (all.Count > neighbours.Count)
+            _logger.LogDebug("[Consensus Protocol] {Skipped} node(s) learned in this merge are not neighbours; not visiting them (deltas/pulls cover them).", all.Count - neighbours.Count);
+    }
+
+    /// <summary>Asks one node for the records of the given nodes and stages them with that node as the source.</summary>
+    private async Task<int> PullNodesAsync(string fromNodeId, List<string> nodeIds, ConsensusMergeSession session, CancellationToken ct)
+    {
+        if (session.StagingOperation == null || nodeIds.Count == 0) return 0;
+        try
+        {
+            var result = await _routerService.SendRequestAsync(fromNodeId, "ConsensusNodePull",
+                JsonSerializer.Serialize(new ConsensusNodePullRequest { NodeIds = nodeIds.Take(MaxPullIds).ToList() }),
+                new RouteSettings { Timeout = TimeSpan.FromSeconds(15), CancellationToken = ct });
+            if (!result.IsSuccess || string.IsNullOrEmpty(result.Payload) || !result.Payload.TrimStart().StartsWith("[")) return 0;
+            var nodes = JsonSerializer.Deserialize<List<PeerNodeTransferred>>(result.Payload) ?? new List<PeerNodeTransferred>();
+            nodes = nodes.Where(n => n?.Identity?.NodeId != null && nodeIds.Contains(n.Identity.NodeId, StringComparer.OrdinalIgnoreCase)).ToList();
+            if (nodes.Count == 0) return 0;
+            await _mergeEngine.StageIncomingNodeSetAsync(session.StagingOperation, fromNodeId, nodes);
+            foreach (var n in nodes) await _peerTracker.UpdatePeerWasSeenByAsync(n.Identity.NodeId, fromNodeId);
+            _logger.LogInformation("[Consensus Protocol] Pulled {Count} record(s) from {From}: {Nodes}.", nodes.Count, fromNodeId, string.Join(", ", nodes.Select(n => n.Identity.NodeId).Take(8)));
+            LogConsensusEvent("pull", new Dictionary<string, object?> { ["peer"] = fromNodeId, ["nodes"] = nodes.Select(n => n.Identity.NodeId).ToList() });
+            return nodes.Count;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Consensus Protocol] Pull from {From} failed.", fromNodeId);
+            return 0;
+        }
+    }
+
+    private async Task<string> HandleIncomingNodePullAsync(string senderNodeId, P2PPacketEnvelope frame, CancellationToken ct)
+    {
+        var session = _sessionManager.GetActiveSession();
+        if (session == null) return "NO_SESSION_WTF";
+        ConsensusNodePullRequest? req = null;
+        try { req = JsonSerializer.Deserialize<ConsensusNodePullRequest>(frame.SerializedPayload ?? string.Empty); } catch { }
+        if (req?.NodeIds == null || req.NodeIds.Count == 0) return "[]";
+        var wanted = new HashSet<string>(req.NodeIds.Take(MaxPullIds), StringComparer.OrdinalIgnoreCase);
+        var nodes = (await LoadLocalNodesForSwapAsync(session)).Where(n => wanted.Contains(n.Identity.NodeId)).ToList();
+        return JsonSerializer.Serialize(nodes);
+    }
+
+    /// <summary>
+    /// Redundancy without a full mesh: records we got from one source only, and chain signers whose record we
+    /// never got, are asked for from up to two neighbours that are not that source. A second source either
+    /// confirms the record (it firms up) or contradicts it (a discrepancy, settled and kept as evidence).
+    /// </summary>
+    private async Task CorroborateAsync(ConsensusMergeSession session, CancellationToken ct)
+    {
+        var op = session.StagingOperation;
+        if (op == null) return;
+        var held = HeldNodeIds(session);
+        var single = op.Observations.SingleSource().Where(x => !x.NodeId.Equals(_identity.NodeId, StringComparison.OrdinalIgnoreCase)).ToList();
+        var missing = session.UnconfirmedSigners.Keys.Where(id => !held.Contains(id) && !id.Equals(_identity.NodeId, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (single.Count == 0 && missing.Count == 0) return;
+
+        string setKey = string.Join(",", single.Select(x => x.NodeId).Concat(missing).OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
+        if (setKey == session.LastCorroborationKey) return;
+        session.LastCorroborationKey = setKey;
+
+        var neighbours = _connectionManager.GetActiveConnections()
+            .Where(c => c?.NodeId != null && c.PeerConnection?.connectionState == SIPSorcery.Net.RTCPeerConnectionState.connected)
+            .Select(c => c.NodeId).OrderBy(_ => Random.Shared.Next()).ToList();
+        if (neighbours.Count == 0) return;
+
+        int asked = 0, got = 0;
+        foreach (var neighbour in neighbours)
+        {
+            if (asked >= 2 || ct.IsCancellationRequested) break;
+            var ids = single.Where(x => !x.Source.Equals(neighbour, StringComparison.OrdinalIgnoreCase) && !x.NodeId.Equals(neighbour, StringComparison.OrdinalIgnoreCase))
+                .Select(x => x.NodeId).Concat(missing).Distinct(StringComparer.OrdinalIgnoreCase).Take(MaxPullIds).ToList();
+            if (ids.Count == 0) continue;
+            asked++;
+            got += await PullNodesAsync(neighbour, ids, session, ct);
+        }
+        if (asked > 0)
+            _logger.LogInformation("[Consensus Protocol] Asked {Asked} neighbour(s) to confirm {Single} single-source and {Missing} missing record(s); {Got} record(s) came back.",
+                asked, single.Count, missing.Count, got);
+        if (got > 0)
+        {
+            await CreateAndBroadcastLocalDeltaAsync(session, ct);   // only differences go out (missing ones found)
+            await _sessionManager.FinalizeIterationStepAsync();
+            await SyncMergeDirToConsensusStoreAsync(session);
+        }
+    }
+
+    #endregion
+
     private async Task<List<PeerNodeTransferred>> LoadLocalNodesForSwapAsync(ConsensusMergeSession session)
     {
         var list = new List<PeerNodeTransferred>();
@@ -1603,6 +1729,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         _routerService.RegisterCommandHandler("ConsensusDeltaPing", HandleIncomingDeltaPingAsync);
         _routerService.RegisterCommandHandler("ConsensusDeltaDownload", HandleIncomingDeltaDownloadAsync);
         _routerService.RegisterCommandHandler("ConsensusFinished", HandleIncomingConsensusFinishedAsync);
+        _routerService.RegisterCommandHandler("ConsensusNodePull", HandleIncomingNodePullAsync);
     }
 
     private void UnregisterConsensusNetworkHandlers()
@@ -1613,6 +1740,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         _routerService.UnregisterCommandHandler("ConsensusDeltaPing");
         _routerService.UnregisterCommandHandler("ConsensusDeltaDownload");
         _routerService.UnregisterCommandHandler("ConsensusFinished");
+        _routerService.UnregisterCommandHandler("ConsensusNodePull");
     }
 
     /// <summary>Appends a line to consensus_events.jsonl (see <see cref="ConsensusEventLog"/>).</summary>

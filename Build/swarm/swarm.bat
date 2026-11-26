@@ -15,6 +15,7 @@ rem   swarm.bat check --watch 15 --until-converged     repeat every 15 s until e
 rem   swarm.bat analyze                                report + convergence.csv / consensus_events.csv
 rem   swarm.bat viz                                    consensus_viz.html: the run replayed as a growing graph
 rem   swarm.bat bench --counts 5,10,20,50 --repeat 3   whole test per count, rows in runs.csv (then: py Build\swarm\figures.py)
+rem   swarm.bat archive [--archive-dir D:\runs]        copy the last run's logs to runs\<time>_N<count>\ (test/bench do it)
 rem   swarm.bat test --count 20                        the whole test in one go (same as swarm-test.bat)
 rem   swarm.bat <command> --help                       all options
 rem

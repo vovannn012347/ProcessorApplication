@@ -7,9 +7,10 @@ Table and figure for the dissertation from swarm runs (chapter 4).
 
 Reads:
     <group>/runs.csv            one row per run (swarm.bat test / bench / analyze --record)
-    <group>/nodes/*/Module_Data/P2P/rating_events.jsonl, consensus_events.jsonl
-                                the LAST run in the node homes, for the reputation panel (an attack run:
-                                swarm.bat test --evil 2 --attacks ...)
+    <run>/nodes/*/Module_Data/P2P/rating_events.jsonl, consensus_events.jsonl
+                                an attack run for the reputation panel (swarm.bat test --evil 2 --attacks ...):
+                                --attack-run <folder>, else the newest <group>/runs/*_evil-* folder, else the
+                                node homes as they are now
     <group>/convergence.log     which nodes were evil, when the consensus was triggered
 Writes:
     <group>/table_4_x.csv, table_4_x.md   one row per node count: mean +- sd over the runs without attackers
@@ -232,12 +233,19 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--group", default="", help="swarm folder (default bin/<rid>/TrackerSwarm)")
     ap.add_argument("--rid", default="win-x64")
+    ap.add_argument("--attack-run", default="",
+                    help="run folder for panel (b) (default: the newest <group>/runs/*_evil-* folder, else the node homes)")
     args = ap.parse_args()
     group = Path(args.group) if args.group else ROOT / "bin" / args.rid / "TrackerSwarm"
     if not group.is_dir():
         sys.exit(f"No swarm folder at {group}")
     rows = table(group, load_runs(group))
-    figure(group, rows, reputation(group))
+    attack = Path(args.attack_run) if args.attack_run else None
+    if attack is None:
+        archived = sorted((group / "runs").glob("*_evil-*")) if (group / "runs").is_dir() else []
+        attack = archived[-1] if archived else group
+    print(f"Reputation panel from: {attack}")
+    figure(group, rows, reputation(attack))
     print(f"Table: {group / 'table_4_x.csv'} (+ .md)")
 
 

@@ -91,6 +91,16 @@ Each node also writes its consensus events to `Module_Data\P2P\consensus_events.
 - `queue_empty`: no more peers to visit;
 - `finish`: the session ended (`reason`: inactivity, midnight or error; `known`: how many nodes it knew).
 
+## Logs of every run (`runs\`)
+
+`fresh` wipes the node homes, so after every `test` / `bench` run its logs are copied to
+`bin\win-x64\TrackerSwarm\runs\<trigger time>_N<count>[_evil-<attacks>-<k>]\`:
+`convergence.log`, `runs.csv`, the replay page `consensus_viz.html`, and per node `nodes\<name>\` its
+`consensus_events.jsonl`, `connection_events.jsonl`, `rating_events.jsonl`, `consensus_evidence\`, console logs
+(`logs\`) and settings. `--archive-dir D:\somewhere` puts the run folders elsewhere, `--label word` adds a word
+to the name, `--no-archive` skips it; `swarm.bat archive` copies the current homes by hand.
+`figures.py` takes the reputation panel from the newest `runs\*_evil-*` folder (or `--attack-run <folder>`).
+
 ## Replay as a graph (`swarm.bat viz`)
 
 Writes `consensus_viz.html` next to `convergence.log` and opens it: the run as a 3D mesh you can turn.

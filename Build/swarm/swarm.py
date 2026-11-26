@@ -37,6 +37,9 @@ Commands (python swarm.py <command> --help for the options):
               and CSV files for charts (convergence.csv, consensus_events.csv)
     viz       consensus_viz.html: the run replayed step by step (merges, deltas, start pings) as a growing graph;
               open it in a browser. Other runs can be loaded into it (drop the consensus_events.jsonl files)
+    archive   copy the last run's logs out of the node homes into <group>/runs/<time>_N<count>.../ (test and
+              bench do this after every run; --archive-dir elsewhere, --no-archive to skip)
+    bench     the whole test for several node counts, a few times each; a row per run in runs.csv
 
 Convergence test:
     swarm.bat fresh --count 20 --yes  &&  swarm.bat start
@@ -1021,7 +1024,70 @@ def test(args):
     args.since = ""
     args.record = not getattr(args, "no_record", False)
     analyze(args)
+    if not getattr(args, "no_archive", False):
+        print("\n=== archive")
+        archive(args)
     print("\nNodes keep running (consoles stay open). Stop them with: swarm.bat stop")
+
+
+ARCHIVE_P2P_FILES = ("consensus_events.jsonl", "connection_events.jsonl", "rating_events.jsonl")
+
+
+def archive(args):
+    """Copies this run's logs out of the node homes (the next "fresh" wipes them) into one folder per run:
+    <archive-dir>/<trigger time>_N<count>[_evil-<attacks>]/  with convergence.log, runs.csv, the replay page and,
+    per node, its consensus/connection/rating events, evidence, console logs and settings."""
+    rid = args.rid
+    homes = node_homes(rid)
+    if not homes:
+        print("No swarm homes: nothing to archive.")
+        return None
+    entries = read_lines(convergence_log(rid))
+    trig = next((e for e in reversed(entries) if e.get("kind") == "trigger" and e.get("success")), None)
+    evil = next((e for e in reversed(entries) if e.get("kind") == "evil_nodes"), None)
+    stamp = (trig["t"] if trig else datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"))[:19].replace(":", "-")
+    name = f"{stamp}_N{len(homes)}"
+    if evil and evil.get("nodes"):
+        name += "_evil-" + "+".join(evil.get("attacks", [])) + f"-{len(evil['nodes'])}"
+    if getattr(args, "label", ""):
+        name += "_" + re.sub(r"[^A-Za-z0-9_.+-]", "-", args.label)
+    root = Path(args.archive_dir) if getattr(args, "archive_dir", "") else group_root(rid) / "runs"
+    dest = root / name
+    dest.mkdir(parents=True, exist_ok=True)
+
+    def copy(src, dst):
+        try:
+            if src.is_dir():
+                shutil.copytree(src, dst, dirs_exist_ok=True)
+            elif src.exists():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+        except OSError as e:
+            print(f"    could not copy {src}: {e}")
+
+    for home, info in homes:
+        nd = dest / "nodes" / info["Name"]
+        p2p = p2p_dir(home)
+        for f in ARCHIVE_P2P_FILES:
+            copy(p2p / f, nd / "Module_Data" / "P2P" / f)
+        copy(p2p / "consensus_evidence", nd / "Module_Data" / "P2P" / "consensus_evidence")
+        copy(home / "logs", nd / "logs")
+        copy(home / "swarm-node.json", nd / "swarm-node.json")
+        copy(home / "Modules" / "P2PModule" / f"appsettings.P2P.{ENVIRONMENT}.json",
+             nd / "Modules" / "P2PModule" / f"appsettings.P2P.{ENVIRONMENT}.json")
+    for f in ("convergence.log", "runs.csv", "consensus_events.csv", "convergence.csv", "swarm-homes.json"):
+        copy(group_root(rid) / f, dest / f)
+    try:
+        args.out = str(dest / "consensus_viz.html")
+        args.no_open = True
+        args.all = getattr(args, "all", False)
+        args.since = getattr(args, "since", "")
+        args.connections_before = getattr(args, "connections_before", 60)
+        viz(args)
+    except Exception as e:  # the replay is a convenience; the logs are what matters
+        print(f"    replay page not written: {e}")
+    print(f"Logs of this run archived in {dest}")
+    return dest
 
 
 def bench(args):
@@ -1114,11 +1180,20 @@ def main():
     p.add_argument("--interval", type=float, default=15, help="seconds between convergence snapshots (default 15)")
     p.add_argument("--timeout", type=float, default=30, help="minutes to wait for convergence (default 30)")
     p.add_argument("--no-record", action="store_true", help="don't append this run's numbers to <group>/runs.csv")
+    p.add_argument("--no-archive", action="store_true", help="don't copy this run's logs out of the node homes")
+    p.add_argument("--archive-dir", default="", help="where run folders go (default <group>/runs)")
+    p.add_argument("--label", default="", help="extra word in the run folder name")
+    p = sub.add_parser("archive")
+    p.add_argument("--archive-dir", default="", help="where run folders go (default <group>/runs)")
+    p.add_argument("--label", default="", help="extra word in the run folder name")
     p = sub.add_parser("bench")
     prep_options(p)
     start_options(p)
     p.add_argument("--counts", default="5,10,20,50", help="node counts to run (default 5,10,20,50)")
     p.add_argument("--repeat", type=int, default=3, help="runs per node count (default 3)")
+    p.add_argument("--no-archive", action="store_true", help="don't copy each run's logs out of the node homes")
+    p.add_argument("--archive-dir", default="", help="where run folders go (default <group>/runs)")
+    p.add_argument("--label", default="", help="extra word in the run folder names")
     p.add_argument("--no-build", action="store_true", help="use the existing build")
     p.add_argument("--admin-user", default="Admin")
     p.add_argument("--node", default="")
@@ -1146,7 +1221,8 @@ def main():
         start(args)
     else:
         {"build": build, "prepare": prepare, "fresh": fresh, "start": start, "stop": stop, "status": status,
-         "consensus": consensus, "check": check, "analyze": analyze, "test": test, "viz": viz, "bench": bench}[args.command](args)
+         "consensus": consensus, "check": check, "analyze": analyze, "test": test, "viz": viz, "bench": bench,
+         "archive": archive}[args.command](args)
 
 
 if __name__ == "__main__":

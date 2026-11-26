@@ -44,7 +44,8 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--now)}
 .now{border-left:3px solid var(--now);padding:4px 0 4px 10px;min-height:52px}
 #spark{width:100%;height:64px;display:block}
 .layers{display:grid;gap:4px}
-.layer{display:grid;grid-template-columns:22px minmax(0,1fr) 92px;align-items:center;gap:8px;font-size:14px}
+.layer{display:grid;grid-template-columns:22px minmax(0,1fr) 92px 34px;align-items:center;gap:8px;font-size:14px}
+.layer b{font-variant-numeric:tabular-nums;text-align:right;font-weight:500}
 .layer span{display:flex;align-items:center;gap:8px}
 .layer i{flex:none;width:22px;height:0;border-top:3px solid}
 .layer input[type=range]{width:92px}
@@ -69,7 +70,7 @@ li.on{color:var(--now);font-weight:500}
   </div>
   <div class="grid">
     <div>
-      <div class="fig" id="fig"><canvas id="cv" aria-label="3D mesh of the swarm at the current step"></canvas><div class="hint">Drag to turn, wheel or pinch to zoom</div></div>
+      <div class="fig" id="fig"><canvas id="cv" aria-label="3D mesh of the swarm at the current step"></canvas><div class="hint">Drag to turn, wheel or pinch to zoom, double-click to reset</div></div>
       <div class="controls">
         <button id="play" type="button">Play</button>
         <button id="back" type="button" aria-label="Step back">&#8592;</button>
@@ -92,7 +93,7 @@ li.on{color:var(--now);font-weight:500}
       <div class="now"><div class="cap">This step</div><div id="mNow">-</div></div>
       <div><div class="cap">Average share of the swarm each node holds</div><svg id="spark" aria-label="Coverage over steps"></svg></div>
       <div>
-        <div class="cap" style="margin-bottom:4px">Links: show, and how hard they pull in the layout</div>
+        <div class="cap" style="margin-bottom:4px">Links: grey seeded, green consensus merge, yellow delta push, red live connection. Slider = how hard each pulls its two nodes together (0 = no pull, still drawn); push apart = repulsion between all nodes.</div>
         <div class="layers" id="layers"></div>
         <div class="cap" style="margin-top:6px">Connections pull harder the lower their ping time. Node size = share of the swarm it holds; green ring = holds all.</div>
       </div>
@@ -106,20 +107,21 @@ li.on{color:var(--now);font-weight:500}
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const LAYERS = [
-  { id: "seed", name: "Seeded (configured)", col: "#8b95ad", w: 1, width: 1, alpha: .45 },
-  { id: "cons", name: "Consensus merge", col: "#12a150", w: 4, width: 4, alpha: .95 },
-  { id: "delta", name: "Delta push", col: "#ffd23f", w: 2, width: 2, alpha: .9 },
-  { id: "conn", name: "Connection (live)", col: "#ff3b4f", w: 3, width: 1.3, alpha: .9 },
+  { id: "seed", name: "Seeded", col: "#8b95ad", w: 1, width: 1, alpha: .45 },
+  { id: "cons", name: "Merge", col: "#12a150", w: 4, width: 4, alpha: .95 },
+  { id: "delta", name: "Delta", col: "#ffd23f", w: 2, width: 2, alpha: .9 },
+  { id: "conn", name: "Connection", col: "#ff3b4f", w: 3, width: 1.3, alpha: .9 },
 ];
 const key = (a, b) => a < b ? a * 4096 + b : b * 4096 + a;
 const ends = k => [Math.floor(k / 4096), k % 4096];
 
 let run = null, step = 0, playing = false, timer = null, S = null, sAt = -1, P = [], budget = 0;
 let Gn, calm = 0, settled = false;   // t-SNE gains per coordinate; how many quiet iterations in a row; layout at rest
-let Y, V, cam = { yaw: .7, pitch: .35, dist: 3.4 }, fitR = 10, W = 800, H = 500, hover = -1;
+let Y, V, cam = { yaw: .7, pitch: .35, dist: 3.4, zoom: 1 }, fitR = 10, W = 800, H = 500, hover = -1;
 const cv = $("cv"), ctx = cv.getContext("2d"), fig = $("fig");
 
-$("layers").innerHTML = LAYERS.map(l => `<div class="layer"><input type="checkbox" id="on-${l.id}" checked aria-label="Show ${l.name}"><span><i style="border-color:${l.col};border-top-width:${Math.max(2, l.width)}px"></i>${l.name}</span><input type="range" id="w-${l.id}" min="0" max="10" step="0.5" value="${l.w}" aria-label="Pull of ${l.name}"></div>`).join("");
+$("layers").innerHTML = LAYERS.map(l => `<div class="layer"><input type="checkbox" id="on-${l.id}" checked aria-label="Show ${l.name}"><span><i style="border-color:${l.col};border-top-width:${Math.max(2, l.width)}px"></i>${l.name}</span><input type="range" id="w-${l.id}" min="0" max="10" step="0.5" value="${l.w}" aria-label="Pull of ${l.name}"><b id="v-${l.id}">${l.w.toFixed(1)}</b></div>`).join("") +
+  `<div class="layer"><span></span><span>Push apart</span><input type="range" id="w-rep" min="0.5" max="8" step="0.5" value="3" aria-label="Repulsion between all nodes"><b id="v-rep">3.0</b></div>`;
 
 function parseLines(text) {
   const out = [];
@@ -236,9 +238,9 @@ function tsneIter() {
     const dx = Y[3 * i] - Y[3 * j], dy = Y[3 * i + 1] - Y[3 * j + 1], dz = Y[3 * i + 2] - Y[3 * j + 2];
     const q = 1 / (1 + dx * dx + dy * dy + dz * dz); num[i * N + j] = q; Z += 2 * q;
   }
-  const g = new Float64Array(3 * N), exag = 2;
-  for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {          // everyone repels: -q_ij * num_ij
-    const nm = num[i * N + j], c = -4 * nm * nm / Z;
+  const g = new Float64Array(3 * N), exag = 2, rep = +$("w-rep").value;
+  for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {          // everyone repels: -q_ij * num_ij, times the push slider
+    const nm = num[i * N + j], c = -4 * rep * nm * nm / Z;
     for (let d = 0; d < 3; d++) { const f = c * (Y[3 * i + d] - Y[3 * j + d]); g[3 * i + d] += f; g[3 * j + d] -= f; }
   }
   for (const [a, b, p] of P) {                                             // known links attract: p_ij * num_ij
@@ -271,7 +273,7 @@ function project(i, c, R) {
   const x = (D[3 * i] - c[0]) / R, y = (D[3 * i + 1] - c[1]) / R, z = (D[3 * i + 2] - c[2]) / R;
   const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw), cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
   const x1 = x * cy - z * sy, z1 = x * sy + z * cy, y1 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
-  const f = cam.dist / (cam.dist + z2), s = Math.min(W, H) * .5;
+  const f = cam.dist / (cam.dist + z2), s = Math.min(W, H) * .5 * cam.zoom;
   return [W / 2 + x1 * f * s, H / 2 + y1 * f * s, z2, f];
 }
 
@@ -394,7 +396,11 @@ $("back").addEventListener("click", () => go(step - 1));
 $("fwd").addEventListener("click", () => go(step + 1));
 $("scrub").addEventListener("input", e => go(+e.target.value));
 $("iters").addEventListener("input", e => { $("itersv").textContent = e.target.value; });
-$("layers").addEventListener("input", e => { if (e.target.type === "range" && run) { rebuildP(); budget += 20; } });
+$("layers").addEventListener("input", e => {
+  if (e.target.type !== "range") return;
+  const v = $(e.target.id.replace("w-", "v-")); if (v) v.textContent = (+e.target.value).toFixed(1);
+  if (run) { rebuildP(); budget += 30; }
+});
 $("list").addEventListener("click", e => { const li = e.target.closest("li"); if (li) go(+li.dataset.i); });
 document.addEventListener("keydown", e => { if (e.target.tagName === "INPUT" && e.target.type !== "range") return; if (e.key === "ArrowRight") go(step + 1); if (e.key === "ArrowLeft") go(step - 1); });
 async function loadFiles(files) { const all = []; for (const f of files) all.push(...parseLines(await f.text())); if (all.length) { playing = false; $("play").textContent = "Play"; load(all); } }
@@ -416,13 +422,14 @@ fig.addEventListener("pointermove", e => {
   } else if (ptrs.size === 2 && ptrs.has(e.pointerId)) {
     ptrs.set(e.pointerId, [e.clientX, e.clientY]);
     const [p, q] = [...ptrs.values()], d = Math.hypot(p[0] - q[0], p[1] - q[1]);
-    if (pinch) cam.dist = Math.max(1.6, Math.min(9, cam.dist * pinch / d));
+    if (pinch) cam.zoom = Math.max(.3, Math.min(6, cam.zoom * d / pinch));
     pinch = d;
   }
   hover = -1; let best = 14;
   for (const [i, p] of (draw.pr || []).entries()) { const d = Math.hypot(p[0] - mx, p[1] - my); if (d < best) { best = d; hover = i; } }
 });
-fig.addEventListener("wheel", e => { e.preventDefault(); cam.dist = Math.max(1.6, Math.min(9, cam.dist * (e.deltaY > 0 ? 1.08 : .93))); }, { passive: false });
+fig.addEventListener("wheel", e => { e.preventDefault(); cam.zoom = Math.max(.3, Math.min(6, cam.zoom * Math.exp(-e.deltaY * .0008))); }, { passive: false });
+fig.addEventListener("dblclick", () => { cam.zoom = 1; });
 
 const sizer = new ResizeObserver(() => { W = fig.clientWidth; H = fig.clientHeight; if (run) show(); });
 sizer.observe(fig);

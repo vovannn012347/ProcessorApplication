@@ -634,7 +634,10 @@ def print_snapshot(s, verbose):
             flag = "" if v["running"] else "  (stopped)"
             print(f"{name:<14} {v['live']:>5} {v['consensus']:>5} {v['consensus_day'] or '-':<11} {v['last_event'] or '-'}{flag}")
     worst = sorted(s["per_node"].items(), key=lambda kv: len(kv[1]["missing_consensus"]), reverse=True)[:3]
-    gaps = "; ".join(f"{k} lacks {len(v['missing_consensus'])}" for k, v in worst if v["missing_consensus"])
+    def lacks(v):
+        miss = sorted(v["missing_consensus"])
+        return f"{len(miss)} ({', '.join(miss)})" if len(miss) <= 4 else f"{len(miss)} ({', '.join(miss[:4])}, ...)"
+    gaps = "; ".join(f"{k} lacks {lacks(v)}" for k, v in worst if v["missing_consensus"])
     print(f"[{s['t']}] {s['running']}/{n} running | live complete {s['complete_live']}/{n} (avg {s['avg_live']}/{n - 1}) | "
           f"consensus complete {s['complete_consensus']}/{n} (avg {s['avg_consensus']}/{n - 1})" + (f" | {gaps}" if gaps else ""))
 

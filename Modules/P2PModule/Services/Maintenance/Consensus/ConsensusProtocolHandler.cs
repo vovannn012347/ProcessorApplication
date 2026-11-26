@@ -71,11 +71,19 @@ public class ConsensusRequest
     /// </summary>
     public List<SignatureEnvelope> KeyLineage { get; set; } = new();
 
+    /// <summary>
+    /// Merge init only: the nodes the sender holds in its merge so far. The target answers ALREADY_SYNCED only when
+    /// the sender lacks none of the target's nodes - having the sender's updates is not enough, the sender may
+    /// still be missing the target's (a node then never got a record nobody else forwarded to it).
+    /// </summary>
+    public List<string> HeldNodeIds { get; set; } = new();
+
     public byte[] GetHash()
     {
         string identityHash = SenderIdentity != null ? Convert.ToBase64String(SenderIdentity.GetNodeDataHash()) : string.Empty;
+        string held = string.Join(",", HeldNodeIds.OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
         return SHA256.HashData(
-            Encoding.UTF8.GetBytes($"{NodeIdFrom}|{NodeIdTo}|{TimeStamp:o}|{NonTransitive}|{Nonce}|{ChannelId}|{identityHash}"));
+            Encoding.UTF8.GetBytes($"{NodeIdFrom}|{NodeIdTo}|{TimeStamp:o}|{NonTransitive}|{Nonce}|{ChannelId}|{identityHash}|{held}"));
     }
 }
 
@@ -505,7 +513,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
     {
         try
         {
-            var myReq = BuildSignedRequest(targetNodeId);
+            var myReq = BuildSignedRequest(targetNodeId, HeldNodeIds(_sessionManager.GetActiveSession()).ToList());
 
             var result = await _routerService.SendRequestAsync(
                 targetNodeId,
@@ -534,6 +542,8 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
 
         var (_, refusal) = await CheckSignedRequestAsync(senderNodeId, frame, "merge init");
         if (refusal != null) return refusal;
+        List<string>? senderHeld = null;
+        try { senderHeld = JsonSerializer.Deserialize<ConsensusRequest>(frame.SerializedPayload!)?.HeldNodeIds; } catch { }
 
         if (!string.IsNullOrEmpty(session.TargetNodeId) && !string.Equals(session.TargetNodeId, senderNodeId, StringComparison.OrdinalIgnoreCase))
         {
@@ -544,7 +554,13 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         // Having its record in a sync set is not enough.
         if (session.VisitedNodes.Contains(senderNodeId))
         {
-            return "ALREADY_SYNCED";
+            // We hold its updates. Does it hold ours? Only then is there nothing to swap.
+            var lacking = HeldNodeIds(session);
+            lacking.ExceptWith(senderHeld ?? new List<string>());
+            lacking.Remove(senderNodeId); lacking.Remove(_identity.NodeId);
+            if (senderHeld == null || lacking.Count == 0) return "ALREADY_SYNCED";
+            _logger.LogInformation("[Consensus Protocol] {SenderNodeId} already reached us, but lacks {Count} node(s) we hold ({Nodes}); merging with it anyway.",
+                senderNodeId, lacking.Count, string.Join(", ", lacking.Take(8)));
         }
 
         _sessionManager.SetActiveTargetNode(senderNodeId);
@@ -559,7 +575,25 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
     private readonly ConcurrentDictionary<string, DateTime> _seenRequestNonces = new(StringComparer.Ordinal);
     private static readonly TimeSpan RequestMaxAge = TimeSpan.FromMinutes(5);
 
-    private ConsensusRequest BuildSignedRequest(string targetNodeId)
+    /// <summary>Node ids in this node's merge so far (milestone + current iteration).</summary>
+    private static HashSet<string> HeldNodeIds(ConsensusMergeSession? session)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var op = session?.StagingOperation;
+        if (op == null) return set;
+        foreach (var dir in new[] { op.MergeDir, op.IterDir })
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+                    foreach (var f in Directory.GetFiles(dir, "*.json")) set.Add(Path.GetFileNameWithoutExtension(f));
+            }
+            catch { }
+        }
+        return set;
+    }
+
+    private ConsensusRequest BuildSignedRequest(string targetNodeId, List<string>? heldNodeIds = null)
     {
         var keys = _identity.GetDayKeys();
         var identity = _identity.GetImmutableData();
@@ -571,6 +605,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
             NonTransitive = true,
             Nonce = Guid.NewGuid().ToString("N"),
             SenderIdentity = identity,
+            HeldNodeIds = heldNodeIds ?? new List<string>(),
         };
 
         // Earlier day keys vouch for today's identity, so a receiver that only knows an older key sees the change is ours

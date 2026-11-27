@@ -43,11 +43,14 @@ public class ActivePeerConnection
     public void UpdateOffset(long newOffset)
     {
         ClockOffsets.Enqueue(newOffset);
-        while (ClockOffsets.Count > 4)
+        while (ClockOffsets.Count > 8)
         {
             ClockOffsets.TryDequeue(out _);
         }
-        ClockOffsetMs = ClockOffsets.Count > 0 ? (long)ClockOffsets.Average() : 0;
+        // A sample is (clock difference + how long the packet travelled). Travel time is never negative, so the
+        // smallest recent sample is the best estimate of the clock difference. The average let one packet that
+        // queued 25 s behind consensus data on a busy link swing the offset by 6 s.
+        ClockOffsetMs = ClockOffsets.Count > 0 ? ClockOffsets.Min() : 0;
     }
 }
 

@@ -1712,7 +1712,8 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                         var h = ConsensusNodeJson.ReadHistoric(await File.ReadAllTextAsync(file));
                         if (h?.Identity?.NodeId == null) continue;
                         var bytes = h.Identity.GetNodeDataHash().Concat(h.Identity.Signature ?? Array.Empty<byte>()).ToArray();
-                        echo.Records[h.Identity.NodeId] = Convert.ToHexString(SHA256.HashData(bytes)).Substring(0, 12);
+                        // "<hash>.<signature time ticks>": the time lets each side tell which version is newer
+                        echo.Records[h.Identity.NodeId] = Convert.ToHexString(SHA256.HashData(bytes)).Substring(0, 12) + "." + h.Identity.SignatureTime.Ticks;
                     }
                     catch { }
                 }
@@ -1739,9 +1740,23 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         return Convert.ToHexString(acc);
     }
 
-    /// <summary>Ids the other side holds that we don't, or holds in another version.</summary>
-    private static List<string> EchoDiff(ConsensusEcho mine, ConsensusEcho theirs) =>
-        theirs.Records.Where(kv => !mine.Records.TryGetValue(kv.Key, out var v) || v != kv.Value).Select(kv => kv.Key).ToList();
+    /// <summary>
+    /// Ids the other side holds that we don't, or holds in a NEWER version (later signature time). A version that
+    /// is merely different (older, or same time) is not something we lack: the merge keeps the newest, so pulling it
+    /// again stages nothing - that is what kept "it lacks 1-3" coming back every 10 s forever and the echo never
+    /// went quiet. The lacking node's own record is not counted either: a node never pulls its own record.
+    /// </summary>
+    private static List<string> EchoDiff(ConsensusEcho mine, ConsensusEcho theirs, string? lackingNodeId = null) =>
+        theirs.Records
+            .Where(kv => lackingNodeId == null || !kv.Key.Equals(lackingNodeId, StringComparison.OrdinalIgnoreCase))
+            .Where(kv => !mine.Records.TryGetValue(kv.Key, out var v) || (v != kv.Value && EchoTicks(kv.Value) > EchoTicks(v)))
+            .Select(kv => kv.Key).ToList();
+
+    private static long EchoTicks(string version)
+    {
+        int dot = version.LastIndexOf('.');
+        return dot >= 0 && long.TryParse(version.AsSpan(dot + 1), out var t) ? t : 0;
+    }
 
     /// <summary>
     /// Echo round: every EchoIntervalSeconds, compare digests with each live neighbour. Equal: nothing to do.
@@ -1774,16 +1789,30 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                 var theirs = JsonSerializer.Deserialize<ConsensusEcho>(result.Payload);
                 if (theirs == null) continue;
                 if (theirs.Digest == mine.Digest) { same++; continue; }
-                differ++;
-                var lack = EchoDiff(mine, theirs)
-                    .Where(id => !id.Equals(_identity.NodeId, StringComparison.OrdinalIgnoreCase))
-                    .Where(id => session.EchoPullsTried.TryAdd($"{neighbour}|{id}|{theirs.Records[id]}", 0))
+                var lack = EchoDiff(mine, theirs, _identity.NodeId)
+                    .Where(id => !session.EchoPullsTried.ContainsKey($"{neighbour}|{id}|{theirs.Records[id]}"))
                     .Take(MaxPullIds).ToList();
-                int theyLack = EchoDiff(theirs, mine).Count;
+                int theyLack = EchoDiff(theirs, mine, neighbour).Count;
+                if (lack.Count == 0 && theyLack == 0)
+                {
+                    // Different digests, but nothing either side would take from the other (older or rival versions
+                    // the merge has already settled): as good as identical for convergence.
+                    same++;
+                    continue;
+                }
+                differ++;
                 _logger.LogInformation("[Consensus Protocol] Echo with {Neighbour}: digests differ; we lack {Lack} (pulling), it lacks {TheyLack} (it pulls).",
                     neighbour, lack.Count, theyLack);
                 LogConsensusEvent("echo", new Dictionary<string, object?> { ["peer"] = neighbour, ["lack"] = lack.Count, ["they_lack"] = theyLack });
-                if (lack.Count > 0) pulled += await PullNodesAsync(neighbour, lack, session, ct);
+                if (lack.Count > 0)
+                {
+                    var (got, answered) = await PullNodesWithStatusAsync(neighbour, lack, session, ct);
+                    pulled += got;
+                    // Remembered only once the neighbour actually answered: a pull that timed out (the answer came
+                    // late, behind other traffic) used to be marked as tried and was never asked again - swarm-013
+                    // "lacked 20" for the rest of the run.
+                    if (answered) foreach (var id in lack) session.EchoPullsTried.TryAdd($"{neighbour}|{id}|{theirs.Records[id]}", 0);
+                }
                 if (theyLack > 0)
                     // Step 2: our list, so the neighbour pulls its side of the difference
                     _ = _routerService.SendRequestAsync(neighbour, "ConsensusEcho", fullPayload,
@@ -1813,6 +1842,8 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         else session.QuietEchoRounds = 0;
     }
 
+    private readonly ConcurrentDictionary<string, byte> _echoPullsRunning = new(StringComparer.OrdinalIgnoreCase);
+
     private async Task<string> HandleIncomingEchoAsync(string senderNodeId, P2PPacketEnvelope frame, CancellationToken ct)
     {
         var session = _sessionManager.GetActiveSession();
@@ -1826,23 +1857,27 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         {
             foreach (var id in theirs.Records.Keys) session.KnownIds.TryAdd(id, 0);
             // Our side of the exchange: pull what the asker has and we don't, then pass it on
-            var lack = EchoDiff(mine, theirs)
-                .Where(id => !id.Equals(_identity.NodeId, StringComparison.OrdinalIgnoreCase))
-                .Where(id => session.EchoPullsTried.TryAdd($"{senderNodeId}|{id}|{theirs.Records[id]}", 0))
+            var lack = EchoDiff(mine, theirs, _identity.NodeId)
+                .Where(id => !session.EchoPullsTried.ContainsKey($"{senderNodeId}|{id}|{theirs.Records[id]}"))
                 .Take(MaxPullIds).ToList();
-            if (lack.Count > 0)
+            // One pull per sender at a time: the asker re-sends its list every echo round, and while a slow pull is
+            // still running a second identical one only doubles the traffic on the same congested link.
+            if (lack.Count > 0 && _echoPullsRunning.TryAdd(senderNodeId, 0))
             {
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        if (await PullNodesAsync(senderNodeId, lack, session, ct) > 0)
+                        var (got, answered) = await PullNodesWithStatusAsync(senderNodeId, lack, session, ct);
+                        if (answered) foreach (var id in lack) session.EchoPullsTried.TryAdd($"{senderNodeId}|{id}|{theirs.Records[id]}", 0);
+                        if (got > 0)
                         {
                             await CreateAndBroadcastLocalDeltaAsync(session, ct);
                             await FinalizeIterationAndReportAsync(session);
                         }
                     }
                     catch (Exception ex) { _logger.LogDebug(ex, "[Consensus Protocol] Echo pull from {Sender} failed.", senderNodeId); }
+                    finally { _echoPullsRunning.TryRemove(senderNodeId, out _); }
                 });
             }
         }
@@ -1870,33 +1905,37 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
     }
 
     /// <summary>Asks one node for the records of the given nodes and stages them with that node as the source.</summary>
-    private async Task<int> PullNodesAsync(string fromNodeId, List<string> nodeIds, ConsensusMergeSession session, CancellationToken ct)
+    private async Task<int> PullNodesAsync(string fromNodeId, List<string> nodeIds, ConsensusMergeSession session, CancellationToken ct) =>
+        (await PullNodesWithStatusAsync(fromNodeId, nodeIds, session, ct)).Got;
+
+    /// <summary>Pull records; Answered says whether the node answered at all (false: timeout, error, no session).</summary>
+    private async Task<(int Got, bool Answered)> PullNodesWithStatusAsync(string fromNodeId, List<string> nodeIds, ConsensusMergeSession session, CancellationToken ct)
     {
-        if (session.StagingOperation == null || nodeIds.Count == 0) return 0;
+        if (session.StagingOperation == null || nodeIds.Count == 0) return (0, false);
         try
         {
             var result = await _routerService.SendRequestAsync(fromNodeId, "ConsensusNodePull",
                 JsonSerializer.Serialize(new ConsensusNodePullRequest { NodeIds = nodeIds.Take(MaxPullIds).ToList() }),
-                new RouteSettings { Timeout = TimeSpan.FromSeconds(15), CancellationToken = ct });
-            if (!result.IsSuccess || string.IsNullOrEmpty(result.Payload) || !result.Payload.TrimStart().StartsWith("[")) return 0;
+                new RouteSettings { Timeout = TimeSpan.FromSeconds(30), CancellationToken = ct });
+            if (!result.IsSuccess || string.IsNullOrEmpty(result.Payload) || !result.Payload.TrimStart().StartsWith("[")) return (0, false);
             var nodes = JsonSerializer.Deserialize<List<PeerNodeTransferred>>(result.Payload) ?? new List<PeerNodeTransferred>();
             nodes = nodes.Where(n => n?.Identity?.NodeId != null && nodeIds.Contains(n.Identity.NodeId, StringComparer.OrdinalIgnoreCase)).ToList();
             if (nodes.Count == 0)
             {
                 _logger.LogInformation("[Consensus Protocol] {From} has none of the {Count} record(s) we asked for ({Ids}).", fromNodeId, nodeIds.Count, string.Join(", ", nodeIds.Take(8)));
-                return 0;
+                return (0, true);
             }
             await _mergeEngine.StageIncomingNodeSetAsync(session.StagingOperation, fromNodeId, nodes);
             session.IterationSources.TryAdd(fromNodeId, 0);
             foreach (var n in nodes) await _peerTracker.UpdatePeerWasSeenByAsync(n.Identity.NodeId, fromNodeId);
             _logger.LogInformation("[Consensus Protocol] Pulled {Count} record(s) from {From}: {Nodes}.", nodes.Count, fromNodeId, string.Join(", ", nodes.Select(n => n.Identity.NodeId).Take(8)));
             LogConsensusEvent("pull", new Dictionary<string, object?> { ["peer"] = fromNodeId, ["nodes"] = nodes.Select(n => n.Identity.NodeId).ToList() });
-            return nodes.Count;
+            return (nodes.Count, true);
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "[Consensus Protocol] Pull from {From} failed.", fromNodeId);
-            return 0;
+            return (0, false);
         }
     }
 

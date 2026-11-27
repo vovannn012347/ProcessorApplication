@@ -277,6 +277,18 @@ def prepare(args):
     evil_names = set(rng.sample(names[1:], evil_count)) if evil_count and attacks else set()
     if evil_count and not attacks:
         print("--evil given without --attacks: no node misbehaves.")
+    # Who does what:
+    #   random       - each evil node gets its own random subset (1..all) of the attacks; they don't know each other
+    #   all          - every evil node uses every attack; they don't know each other (the old behaviour)
+    #   coordinated  - every evil node uses every attack, and they collude: same victims for slander/forgery,
+    #                  each other praised and spared (no withholding/forging/replaying against an accomplice)
+    evil_mode = getattr(args, "evil_mode", "random") or "random"
+    evil_assign, evil_victims = {}, []
+    for name in sorted(evil_names):
+        evil_assign[name] = sorted(rng.sample(attacks, rng.randint(1, len(attacks)))) if evil_mode == "random" else list(attacks)
+    if evil_mode == "coordinated" and evil_names:
+        honest = [n for n in names if n not in evil_names]
+        evil_victims = sorted(rng.sample(honest, max(1, len(honest) // 3)))
 
     public_count = max(0, min(getattr(args, "public", 0) or 0, count))
     worker = None
@@ -309,9 +321,13 @@ def prepare(args):
                 "SeedEndpoints": node["Seeds"],
             }
         }
-        node["Evil"] = attacks if node["Name"] in evil_names else []
+        node["Evil"] = evil_assign.get(node["Name"], [])
         if node["Evil"]:
-            p2p_override["EvilSettings"] = {"Attacks": attacks, "Rate": getattr(args, "evil_rate", 1.0)}
+            evil_cfg = {"Attacks": node["Evil"], "Rate": getattr(args, "evil_rate", 1.0)}
+            if evil_mode == "coordinated":
+                evil_cfg["Accomplices"] = sorted(evil_names - {node["Name"]})
+                evil_cfg["Victims"] = evil_victims
+            p2p_override["EvilSettings"] = evil_cfg
         write_json(home / "Modules" / "P2PModule" / f"appsettings.P2P.{ENVIRONMENT}.json", p2p_override)
         clinic = home / "Modules" / "ProviderlessModule" / f"appsettings.Providerless.{ENVIRONMENT}.json"
         node["Public"] = nodes.index(node) < public_count
@@ -341,9 +357,15 @@ def prepare(args):
         write_json(home / "swarm-node.json", node)
 
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-    append_line(convergence_log(args.rid), {"t": stamp, "kind": "evil_nodes", "nodes": sorted(evil_names), "attacks": attacks if evil_names else []})
+    append_line(convergence_log(args.rid), {"t": stamp, "kind": "evil_nodes", "nodes": sorted(evil_names),
+                                            "attacks": attacks if evil_names else [], "mode": evil_mode if evil_names else "",
+                                            "assign": evil_assign, "victims": evil_victims})
     if evil_names:
-        print(f"Evil nodes ({', '.join(attacks)}): {', '.join(sorted(evil_names))}")
+        print(f"Evil nodes ({evil_mode}, {len(evil_names)} of {count}):")
+        for name in sorted(evil_names):
+            print(f"    {name}: {', '.join(evil_assign[name])}")
+        if evil_victims:
+            print(f"    shared slander/forgery victims: {', '.join(evil_victims)}")
 
     # Homes of an earlier, bigger swarm stay on disk, but without swarm-node.json "start" no longer sees them
     # (a 5-node run used to start all 10).
@@ -864,7 +886,7 @@ def analyze(args):
         m = run_metrics(events, names, set(evil_line0.get("nodes", [])) if evil_line0 else set())
         if m:
             if evil_line0:
-                m["attacks"] = "+".join(evil_line0.get("attacks", []))
+                m["attacks"] = (evil_line0.get("mode") + ":" if evil_line0.get("mode") else "") + "+".join(evil_line0.get("attacks", []))
             print(f"\n  run: N={m['nodes']}, merges {m['merges']} ({m['merges_per_node']}/node), deltas {m['deltas']}, pulls {m['pulls']}, "
                   f"chain depth {m['chain_depth']}, T_conv {m['t_conv_s'] or 'not converged'} s (95 %: {m['t95_s'] or '-'} s, 99 %: {m['t99_s'] or '-'} s), consensus traffic {m['bytes_total'] / 1024:.1f} KB "
                   f"({m['bytes_per_node'] / 1024:.1f} KB/node), record {m['rec_bytes'] or '?'} B, omega {m['omega'] or '?'}, consistency {m['consistency_pct']} %")
@@ -889,8 +911,11 @@ def analyze(args):
         acts = [e for e in events if e["ev"] == "evil"]
         found = [e for e in events if e["ev"] == "evidence"]
         if evil_nodes or acts or found:
+            mode = (evil_line or {}).get("mode") or ""
             print(f"\nAttack test: evil nodes {', '.join(sorted(evil_nodes)) or '-'}" +
-                  (f" ({', '.join(evil_line.get('attacks', []))})" if evil_line and evil_nodes else ""))
+                  (f" ({mode + ', ' if mode else ''}{', '.join(evil_line.get('attacks', []))})" if evil_line and evil_nodes else ""))
+            if (evil_line or {}).get("victims"):
+                print(f"  shared victims (coordinated): {', '.join(evil_line['victims'])}")
             for n in sorted(evil_nodes | {e["_node"] for e in acts}):
                 mine = [e for e in acts if e["_node"] == n]
                 kinds = {}
@@ -900,7 +925,8 @@ def analyze(args):
                 first_act = min((_parse_t(e["t"]) for e in mine), default=None)
                 first_caught = min((_parse_t(e["t"]) for e in caught), default=None)
                 lag = f", first caught {(first_caught - first_act).total_seconds():.1f} s after its first attack" if first_act and first_caught else ""
-                print(f"  {n}: {len(mine)} attack(s) " + (", ".join(f"{k} {v}" for k, v in kinds.items()) if kinds else "") +
+                assigned = ((evil_line or {}).get("assign") or {}).get(n)
+                print(f"  {n}{' [' + '+'.join(assigned) + ']' if assigned else ''}: {len(mine)} attack(s) " + (", ".join(f"{k} {v}" for k, v in kinds.items()) if kinds else "") +
                       f"; evidence by {len({e['_node'] for e in caught})} node(s) ({', '.join(sorted({e.get('kind') for e in caught})) or 'none'}){lag}")
             honest_hits = [e for e in found if e.get("peer") not in evil_nodes]
             if honest_hits:
@@ -1150,7 +1176,7 @@ def archive(args):
     stamp = (trig["t"] if trig else datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"))[:19].replace(":", "-")
     name = f"{stamp}_N{len(homes)}"
     if evil and evil.get("nodes"):
-        name += "_evil-" + "+".join(evil.get("attacks", [])) + f"-{len(evil['nodes'])}"
+        name += "_evil-" + (evil.get("mode") + "-" if evil.get("mode") else "") + "+".join(evil.get("attacks", [])) + f"-{len(evil['nodes'])}"
     if getattr(args, "label", ""):
         name += "_" + re.sub(r"[^A-Za-z0-9_.+-]", "-", args.label)
     root = Path(args.archive_dir) if getattr(args, "archive_dir", "") else group_root(rid) / "runs"
@@ -1244,6 +1270,10 @@ def main():
         p.add_argument("--attacks", default="",
                        help="with --evil: comma list of slander, equivocate, forge, corrupt-delta, withhold, mitm")
         p.add_argument("--evil-rate", type=float, default=1.0, help="with --evil: chance each opportunity is used (default 1)")
+        p.add_argument("--evil-mode", choices=["random", "all", "coordinated"], default="random",
+                       help="with --evil: random = each evil node its own random subset of --attacks, independent (default); "
+                            "all = every node every attack, independent; coordinated = every attack, colluding "
+                            "(shared victims, accomplices praised and spared)")
 
     def start_options(p):
         p.add_argument("--reingest", choices=["Changed", "Overwrite", "Off"], default="Changed")

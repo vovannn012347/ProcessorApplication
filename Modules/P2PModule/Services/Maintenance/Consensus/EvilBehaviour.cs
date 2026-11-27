@@ -24,6 +24,11 @@ public class EvilSettings
     public List<string> Attacks { get; set; } = new();
     /// <summary>Chance (0..1) that a given opportunity is used for the attack.</summary>
     public double Rate { get; set; } = 1.0;
+    /// <summary>Coordinated attack: the other evil nodes. They are praised (trust 100) and spared: no withholding,
+    /// forging or replaying against them.</summary>
+    public List<string> Accomplices { get; set; } = new();
+    /// <summary>Coordinated attack: the honest nodes every accomplice slanders and forges (empty = each node picks its own).</summary>
+    public List<string> Victims { get; set; } = new();
 }
 
 /// <summary>Hook points for test attacks. The default does nothing.</summary>
@@ -76,8 +81,9 @@ public sealed class EvilBehaviour : IEvilBehaviour
         if (!_announced)
         {
             _announced = true;
-            _logger.LogWarning("[EVIL TEST] This node misbehaves on purpose (swarm test): {Attacks}, rate {Rate}.",
-                string.Join(", ", _settings.CurrentValue.Attacks), _settings.CurrentValue.Rate);
+            _logger.LogWarning("[EVIL TEST] This node misbehaves on purpose (swarm test): {Attacks}, rate {Rate}{Coordinated}.",
+                string.Join(", ", _settings.CurrentValue.Attacks), _settings.CurrentValue.Rate,
+                _settings.CurrentValue.Accomplices?.Count > 0 ? $", coordinated with {string.Join(", ", _settings.CurrentValue.Accomplices)}" : "");
         }
         return Random.Shared.NextDouble() < Math.Clamp(_settings.CurrentValue.Rate, 0, 1);
     }
@@ -93,34 +99,54 @@ public sealed class EvilBehaviour : IEvilBehaviour
     {
         if (!Active) return nodes;
 
-        if (Has("withhold"))
+        var me = _identity.NodeId;
+        var cfg = _settings.CurrentValue;
+        var accomplices = new HashSet<string>(cfg.Accomplices ?? new(), StringComparer.OrdinalIgnoreCase);
+        bool toAccomplice = accomplices.Contains(toNodeId);
+
+        // One record attack per opportunity, picked at random among this node's attacks. (They used to run one after
+        // another, and withhold - which returns nothing - hid every other attack: a node given withhold + slander at
+        // rate 1 never slandered.)
+        var options = new[] { "withhold", "slander", "equivocate", "forge" }
+            .Where(a => cfg.Attacks.Any(x => string.Equals(x, a, StringComparison.OrdinalIgnoreCase)))
+            .Where(a => !(toAccomplice && (a == "withhold" || a == "forge")))   // accomplices are spared
+            .ToList();
+        if (options.Count == 0) return nodes;
+        string pick = options[Random.Shared.Next(options.Count)];
+        if (!Has(pick)) return nodes;
+
+        if (pick == "withhold")
         {
             Log("withhold", toNodeId, $"sent nothing instead of {nodes.Count} record(s)");
             return new List<PeerNodeTransferred>();
         }
 
-        var me = _identity.NodeId;
-
-        if (Has("slander"))
+        if (pick == "slander")
         {
-            // Push a fixed third of the others down, ourselves up
+            // Push a fixed third of the others down (coordinated: the shared victims), ourselves and accomplices up
             lock (_lock)
             {
                 if (_victims.Count == 0)
-                    foreach (var n in nodes.Where(n => n.Identity?.NodeId != null && !n.Identity.NodeId.Equals(me, StringComparison.OrdinalIgnoreCase)))
-                        if (Random.Shared.Next(3) == 0) _victims.Add(n.Identity.NodeId);
+                {
+                    if (cfg.Victims?.Count > 0) foreach (var v in cfg.Victims) _victims.Add(v);
+                    else
+                        foreach (var n in nodes.Where(n => n.Identity?.NodeId != null && !n.Identity.NodeId.Equals(me, StringComparison.OrdinalIgnoreCase)
+                                                           && !accomplices.Contains(n.Identity.NodeId)))
+                            if (Random.Shared.Next(3) == 0) _victims.Add(n.Identity.NodeId);
+                }
             }
-            int down = 0;
+            int down = 0, up = 0;
             foreach (var n in nodes)
             {
                 if (n.Identity?.NodeId == null) continue;
                 if (_victims.Contains(n.Identity.NodeId)) { n.TrustScore = -50; down++; }
                 else if (n.Identity.NodeId.Equals(me, StringComparison.OrdinalIgnoreCase)) n.TrustScore = 100;
+                else if (accomplices.Contains(n.Identity.NodeId)) { n.TrustScore = 100; up++; }
             }
-            if (down > 0) Log("slander", toNodeId, $"reported {down} node(s) at trust -50");
+            if (down > 0 || up > 0) Log("slander", toNodeId, $"reported {down} node(s) at trust -50" + (up > 0 ? $", {up} accomplice(s) at 100" : ""));
         }
 
-        if (Has("equivocate"))
+        if (pick == "equivocate")
         {
             // Two different self-records with the same signature time, one or the other depending on the receiver
             lock (_lock) { if (_equivocationTime == default) _equivocationTime = DateTime.UtcNow; }
@@ -135,11 +161,13 @@ public sealed class EvilBehaviour : IEvilBehaviour
             Log("equivocate", toNodeId, $"self-record variant {(variantB ? "B" : "A")} at {_equivocationTime:O}");
         }
 
-        if (Has("forge"))
+        if (pick == "forge")
         {
-            // Claim another node's id with our own keys
-            var victim = nodes.Where(n => n.Identity?.NodeId != null && !n.Identity.NodeId.Equals(me, StringComparison.OrdinalIgnoreCase))
-                .OrderBy(_ => Random.Shared.Next()).FirstOrDefault();
+            // Claim another node's id with our own keys (coordinated: one of the shared victims; never an accomplice)
+            var candidates = nodes.Where(n => n.Identity?.NodeId != null && !n.Identity.NodeId.Equals(me, StringComparison.OrdinalIgnoreCase)
+                                              && !accomplices.Contains(n.Identity.NodeId)).ToList();
+            var shared = candidates.Where(n => cfg.Victims?.Contains(n.Identity.NodeId, StringComparer.OrdinalIgnoreCase) == true).ToList();
+            var victim = (shared.Count > 0 ? shared : candidates).OrderBy(_ => Random.Shared.Next()).FirstOrDefault();
             if (victim != null)
             {
                 var keys = _identity.GetDayKeys();
@@ -188,8 +216,10 @@ public sealed class EvilBehaviour : IEvilBehaviour
         var connections = _services.GetRequiredService<IPeerConnectionManager>();
         var router = _services.GetRequiredService<IP2PRouterService>();
         var me = _identity.NodeId;
+        var accomplices = new HashSet<string>(_settings.CurrentValue.Accomplices ?? new(), StringComparer.OrdinalIgnoreCase);
         var target = connections.GetActiveConnections()
             .Where(c => c?.NodeId != null && !c.NodeId.Equals(fromNodeId, StringComparison.OrdinalIgnoreCase) && !c.NodeId.Equals(me, StringComparison.OrdinalIgnoreCase)
+                        && !accomplices.Contains(c.NodeId)
                         && c.PeerConnection?.connectionState == SIPSorcery.Net.RTCPeerConnectionState.connected)
             .Select(c => c.NodeId).OrderBy(_ => Random.Shared.Next()).FirstOrDefault();
         if (target == null) return;

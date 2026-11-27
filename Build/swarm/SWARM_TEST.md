@@ -1,4 +1,4 @@
-# Swarm convergence test
+﻿# Swarm convergence test
 
 Starts N full nodes on this PC, has them find each other, runs one consensus round and measures how fast every node ends up knowing every other node.
 Everything is in `Build\swarm\`. Run the commands from a normal Command Prompt (or Git Bash) in the repository root.
@@ -91,6 +91,18 @@ Each node also writes its consensus events to `Module_Data\P2P\consensus_events.
 - `merge`: a pairwise merge with a peer (`ok` true/false);
 - `queue_empty`: no more peers to visit;
 - `finish`: the session ended (`reason`: inactivity, midnight or error; `known`: how many nodes it knew).
+
+
+### Attack runs
+
+`swarm.bat test --count 20 --evil 6 --attacks slander,equivocate,forge,corrupt-delta,withhold --evil-mode coordinated`
+
+- `--evil N`: N random nodes (never the first) misbehave. `--evil-rate` = the chance each opportunity is used (default 1).
+- `--evil-mode random` (default): each evil node gets its own random subset of `--attacks`; they act independently.
+- `--evil-mode all`: every evil node uses every attack, independently.
+- `--evil-mode coordinated`: every evil node uses every attack and they collude: they slander and forge the same victims (a third of the honest nodes), report each other at trust 100, and never withhold from, forge or replay against each other.
+- On every opportunity (a swap or pull answer) an evil node uses ONE of its record attacks (withhold, slander, equivocate, forge), picked at random; `corrupt-delta` and `mitm` have their own opportunities.
+- The assignment is printed at prepare, written to `convergence.log` (`evil_nodes`: mode, per-node attacks, shared victims) and shown by `analyze`. The archive folder and the `attacks` column of `runs.csv` carry the mode.
 
 ## Logs of every run (`runs\`)
 

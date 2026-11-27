@@ -1254,5 +1254,37 @@ def main():
          "archive": archive}[args.command](args)
 
 
+LONG_COMMANDS = {"test", "bench", "build", "fresh", "up"}
+
+
+def beep(ok):
+    """Sound at the end of a long command: two rising tones = done, three low ones = failed.
+    Off with SWARM_BEEP=0."""
+    if os.environ.get("SWARM_BEEP", "1") == "0":
+        return
+    try:
+        import winsound
+        tones = [(880, 150), (1320, 250)] if ok else [(440, 300), (330, 300), (220, 500)]
+        for freq, ms in tones:
+            winsound.Beep(freq, ms)
+    except Exception:
+        try:
+            sys.stdout.write("\a" if ok else "\a\a\a")
+            sys.stdout.flush()
+        except Exception:
+            pass
+
+
 if __name__ == "__main__":
-    main()
+    command = next((a for a in sys.argv[1:] if not a.startswith("-")), "")
+    long_run = command in LONG_COMMANDS or (command == "check" and "--watch" in sys.argv)
+    ok = False
+    try:
+        main()
+        ok = True
+    except SystemExit as e:
+        ok = e.code in (None, 0)
+        raise
+    finally:
+        if long_run:
+            beep(ok)

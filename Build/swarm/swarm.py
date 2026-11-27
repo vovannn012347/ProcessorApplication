@@ -1006,15 +1006,26 @@ def test(args):
     time.sleep(args.settle)
 
     print("=== 6/7 trigger consensus")
+    # A busy or dead node must not end the whole bench: try again, and on another node after a couple of tries
+    wanted = args.node
+    candidates = [i["Name"] for _, i in homes if http_ok(i["Url"].rstrip("/") + "/api/Heartbeat")]
+    triggered = False
     for attempt in range(1, 7):
+        if not wanted and candidates:
+            args.node = candidates[((attempt - 1) // 2) % len(candidates)]
         try:
             consensus(args)
+            triggered = True
             break
-        except SystemExit as e:
-            if attempt == 6:
-                sys.exit(f"Consensus could not be triggered: {e}")
-            print(f"    not yet ({e}); retry in 20 s")
+        except (SystemExit, Exception) as e:
+            print(f"    {args.node or 'first node'}: not triggered ({e}); retry in 20 s")
             time.sleep(20)
+    args.node = wanted
+    if not triggered:
+        print("Consensus could not be triggered: this run is skipped.")
+        if not getattr(args, "no_archive", False):
+            archive(args)
+        return
 
     print(f"=== 7/7 watch convergence every {args.interval:.0f} s (max {args.timeout:.0f} min)")
     log = convergence_log(args.rid)
@@ -1048,7 +1059,7 @@ ARCHIVE_P2P_FILES = ("consensus_events.jsonl", "connection_events.jsonl", "ratin
 def archive(args):
     """Copies this run's logs out of the node homes (the next "fresh" wipes them) into one folder per run:
     <archive-dir>/<trigger time>_N<count>[_evil-<attacks>]/  with convergence.log, runs.csv, the replay page and,
-    per node, its consensus/connection/rating events, evidence, console logs and settings."""
+    per node (<run>/<node>/) its consensus/connection/rating events, evidence, console logs and settings."""
     rid = args.rid
     homes = node_homes(rid)
     if not homes:
@@ -1077,16 +1088,20 @@ def archive(args):
         except OSError as e:
             print(f"    could not copy {src}: {e}")
 
+    # Flat per node: <run>/<node>/{events .jsonl, console logs, evidence/, settings}
     for home, info in homes:
-        nd = dest / "nodes" / info["Name"]
+        nd = dest / info["Name"]
         p2p = p2p_dir(home)
         for f in ARCHIVE_P2P_FILES:
-            copy(p2p / f, nd / "Module_Data" / "P2P" / f)
-        copy(p2p / "consensus_evidence", nd / "Module_Data" / "P2P" / "consensus_evidence")
-        copy(home / "logs", nd / "logs")
+            copy(p2p / f, nd / f)
+        ev = p2p / "consensus_evidence"
+        if ev.is_dir():
+            for f in ev.rglob("*.json"):
+                copy(f, nd / "evidence" / f.name)
+        for f in (home / "logs").glob("console-*.log") if (home / "logs").is_dir() else []:
+            copy(f, nd / f.name)
         copy(home / "swarm-node.json", nd / "swarm-node.json")
-        copy(home / "Modules" / "P2PModule" / f"appsettings.P2P.{ENVIRONMENT}.json",
-             nd / "Modules" / "P2PModule" / f"appsettings.P2P.{ENVIRONMENT}.json")
+        copy(home / "Modules" / "P2PModule" / f"appsettings.P2P.{ENVIRONMENT}.json", nd / f"appsettings.P2P.{ENVIRONMENT}.json")
     for f in ("convergence.log", "runs.csv", "consensus_events.csv", "convergence.csv", "swarm-homes.json"):
         copy(group_root(rid) / f, dest / f)
     try:

@@ -50,6 +50,13 @@ public class GossipSelfIdentityUpdatedHandler : IHostedService, IDisposable
 
     private async void _identity_OnIdentityUpdated(string previousIdentityDayKey)
     {
+        // async void event handler: an exception escaping it would terminate the process
+        try { await PublishIdentityUpdateAsync(); }
+        catch (Exception ex) { System.Diagnostics.Trace.TraceWarning("[Gossip] Identity update publish failed: " + ex.Message); }
+    }
+
+    private async Task PublishIdentityUpdateAsync()
+    {
         var nodeImmutableData = _identity.GetImmutableData();
         var nodeUpdate = new NodeUpdateData
         {

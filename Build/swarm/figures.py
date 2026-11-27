@@ -129,8 +129,10 @@ def reputation(group):
     t0 = parse_t(trig["t"]) if trig else None
 
     events, first_attack = [], None
-    for home in sorted((group / "nodes").glob("*")):
-        p2p = home / "Module_Data" / "P2P"
+    # node homes (<group>/nodes/<node>/Module_Data/P2P) or an archived run (<run>/<node>/)
+    homes = sorted((group / "nodes").glob("*")) if (group / "nodes").is_dir() else sorted(d for d in group.iterdir() if d.is_dir())
+    for home in homes:
+        p2p = home / "Module_Data" / "P2P" if (home / "Module_Data" / "P2P").is_dir() else home
         for e in read_lines(p2p / "rating_events.jsonl"):
             if e.get("peer") and e.get("score") is not None:
                 e["_obs"] = home.name

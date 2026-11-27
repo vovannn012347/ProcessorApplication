@@ -126,6 +126,16 @@ public sealed class ConsensusObservationLedger
     /// further than <paramref name="threshold"/> from their median is an outlier on that node. Returns the sources
     /// that became outliers on a new subject, with how many subjects they are outliers on now.
     /// </summary>
+    private readonly Dictionary<string, HashSet<string>> _compared = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _flagged = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Records a source's trust score for a node and returns the sources that have just crossed the slander line:
+    /// - on a node at least two OTHER sources reported, it is further than max(threshold, 3 x the others' median
+    ///   absolute deviation) from their median (honest nodes disagree a little: local penalties, decay, timing);
+    /// - and that happened on at least 3 nodes AND on at least 30 % of the nodes it could be compared on.
+    /// Each source is returned once per session.
+    /// </summary>
     public List<(string Source, int Subjects, double Value, double Median)> ObserveTrust(string nodeId, string source, double trust, double threshold = 40)
     {
         var result = new List<(string, int, double, double)>();
@@ -138,14 +148,22 @@ public sealed class ConsensusObservationLedger
             foreach (var (src, value) in bySource)
             {
                 var others = bySource.Where(kv => !kv.Key.Equals(src, StringComparison.OrdinalIgnoreCase)).Select(kv => kv.Value).OrderBy(v => v).ToList();
-                double median = others.Count % 2 == 1 ? others[others.Count / 2] : (others[others.Count / 2 - 1] + others[others.Count / 2]) / 2;
-                if (Math.Abs(value - median) <= threshold) continue;
+                double median = Median(others);
+                double mad = Median(others.Select(v => Math.Abs(v - median)).OrderBy(v => v).ToList());
+                if (!_compared.TryGetValue(src, out var compared)) _compared[src] = compared = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                compared.Add(nodeId);
+                if (Math.Abs(value - median) <= Math.Max(threshold, 3 * mad)) continue;
                 if (!_outliers.TryGetValue(src, out var subjects)) _outliers[src] = subjects = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                if (subjects.Add(nodeId)) result.Add((src, subjects.Count, value, median));
+                subjects.Add(nodeId);
+                if (subjects.Count >= 3 && subjects.Count >= 0.3 * compared.Count && _flagged.Add(src))
+                    result.Add((src, subjects.Count, value, median));
             }
         }
         return result;
     }
+
+    private static double Median(List<double> sorted) =>
+        sorted.Count == 0 ? 0 : sorted.Count % 2 == 1 ? sorted[sorted.Count / 2] : (sorted[sorted.Count / 2 - 1] + sorted[sorted.Count / 2]) / 2;
 
     /// <summary>Nodes reported by exactly one other node so far, with that source.</summary>
     public List<(string NodeId, string Source)> SingleSource()

@@ -530,7 +530,17 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                         ? (channelLabel.StartsWith("unmanaged:", StringComparison.OrdinalIgnoreCase) ? channelLabel : $"unmanaged:{channelLabel}")
                         : channelLabel;
 
-                    var dc = await conn.PeerConnection.createDataChannel(wireLabel);
+                    RTCDataChannel? dc;
+                    try
+                    {
+                        dc = await conn.PeerConnection.createDataChannel(wireLabel);
+                    }
+                    catch (Exception ex)
+                    {
+                        // "No SCTP transport is available": the connection says connected but its SCTP association
+                        // isn't up (yet / any more). Not a reason to fail - and never a reason to crash the node.
+                        return new CreateChannelResult { Error = $"createDataChannel('{wireLabel}') failed: {ex.Message}" };
+                    }
                     if (dc == null)
                     {
                         return new CreateChannelResult { Error = $"createDataChannel('{wireLabel}') returned no channel" };
@@ -637,7 +647,15 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
         }
     }
 
+    // Timer callbacks and event handlers are async void: an exception escaping them kills the process
+    // (seen: "No SCTP transport is available" from createDataChannel took down 5 of 50 swarm nodes).
     private async void BroadcastTimeSyncPulses(object? state)
+    {
+        try { await BroadcastTimeSyncPulsesCoreAsync(); }
+        catch (Exception ex) { _logger.LogWarning(ex, "[P2P Sync] Time sync round failed."); }
+    }
+
+    private async Task BroadcastTimeSyncPulsesCoreAsync()
     {
         foreach (var conn in _connections.Values)
         {
@@ -661,6 +679,12 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
     }
 
     private async void HandleTimeSyncPacket(string nodeId, byte[] data)
+    {
+        try { await HandleTimeSyncPacketCoreAsync(nodeId, data); }
+        catch (Exception ex) { _logger.LogDebug(ex, "[P2P Sync] Bad time sync packet from {NodeId}.", nodeId); }
+    }
+
+    private async Task HandleTimeSyncPacketCoreAsync(string nodeId, byte[] data)
     {
         string rawJsonText = Encoding.UTF8.GetString(data);
         var envelope = JsonSerializer.Deserialize<P2PPacketEnvelope>(rawJsonText);
@@ -1701,6 +1725,12 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
 
     public async void HandleRelaySignaling(string senderNodeId, P2PPacketEnvelope envelope)
+    {
+        try { await HandleRelaySignalingCoreAsync(senderNodeId, envelope); }
+        catch (Exception ex) { _logger.LogWarning(ex, "[P2P Transport] Relayed signaling from {NodeId} failed.", senderNodeId); }
+    }
+
+    private async Task HandleRelaySignalingCoreAsync(string senderNodeId, P2PPacketEnvelope envelope)
     {
         var signaling = SafeJson.Deserialize<RelaySignalPayload>(envelope.SerializedPayload);
 

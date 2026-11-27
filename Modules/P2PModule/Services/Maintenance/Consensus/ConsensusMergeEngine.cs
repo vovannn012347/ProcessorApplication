@@ -309,7 +309,6 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
             // several different nodes, is slander (or ballot stuffing). Settled by comparison, local evidence only.
             foreach (var (src, subjects, value, median) in operation.Observations.ObserveTrust(nodeId, remoteNodeId, remoteNode.TrustScore))
             {
-                if (subjects != SlanderSubjects) continue;
                 _logger.LogWarning("[Consensus Engine] {Source} reports trust scores far from what other sources report on {Subjects} nodes (e.g. {NodeId}: {Value} vs median {Median}). Penalizing; evidence kept.",
                     src, subjects, nodeId, value, median);
                 var srcNode = await GetWeightedNodeFromStagingHierarchyAsync(operation, src);
@@ -322,7 +321,7 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
                     SubjectNodeId = src,
                     ConsensusDate = operation.TargetDate,
                     DetectedByNodeId = _identity.NodeId,
-                    Reason = $"Trust scores more than 40 points from the median of the other sources, on {subjects} different nodes (opinions, not signed: local evidence).",
+                    Reason = $"Trust scores far from the median of the other sources (more than max(40, 3 x MAD)), on {subjects} different nodes and at least 30 % of those comparable (opinions, not signed: local evidence).",
                     Details = new { example = nodeId, value, median },
                     PenalizedNodeIds = new List<string> { src },
                 }, _logger);

@@ -50,6 +50,12 @@ public class RouteSettings
     public Action<string>? OnLateAnswer { get; set; }
 
     /// <summary>
+    /// Progressive requests: after the inactivity timeout (the callback gets "TIMEOUT" and the caller moves on),
+    /// chunks that still arrive within 5 minutes are passed to the same callback instead of being dropped.
+    /// </summary>
+    public bool KeepListeningAfterTimeout { get; set; }
+
+    /// <summary>
     /// Cooperative cancellation token propagated down to async network tasks.
     /// </summary>
     public CancellationToken CancellationToken { get; set; } = default;
@@ -127,6 +133,9 @@ public class P2PRouterService : IP2PRouterService, IDisposable
     /// <summary>Requests that gave up waiting: id -> (when we sent it, how long we waited).</summary>
     private readonly ConcurrentDictionary<Guid, (DateTime SentUtc, TimeSpan Waited)> _timedOutRequests = new();
     private readonly ConcurrentDictionary<Guid, Action<string>> _lateAnswerHandlers = new();
+    private readonly ConcurrentDictionary<Guid, (ProgressiveTransferContext Context, DateTime Until)> _lateProgressive = new();
+    /// <summary>Pause after each non-final chunk of a progressive answer, so other messages get onto the link in between.</summary>
+    private static readonly TimeSpan ProgressiveChunkGap = TimeSpan.FromMilliseconds(15);
     private readonly ConcurrentDictionary<Guid, ProgressiveTransferContext> _progressiveTransfers = new();
     private readonly ConcurrentDictionary<string, Func<string, P2PPacketEnvelope, CancellationToken, Task<string>>> _commandHandlers = new();
 
@@ -281,6 +290,21 @@ public class P2PRouterService : IP2PRouterService, IDisposable
         {
             if (!string.IsNullOrEmpty(frame.ErrorMessage)) tcs.TrySetException(new Exception(frame.ErrorMessage));
             else tcs.TrySetResult(frame.SerializedPayload);
+            return;
+        }
+
+        // A chunk of a progressive answer whose wait already timed out: still handed over (KeepListeningAfterTimeout)
+        if (frame.CommandType.StartsWith("Response-", StringComparison.OrdinalIgnoreCase) &&
+            !_progressiveTransfers.ContainsKey(frame.MessageId) && _lateProgressive.TryGetValue(frame.MessageId, out var lateTransfer))
+        {
+            if (frame.IsCompleted || !string.IsNullOrEmpty(frame.ErrorMessage) || DateTime.UtcNow > lateTransfer.Until)
+                _lateProgressive.TryRemove(frame.MessageId, out _);
+            if (DateTime.UtcNow > lateTransfer.Until) return;
+            _ = Task.Run(() =>
+            {
+                try { lateTransfer.Context.Callback(frame.SerializedPayload, frame.ErrorMessage, frame.ProgressPercent, frame.IsCompleted); }
+                catch (Exception ex) { _logger.LogWarning(ex, "[P2P Router] Late chunk of {Command} from {Sender} could not be handled.", frame.CommandType, senderNodeId); }
+            });
             return;
         }
 
@@ -477,6 +501,7 @@ public class P2PRouterService : IP2PRouterService, IDisposable
 
         await _connectionManager.WaitUntilSendableAsync(targetNodeId, "p2p-control-channel", ChannelRestartWait);
         _connectionManager.SendReplyRaw(targetNodeId, JsonSerializer.Serialize(responseEnvelope), "p2p-control-channel");
+        if (!isCompleted) await Task.Delay(ProgressiveChunkGap);
     }
 
     public async Task<RouterResult> SendRequestAsync(string targetNodeId, string commandType, string payloadJson, RouteSettings? settings = null)
@@ -583,12 +608,20 @@ public class P2PRouterService : IP2PRouterService, IDisposable
             InactivityTimeout = activeSettings.Timeout
         };
 
+        bool keepListening = activeSettings.KeepListeningAfterTimeout;
         context.Timer = new Timer(state =>
         {
             var msgId = (Guid)state!;
             if (_progressiveTransfers.TryRemove(msgId, out var expiredContext))
             {
                 expiredContext.Timer.Dispose();
+                if (keepListening)
+                {
+                    var now = DateTime.UtcNow;
+                    _lateProgressive[msgId] = (expiredContext, now.AddMinutes(5));
+                    foreach (var old in _lateProgressive.Where(kv => kv.Value.Until < now).Select(kv => kv.Key).ToList())
+                        _lateProgressive.TryRemove(old, out _);
+                }
                 expiredContext.Callback(null, "TIMEOUT", 0, true);
             }
         }, envelope.MessageId, activeSettings.Timeout, Timeout.InfiniteTimeSpan);

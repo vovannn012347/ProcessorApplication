@@ -205,7 +205,8 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
     private readonly ILogger<ConsensusProtocolHandler> _logger;
 
     private CancellationTokenSource? _sessionLoopCts;
-    private const int NodeSwapBatchSize = 50;
+    /// <summary>Records per chunk in swaps and pulls (was 50: on a 20-node swarm a whole swap was one big message).</summary>
+    private const int NodeSwapBatchSize = 8;
     private const int DeltaNodeBatchSize = 40;
     private const int RetryDelayMs = 1500;
     /// <summary>How many times a BUSY node is put back into the visit queue before it is given up for this session.</summary>
@@ -937,11 +938,12 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                 new RouteSettings { Timeout = TimeSpan.FromSeconds(20), CancellationToken = ct }
             );
 
-            // Safety net: a lost chunk must not hang the session
-            var finished = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(60), ct));
+            // Safety net only: silence is handled by the 20 s inactivity timeout (reset by every chunk), so a slow
+            // but steady swap is waited out; this catches a transfer that somehow never completes.
+            var finished = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromMinutes(5), ct));
             if (finished != tcs.Task)
             {
-                _logger.LogWarning("[Consensus Protocol] Swap with {TargetNodeId}: only {Staged}/{Expected} chunks staged after 60 s; continuing.",
+                _logger.LogWarning("[Consensus Protocol] Swap with {TargetNodeId}: only {Staged}/{Expected} chunks staged after 5 min; continuing.",
                     targetNodeId, stagedChunks, expectedChunks);
                 return hasReceivedData;
             }
@@ -1051,21 +1053,31 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
             return null!;
         }
 
-        int chunkCount = (totalNodes + NodeSwapBatchSize - 1) / NodeSwapBatchSize;
-        for (int i = 0; i < totalNodes; i += NodeSwapBatchSize)
-        {
-            var batch = localNodes.Skip(i).Take(NodeSwapBatchSize).ToList();
-            var payload = new ConsensusNodeSwapPayload { Nodes = batch, ChunkIndex = i / NodeSwapBatchSize, ChunkCount = chunkCount };
-
-            int processedCount = Math.Min(i + NodeSwapBatchSize, totalNodes);
-            double progress = ((double)processedCount / totalNodes) * 100.0;
-            bool isLast = (processedCount >= totalNodes);
-
-            await _routerService.SendProgressiveResponseAsync(
-                senderNodeId, frame.MessageId, "ConsensusSwap", JsonSerializer.Serialize(payload), progress, isLast);
-        }
-
+        await SendNodesInChunksAsync(senderNodeId, frame.MessageId, "ConsensusSwap", localNodes);
         return null!;
+    }
+
+    /// <summary>
+    /// Sends records as an answer in chunks of NodeSwapBatchSize. Small chunks, sent a little apart (the router
+    /// paces them), let other messages - ping answers, other requests - get onto the link between them instead of
+    /// queueing behind one big message; and the receiver stages each chunk as it comes.
+    /// </summary>
+    private async Task SendNodesInChunksAsync(string toNodeId, Guid requestId, string command, List<PeerNodeTransferred> nodes)
+    {
+        int total = nodes.Count;
+        if (total == 0)
+        {
+            await _routerService.SendProgressiveResponseAsync(toNodeId, requestId, command,
+                JsonSerializer.Serialize(new ConsensusNodeSwapPayload { ChunkIndex = 0, ChunkCount = 1 }), 100, true);
+            return;
+        }
+        int chunkCount = (total + NodeSwapBatchSize - 1) / NodeSwapBatchSize;
+        for (int i = 0; i < total; i += NodeSwapBatchSize)
+        {
+            var payload = new ConsensusNodeSwapPayload { Nodes = nodes.Skip(i).Take(NodeSwapBatchSize).ToList(), ChunkIndex = i / NodeSwapBatchSize, ChunkCount = chunkCount };
+            int sent = Math.Min(i + NodeSwapBatchSize, total);
+            await _routerService.SendProgressiveResponseAsync(toNodeId, requestId, command, JsonSerializer.Serialize(payload), 100.0 * sent / total, sent >= total);
+        }
     }
 
     private async Task<string> HandleIncomingSignatureRequestAsync(string senderNodeId, P2PPacketEnvelope frame, CancellationToken ct)
@@ -1908,75 +1920,82 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
     private async Task<int> PullNodesAsync(string fromNodeId, List<string> nodeIds, ConsensusMergeSession session, CancellationToken ct) =>
         (await PullNodesWithStatusAsync(fromNodeId, nodeIds, session, ct)).Got;
 
-    /// <summary>Pull records; Answered says whether the node answered at all (false: timeout, error, no session).</summary>
+    /// <summary>
+    /// Pull records; Answered says whether the node answered at all (false: nothing came, error, no session).
+    /// The answer comes in small chunks (PullChunkSize records), each staged as soon as it arrives. We wait as long
+    /// as chunks keep coming (the 30 s is of silence, not of the whole transfer). If the node goes quiet we move
+    /// on with what we have, but keep listening: chunks that still come later are staged and passed on as a delta.
+    /// </summary>
     private async Task<(int Got, bool Answered)> PullNodesWithStatusAsync(string fromNodeId, List<string> nodeIds, ConsensusMergeSession session, CancellationToken ct)
     {
         if (session.StagingOperation == null || nodeIds.Count == 0) return (0, false);
-        // Ids this node still owes us from a pull that timed out: its late answer is awaited, not asked for again
-        var now = DateTime.UtcNow;
-        var asked = nodeIds.Where(id => !(_latePullsAwaited.TryGetValue($"{fromNodeId}|{id}", out var since) && now - since < LatePullPatience))
-            .Take(MaxPullIds).ToList();
-        if (asked.Count == 0) return (0, false);
+        var asked = nodeIds.Take(MaxPullIds).ToList();
+        var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stageGate = new SemaphoreSlim(1, 1);
+        int got = 0, late = 0;
+        bool answered = false;
         try
         {
-            var result = await _routerService.SendRequestAsync(fromNodeId, "ConsensusNodePull",
+            await _routerService.SendRequestProgressiveAsync(fromNodeId, "ConsensusNodePull",
                 JsonSerializer.Serialize(new ConsensusNodePullRequest { NodeIds = asked }),
-                new RouteSettings
+                (payloadJson, error, progress, isCompleted) =>
                 {
-                    Timeout = TimeSpan.FromSeconds(30), CancellationToken = ct,
-                    // A busy node still answers, just late (the answer queues behind other traffic on the link).
-                    // We stop waiting so the loop goes on, but whatever arrives later is still taken in.
-                    OnLateAnswer = payload => _ = ClaimLatePullAsync(fromNodeId, asked, payload, session)
-                });
-            if (!result.IsSuccess || string.IsNullOrEmpty(result.Payload) || !result.Payload.TrimStart().StartsWith("["))
-            {
-                if (result.Error == "Request timed out.")
-                    foreach (var id in asked) _latePullsAwaited[$"{fromNodeId}|{id}"] = DateTime.UtcNow;
-                return (0, false);
-            }
-            return (await IngestPulledAsync(fromNodeId, asked, result.Payload, session), true);
+                    bool afterReturn = done.Task.IsCompleted;   // a chunk that came after we stopped waiting
+                    if (!string.IsNullOrEmpty(error))
+                    {
+                        if (error != "TIMEOUT")
+                            _logger.LogDebug("[Consensus Protocol] Pull from {From}: {Error}.", fromNodeId, error);
+                        done.TrySetResult(false);
+                        return;
+                    }
+                    answered = true;
+                    List<PeerNodeTransferred>? nodes = null;
+                    try { nodes = string.IsNullOrEmpty(payloadJson) ? null : JsonSerializer.Deserialize<ConsensusNodeSwapPayload>(payloadJson)?.Nodes; } catch { }
+                    var chunkTask = Task.Run(async () =>
+                    {
+                        await stageGate.WaitAsync();
+                        try
+                        {
+                            if (nodes == null || nodes.Count == 0) return;
+                            if (!ReferenceEquals(_sessionManager.GetActiveSession(), session) || session.StagingOperation == null) return;
+                            int n = await IngestPulledAsync(fromNodeId, asked, nodes, session);
+                            Interlocked.Add(ref got, n);
+                            if (afterReturn && n > 0)
+                            {
+                                Interlocked.Add(ref late, n);
+                                _logger.LogInformation("[Consensus Protocol] Late chunk of our pull from {From} taken in: {Count} record(s).", fromNodeId, n);
+                                await CreateAndBroadcastLocalDeltaAsync(session, CancellationToken.None);
+                                await FinalizeIterationAndReportAsync(session);
+                            }
+                        }
+                        catch (Exception ex) { _logger.LogDebug(ex, "[Consensus Protocol] Staging a pull chunk from {From} failed.", fromNodeId); }
+                        finally { stageGate.Release(); }
+                    });
+                    if (isCompleted) _ = chunkTask.ContinueWith(_ => done.TrySetResult(true));
+                },
+                new RouteSettings { Timeout = TimeSpan.FromSeconds(30), CancellationToken = ct, KeepListeningAfterTimeout = true });
+
+            using (ct.Register(() => done.TrySetCanceled()))
+                await done.Task;
         }
+        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "[Consensus Protocol] Pull from {From} failed.", fromNodeId);
-            return (0, false);
         }
+        // Wait for the chunks already being staged, so the count is right
+        await stageGate.WaitAsync();
+        stageGate.Release();
+        if (got == 0 && answered)
+            _logger.LogInformation("[Consensus Protocol] {From} has none of the {Count} record(s) we asked for ({Ids}).", fromNodeId, asked.Count, string.Join(", ", asked.Take(8)));
+        return (got, answered);
     }
 
-    private readonly ConcurrentDictionary<string, DateTime> _latePullsAwaited = new(StringComparer.OrdinalIgnoreCase);
-    /// <summary>How long a timed-out pull's late answer is waited for before the same ids are asked again.</summary>
-    private static readonly TimeSpan LatePullPatience = TimeSpan.FromMinutes(2);
-
-    /// <summary>An answer to a pull that had already timed out: staged like any other, and passed on as a delta.</summary>
-    private async Task ClaimLatePullAsync(string fromNodeId, List<string> nodeIds, string payload, ConsensusMergeSession session)
-    {
-        foreach (var id in nodeIds) _latePullsAwaited.TryRemove($"{fromNodeId}|{id}", out _);
-        try
-        {
-            if (!ReferenceEquals(_sessionManager.GetActiveSession(), session) || session.StagingOperation == null) return;
-            if (string.IsNullOrEmpty(payload) || !payload.TrimStart().StartsWith("[")) return;
-            int got = await IngestPulledAsync(fromNodeId, nodeIds, payload, session);
-            if (got <= 0) return;
-            _logger.LogInformation("[Consensus Protocol] Late answer to our pull from {From} taken in: {Count} record(s).", fromNodeId, got);
-            await CreateAndBroadcastLocalDeltaAsync(session, CancellationToken.None);
-            await FinalizeIterationAndReportAsync(session);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "[Consensus Protocol] Late pull answer from {From} could not be taken in.", fromNodeId);
-        }
-    }
-
-    private async Task<int> IngestPulledAsync(string fromNodeId, List<string> nodeIds, string payload, ConsensusMergeSession session)
+    private async Task<int> IngestPulledAsync(string fromNodeId, List<string> nodeIds, List<PeerNodeTransferred> received, ConsensusMergeSession session)
     {
         {
-            var nodes = JsonSerializer.Deserialize<List<PeerNodeTransferred>>(payload) ?? new List<PeerNodeTransferred>();
-            nodes = nodes.Where(n => n?.Identity?.NodeId != null && nodeIds.Contains(n.Identity.NodeId, StringComparer.OrdinalIgnoreCase)).ToList();
-            if (nodes.Count == 0)
-            {
-                _logger.LogInformation("[Consensus Protocol] {From} has none of the {Count} record(s) we asked for ({Ids}).", fromNodeId, nodeIds.Count, string.Join(", ", nodeIds.Take(8)));
-                return 0;
-            }
+            var nodes = received.Where(n => n?.Identity?.NodeId != null && nodeIds.Contains(n.Identity.NodeId, StringComparer.OrdinalIgnoreCase)).ToList();
+            if (nodes.Count == 0) return 0;
             await _mergeEngine.StageIncomingNodeSetAsync(session.StagingOperation, fromNodeId, nodes);
             session.IterationSources.TryAdd(fromNodeId, 0);
             foreach (var n in nodes) await _peerTracker.UpdatePeerWasSeenByAsync(n.Identity.NodeId, fromNodeId);
@@ -1998,7 +2017,8 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         var nodes = _evil.TamperOutgoingNodes(senderNodeId, (await LoadLocalNodesForSwapAsync(session)).Where(n => wanted.Contains(n.Identity.NodeId)).ToList());
         _logger.LogInformation("[Consensus Protocol] {Sender} asked for {Asked} record(s) ({Ids}); we hold {Have}.", senderNodeId, wanted.Count,
             string.Join(", ", wanted.Take(8)), nodes.Count);
-        return JsonSerializer.Serialize(nodes);
+        await SendNodesInChunksAsync(senderNodeId, frame.MessageId, "ConsensusNodePull", nodes);
+        return null!;   // the answer went out as chunks
     }
 
     /// <summary>

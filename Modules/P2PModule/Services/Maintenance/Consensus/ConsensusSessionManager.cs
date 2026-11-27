@@ -127,6 +127,7 @@ public class ConsensusMergeSession
     /// (peer, node, version) pulls were already tried (a version the other side keeps rejecting is not pulled again).</summary>
     public DateTime LastEchoUtc { get; set; } = DateTime.MinValue;
     public int QuietEchoRounds { get; set; }
+    public DateTime LastSingleAskUtc { get; set; } = DateTime.MinValue;
     public ConcurrentDictionary<string, byte> EchoPullsTried { get; } = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Who sent us the deltas/records folded into the current iteration: our next delta does not go back to them.</summary>
     public ConcurrentDictionary<string, byte> IterationSources { get; } = new(StringComparer.OrdinalIgnoreCase);

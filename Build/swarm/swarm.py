@@ -65,7 +65,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -763,7 +763,8 @@ def analyze(args):
             e["_node"] = info["Name"]
             events.append(e)
     triggers = [e for e in entries if e.get("kind") == "trigger" and e.get("success")]
-    since = _parse_t(triggers[-1]["t"]) if triggers and not args.all else None
+    # the trigger line is written after the node answered: its own "start" can be a few ms earlier
+    since = _parse_t(triggers[-1]["t"]) - timedelta(seconds=5) if triggers and not args.all else None
     if args.since:
         since = _parse_t(args.since if "." in args.since else args.since + ".000")
     if since:
@@ -894,7 +895,8 @@ def collect_events(args, entries):
         for e in read_lines(p2p_dir(home) / "consensus_events.jsonl"):
             events.append(e)
     triggers = [e for e in entries if e.get("kind") == "trigger" and e.get("success")]
-    since = _parse_t(triggers[-1]["t"]) if triggers and not args.all else None
+    # the trigger line is written after the node answered: its own "start" can be a few ms earlier
+    since = _parse_t(triggers[-1]["t"]) - timedelta(seconds=5) if triggers and not args.all else None
     if args.since:
         since = _parse_t(args.since if "." in args.since else args.since + ".000")
     if since:

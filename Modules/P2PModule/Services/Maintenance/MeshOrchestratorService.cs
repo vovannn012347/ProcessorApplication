@@ -185,6 +185,15 @@ public class MeshOrchestratorService : BackgroundService
             if(conn.ConnectionTypes.Contains("outbound"))
             {
                 var isalive = await _management.SendHeartbeatAsync(conn.NodeId);
+                if (!isalive && _connectionManager.HeardFromRecently(conn.NodeId, TimeSpan.FromSeconds(20)))
+                {
+                    // The ping answer is stuck behind other traffic on the same channel (swap chunks, deltas, pulls:
+                    // ping round trips went from 1 ms to 7 s during a 20-node consensus), but the node IS talking to
+                    // us. Restarting the channel or dropping the link here threw away working connections by the
+                    // hundred (219 drops in one run) and stalled the consensus. A link that carries traffic is alive.
+                    _logger.LogInformation("[P2P Mesh Management] Heartbeat to {NodeId} was slow, but it sent us data in the last 20 s: link kept.", conn.NodeId);
+                    isalive = true;
+                }
                 if (!isalive)
                 {
                     // One slow answer (busy node, consensus traffic) is not a dead link. Re-dialing a link that is

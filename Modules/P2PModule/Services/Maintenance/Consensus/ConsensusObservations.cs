@@ -131,15 +131,18 @@ public sealed class ConsensusObservationLedger
 
     /// <summary>
     /// Records a source's trust score for a node and returns the sources that have just crossed the slander line:
-    /// - on a node at least two OTHER sources reported, it is further than max(threshold, 3 x the others' median
+    /// - on a node at least two OTHER sources reported (with an opinion, i.e. not 0), it is further than max(threshold = 50, 3 x the others' median
     ///   absolute deviation) from their median (honest nodes disagree a little: local penalties, decay, timing);
     /// - and that happened on at least 3 nodes AND on at least 30 % of the nodes it could be compared on.
     /// Each source is returned once per session.
     /// </summary>
-    public List<(string Source, int Subjects, double Value, double Median)> ObserveTrust(string nodeId, string source, double trust, double threshold = 40)
+    public List<(string Source, int Subjects, double Value, double Median)> ObserveTrust(string nodeId, string source, double trust, double threshold = 50)
     {
         var result = new List<(string, int, double, double)>();
         if (string.IsNullOrEmpty(source)) return result;
+        // 0 is the score of a record nobody has rated yet ("no opinion"), not a claim: honest 20-node runs had
+        // 0 next to medians of ~40 and were reported as slander
+        if (trust == 0) return result;
         lock (_lock)
         {
             if (!_trust.TryGetValue(nodeId, out var bySource)) _trust[nodeId] = bySource = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);

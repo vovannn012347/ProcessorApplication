@@ -1911,10 +1911,13 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         // (whoever learns something new passes it on); asking is only the fallback, every 30 s, for a record that
         // nobody near us happens to push.
         string setKey = string.Join(",", single.Select(x => x.NodeId).OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
-        bool askSingle = setKey != session.LastCorroborationKey;
+        // (at most once a minute: in a 20-node run the set changed with nearly every record and the asking alone
+        // made ~170 pulls per run, on links already slowed down by the consensus traffic)
+        bool askSingle = setKey != session.LastCorroborationKey && DateTime.UtcNow - session.LastSingleAskUtc > TimeSpan.FromSeconds(60);
         bool askMissing = missing.Count > 0 && DateTime.UtcNow - session.LastMissingPullUtc > TimeSpan.FromSeconds(30);
         if (!askSingle && !askMissing) return;
         session.LastCorroborationKey = setKey;
+        if (askSingle) session.LastSingleAskUtc = DateTime.UtcNow;
         if (askMissing) session.LastMissingPullUtc = DateTime.UtcNow;
         if (!askSingle) single = new List<(string NodeId, string Source)>();
         if (!askMissing) missing = new List<string>();

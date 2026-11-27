@@ -424,7 +424,17 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
     private void UpdateSettings()
     {
-        _http.Timeout = TimeSpan.FromSeconds(_settings.CurrentValue.HttpTimeoutSeconds);
+        // HttpClient refuses property changes once it has sent a request (the debounced listener threw on every
+        // settings save). Change it only when the value really differs; otherwise it applies after a restart.
+        var timeout = TimeSpan.FromSeconds(_settings.CurrentValue.HttpTimeoutSeconds);
+        if (_http.Timeout != timeout)
+        {
+            try { _http.Timeout = timeout; }
+            catch (InvalidOperationException)
+            {
+                _logger.LogInformation("[P2P Transport] New HTTP timeout ({Seconds} s) takes effect after a restart.", (int)timeout.TotalSeconds);
+            }
+        }
 
         int syncIntervalMinutes = _settings.CurrentValue.TimeSyncIntervalSeconds > 0
             ? _settings.CurrentValue.TimeSyncIntervalSeconds

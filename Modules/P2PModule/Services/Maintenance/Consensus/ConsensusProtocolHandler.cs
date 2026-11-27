@@ -1369,6 +1369,9 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
     }
 
 
+    /// <summary>How many old partners we are NOT connected to may be dialled for one delta.</summary>
+    private const int DeltaDialsMax = 2;
+
     private async Task CreateAndBroadcastLocalDeltaAsync(ConsensusMergeSession session, CancellationToken ct)
     {
         var deltaItem = await _sessionManager.CreateLocalDeltaAsync();
@@ -1386,12 +1389,21 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         session.IterationSources.Clear();
         var neighbours = _connectionManager.GetActiveConnections()
             .Where(c => c?.NodeId != null && c.PeerConnection?.connectionState == SIPSorcery.Net.RTCPeerConnectionState.connected)
-            .Select(c => c.NodeId);
-        var pastNodes = _sessionManager.GetPastSyncSetNodes()
+            .Select(c => c.NodeId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // Only nodes we are connected to right now get the delta, plus at most DeltaDialsMax old partners we are not
+        // connected to (they bridge to groups we have no link into). Dialling every old partner per delta opened ten
+        // and more WebRTC sessions at once on a 20-node swarm (each with a handshake), which choked the links that
+        // were working; the echo rounds and pulls reach the rest.
+        var candidates = _sessionManager.GetPastSyncSetNodes()
             .Concat(neighbours)
             .Where(id => !exclude.Contains(id))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+        var pastNodes = candidates.Where(neighbours.Contains).ToList();
+        var toDial = candidates.Where(id => !neighbours.Contains(id) && !_connectionManager.IsOffline(id))
+            .OrderBy(_ => Random.Shared.Next()).Take(DeltaDialsMax).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        pastNodes.AddRange(toDial);
         if (pastNodes.Count == 0) return;
 
         var ping = new ConsensusDeltaPing
@@ -1415,9 +1427,10 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         {
             if (nodeId.Equals(_identity.NodeId, StringComparison.OrdinalIgnoreCase)) continue;
 
+            bool dial = toDial.Contains(nodeId);
             _ = Task.Run(async () =>
             {
-                await EnsurePeerConnectionAsync(nodeId);
+                if (dial && !await EnsurePeerConnectionAsync(nodeId)) return;
                 await _routerService.SendMessage(nodeId, "ConsensusDeltaPing", payload, new RouteSettings { CancellationToken = ct });
             });
         }
@@ -1432,11 +1445,9 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         {
             if (nodeId.Equals(_identity.NodeId, StringComparison.OrdinalIgnoreCase)) continue;
 
-            _ = Task.Run(async () =>
-            {
-                await EnsurePeerConnectionAsync(nodeId);
-                await _routerService.SendMessage(nodeId, "ConsensusFinished", payload);
-            });
+            // Informational only: not worth a new WebRTC session. Sent to the ones we are still connected to.
+            if (_connectionManager.GetConnection(nodeId)?.PeerConnection?.connectionState != SIPSorcery.Net.RTCPeerConnectionState.connected) continue;
+            _ = Task.Run(() => _routerService.SendMessage(nodeId, "ConsensusFinished", payload));
         }
     }
 

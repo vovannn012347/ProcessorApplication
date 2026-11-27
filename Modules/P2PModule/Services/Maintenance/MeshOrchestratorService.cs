@@ -211,6 +211,16 @@ public class MeshOrchestratorService : BackgroundService
                     bool channelRestarted = await _connectionManager.RestartControlChannelAsync(conn.NodeId);
                     isalive = await _management.SendHeartbeatAsync(conn.NodeId, timeoutSeconds: channelRestarted ? 10 : 15);
                 }
+                if (!isalive && conn.PeerConnection?.connectionState == SIPSorcery.Net.RTCPeerConnectionState.connected &&
+                    _connectionManager.HeardFromRecently(conn.NodeId, TimeSpan.FromSeconds(60)))
+                {
+                    // Both pings timed out, but the WebRTC connection itself is up (ICE checks pass) and the node sent us
+                    // something within the last minute - typically the late answer to an earlier ping (20-node runs:
+                    // answers came 15-33 s late, queued behind consensus data on the same ordered channel). That is a
+                    // congested link, not a dead one: dropping it only adds a re-dial and a handshake to the queue.
+                    _logger.LogInformation("[P2P Mesh Management] Heartbeat to {NodeId} timed out twice, but the connection is up and it sent us data within 60 s: link kept (congested, not dead).", conn.NodeId);
+                    isalive = true;
+                }
                 if (!isalive)
                 {
                     // Heartbeats failed twice (normal + patient): the connection is dropped, not kept, and the

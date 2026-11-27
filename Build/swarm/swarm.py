@@ -763,6 +763,15 @@ RUNS_COLUMNS = ["run", "nodes", "evil", "attacks", "merges", "merges_per_node", 
                 "t_conv_s", "t95_s", "t99_s", "bytes_total", "bytes_per_node", "rec_bytes", "omega", "consistency_pct", "caught", "false_positives"]
 
 
+def accused(e):
+    """Who an evidence event blames: its penalized list (a contested-key record names the forged node as its
+    subject, but blames the forger), else its subject."""
+    pen = e.get("penalized")
+    if isinstance(pen, list):
+        return set(pen)
+    return {e.get("peer")} if e.get("peer") else set()
+
+
 def run_metrics(events, names, evil_nodes):
     """Numbers for one run, from the nodes' consensus events (since the trigger)."""
     n = len(names)
@@ -821,8 +830,8 @@ def run_metrics(events, names, evil_nodes):
         "rec_bytes": rec_bytes or "",
         "omega": round(total / (n * (n - 1) * rec_bytes), 2) if rec_bytes and n > 1 else "",
         "consistency_pct": round(100.0 * complete / n, 1) if n else 0,
-        "caught": len({e.get("peer") for e in found if e.get("peer") in evil_nodes}),
-        "false_positives": len({e.get("peer") for e in found if e.get("peer") not in evil_nodes}),
+        "caught": len({a for e in found for a in accused(e) if a in evil_nodes}),
+        "false_positives": len({a for e in found for a in accused(e) if a not in evil_nodes}),
     }
 
 
@@ -921,17 +930,17 @@ def analyze(args):
                 kinds = {}
                 for e in mine:
                     kinds[e.get("attack")] = kinds.get(e.get("attack"), 0) + 1
-                caught = [e for e in found if e.get("peer") == n]
+                caught = [e for e in found if n in accused(e)]
                 first_act = min((_parse_t(e["t"]) for e in mine), default=None)
                 first_caught = min((_parse_t(e["t"]) for e in caught), default=None)
                 lag = f", first caught {(first_caught - first_act).total_seconds():.1f} s after its first attack" if first_act and first_caught else ""
                 assigned = ((evil_line or {}).get("assign") or {}).get(n)
                 print(f"  {n}{' [' + '+'.join(assigned) + ']' if assigned else ''}: {len(mine)} attack(s) " + (", ".join(f"{k} {v}" for k, v in kinds.items()) if kinds else "") +
                       f"; evidence by {len({e['_node'] for e in caught})} node(s) ({', '.join(sorted({e.get('kind') for e in caught})) or 'none'}){lag}")
-            honest_hits = [e for e in found if e.get("peer") not in evil_nodes]
+            honest_hits = [(a, e) for e in found for a in accused(e) if a not in evil_nodes]
             if honest_hits:
-                print(f"  false positives: {len(honest_hits)} evidence record(s) about honest nodes: " +
-                      ", ".join(sorted({f'{e.get("peer")} ({e.get("kind")}, by {e["_node"]})' for e in honest_hits}))[:600])
+                print(f"  false positives: {len({a for a, _ in honest_hits})} honest node(s) blamed: " +
+                      ", ".join(sorted({f'{a} ({e.get("kind")} about {e.get("peer")}, by {e["_node"]})' for a, e in honest_hits}))[:600])
             else:
                 print("  false positives: none")
 

@@ -166,6 +166,17 @@ if (adminSeedFile.Exists)
 }
 builder.Services.AddSingleton(adminSeedFile);
 
+// No Windows Event Log: the default host logs every warning there too (Event Viewer "Application" filling up with
+// node warnings, and a slow synchronous write per warning - noticeable with 20 swarm nodes on one PC). Console,
+// Debug and EventSource stay as the defaults had them. Logging:EventLog:Enabled = true brings it back.
+if (!builder.Configuration.GetValue("Logging:EventLog:Enabled", false))
+{
+    builder.Logging.ClearProviders();
+    builder.Logging.AddConsole();
+    builder.Logging.AddDebug();
+    builder.Logging.AddEventSourceLogger();
+}
+
 // EF Core's SQL statements go to <node home>/logs/sql-<date>.log, not the console (Logging:Console keeps them at
 // Warning). Off with Logging:SqlFile:Enabled = false.
 if (builder.Configuration.GetValue("Logging:SqlFile:Enabled", true))

@@ -90,6 +90,39 @@ public sealed class ConsensusObservationLedger
         }
     }
 
+    /// <summary>Every verify key seen claiming this node (any version, any source).</summary>
+    public List<byte[]> KeysFor(string nodeId)
+    {
+        lock (_lock)
+        {
+            var keys = new List<byte[]>();
+            if (_byNode.TryGetValue(nodeId, out var versions))
+                foreach (var v in versions)
+                    if (v.Identity.PublicVerifyKey?.Length > 0 && !keys.Any(k => k.AsSpan().SequenceEqual(v.Identity.PublicVerifyKey)))
+                        keys.Add(v.Identity.PublicVerifyKey);
+            return keys;
+        }
+    }
+
+    /// <summary>More than one key claims this node today: which one is really its key is not settled.</summary>
+    public bool IsContested(string nodeId) => KeysFor(nodeId).Count > 1;
+
+    /// <summary>
+    /// Nodes (other than <paramref name="exceptNodeId"/>) whose OWN record carries this verify key. A record of
+    /// node X signed with that key was made by that node: the key is its daily key. That is who forged X - not the
+    /// nodes that merely passed the record on.
+    /// </summary>
+    public List<string> OwnersOfKey(byte[] key, string exceptNodeId)
+    {
+        lock (_lock)
+        {
+            return _byNode
+                .Where(kv => !kv.Key.Equals(exceptNodeId, StringComparison.OrdinalIgnoreCase) &&
+                             kv.Value.Any(v => v.Identity.PublicVerifyKey.AsSpan().SequenceEqual(key)))
+                .Select(kv => kv.Key).ToList();
+        }
+    }
+
     /// <summary>True the first time a given conflict/party pair is settled (so a penalty is applied once).</summary>
     public bool Settle(string key)
     {

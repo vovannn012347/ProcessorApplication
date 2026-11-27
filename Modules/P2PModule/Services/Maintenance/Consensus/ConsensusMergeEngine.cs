@@ -341,14 +341,19 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
 
             if (seen.Conflict == ObservationConflict.ContestedKey)
             {
-                var leader = await HandleContestedKeyAsync(operation, nodeId, seen);
-                if (!ReferenceEquals(leader, seen.Version))
+                var leadingKey = await HandleContestedKeyAsync(operation, nodeId, seen);
+                if (leadingKey == null || !leadingKey.AsSpan().SequenceEqual(seen.Version.Identity.PublicVerifyKey))
                 {
-                    // Not the record we go with (or still a tie): kept as evidence only
+                    // Not on the key we go with (or still a tie): kept as evidence only
                     rejectedCount++;
                     continue;
                 }
-                takeThisIdentity = true;
+                // On the leading key. If what we hold now is on another key it is replaced whatever its time; between
+                // records on the same key the newer one wins as usual (checked below).
+                var held = await GetWeightedNodeFromStagingHierarchyAsync(operation, nodeId);
+                var heldKey = held?.NodeData?.Identity?.PublicVerifyKey;
+                takeThisIdentity = heldKey == null || !heldKey.AsSpan().SequenceEqual(leadingKey);
+                if (!takeThisIdentity && !seen.NewSource) continue;
             }
             else if (!seen.NewSource)
             {
@@ -784,26 +789,50 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
     /// otherwise the one more independent sources report; a tie decides nothing yet. Once decided, the sources
     /// that reported only the losing record get a small penalty (they may have relayed it in good faith).
     /// </summary>
-    private async Task<ObservedVersion?> HandleContestedKeyAsync(ConsensusMergeOperation operation, string nodeId, ObservationResult seen)
+    /// <summary>
+    /// Several keys claim one node today. Decides which KEY we go with and returns it (null = a tie, undecided).
+    /// Versions are grouped by key first: the same node re-signing its record (new endpoints, a later time) gives
+    /// several versions on ONE key - those are not rivals, and the nodes that passed an older one on did nothing
+    /// wrong. (They used to be penalized as "losers", and a tie between two versions of the true key left the
+    /// forgery undecided.) A key linked to an earlier day's key wins; otherwise the key more distinct sources report.
+    /// Penalty: only the node whose OWN key signed the losing record - the forger - and only when the leading key
+    /// is proven by lineage. Without that proof a colluding majority could make the true key "lose" and get the real
+    /// node punished; and the nodes that merely relayed a forged record cannot be told apart from honest relays.
+    /// </summary>
+    private async Task<byte[]?> HandleContestedKeyAsync(ConsensusMergeOperation operation, string nodeId, ObservationResult seen)
     {
-        var contenders = new List<ObservedVersion> { seen.Version };
-        contenders.AddRange(seen.Rivals.Where(r => !r.Identity.PublicVerifyKey.AsSpan().SequenceEqual(seen.Version.Identity.PublicVerifyKey)));
+        var all = new List<ObservedVersion> { seen.Version };
+        all.AddRange(seen.Rivals);
+        // One contender per key: lineage if any of its versions has it, sources = all of its versions' sources
+        var byKey = new List<(byte[] Key, ObservedVersion Merged, List<ObservedVersion> Versions)>();
+        foreach (var v in all)
+        {
+            var key = v.Identity.PublicVerifyKey;
+            int i = byKey.FindIndex(g => g.Key.AsSpan().SequenceEqual(key));
+            if (i < 0) byKey.Add((key, new ObservedVersion { Fingerprint = v.Fingerprint, Identity = v.Identity }, new List<ObservedVersion>()));
+            var g = byKey[i < 0 ? byKey.Count - 1 : i];
+            g.Versions.Add(v);
+            g.Merged.LineageVerified |= v.LineageVerified;
+            foreach (var s in v.Sources) g.Merged.Sources.Add(s);
+        }
+        var contenders = byKey.Select(g => g.Merged).ToList();
 
         var leader = operation.Observations.Leader(contenders);
+        var leaderGroup = leader == null ? default : byKey.First(g => ReferenceEquals(g.Merged, leader));
         var penalized = new List<string>();
 
-        if (leader != null)
+        if (leader != null && leader.LineageVerified)
         {
-            foreach (var loser in contenders.Where(c => !ReferenceEquals(c, leader)))
+            foreach (var loser in byKey.Where(g => !ReferenceEquals(g.Merged, leader) && !g.Merged.LineageVerified))
             {
-                foreach (var source in loser.Sources.Where(s => !string.IsNullOrEmpty(s) && !leader.Sources.Contains(s)).ToList())
+                foreach (var forger in operation.Observations.OwnersOfKey(loser.Key, nodeId))
                 {
-                    if (!operation.Observations.Settle($"contested|{nodeId}|{loser.Fingerprint}|{source}")) continue;
-                    var sourceNode = await GetWeightedNodeFromStagingHierarchyAsync(operation, source);
-                    if (sourceNode?.NodeData?.Identity != null && !string.IsNullOrEmpty(sourceNode.NodeData.Identity.NodeId))
-                        ApplySenderSlanderPenalty(sourceNode, operation, 0.05);
-                    await _ratingService.ApplyLocalReputationUpdateAsync(source, -5);
-                    penalized.Add(source);
+                    if (forger.Equals(_identity.NodeId, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!operation.Observations.Settle($"forged|{nodeId}|{forger}")) continue;
+                    var forgerNode = await GetWeightedNodeFromStagingHierarchyAsync(operation, forger);
+                    if (forgerNode?.NodeData?.Identity != null) ApplySenderSlanderPenalty(forgerNode, operation, 0.2);
+                    await _ratingService.ApplyLocalReputationUpdateAsync(forger, -15);
+                    penalized.Add(forger);
                 }
             }
         }
@@ -829,11 +858,11 @@ public class ConsensusMergeEngine : IConsensusMergeEngine
             Reason = leader == null
                 ? "Different verify keys claim this node for the same day; undecided (tie)."
                 : $"Different verify keys claim this node for the same day; record {leader.Fingerprint} leads.",
-            Versions = contenders.Select(ConsensusEvidenceStore.From).ToList(),
+            Versions = all.Select(ConsensusEvidenceStore.From).ToList(),
             PenalizedNodeIds = penalized,
         }, _logger);
 
-        return leader;
+        return leader == null ? null : leaderGroup.Key;
     }
 
     /// <summary>

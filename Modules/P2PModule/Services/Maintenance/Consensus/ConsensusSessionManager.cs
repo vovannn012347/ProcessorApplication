@@ -1076,6 +1076,12 @@ public class ConsensusSessionManager : IConsensusSessionManager
                 var stagedKey = historicPeer?.Identity?.PublicVerifyKey;
                 if (stagedKey?.Length > 0 && !dayKeys.Any(k => k.AsSpan().SequenceEqual(stagedKey))) dayKeys.Add(stagedKey);
             }
+            // Every key any record of the signer carried today: if the signer's id is being forged, the record we
+            // hold may carry the forger's key, and a genuine link of the signer would then "fail"
+            var observations = session?.StagingOperation?.Observations;
+            if (observations != null)
+                foreach (var k in observations.KeysFor(sig.SignerNodeId))
+                    if (!dayKeys.Any(d => d.AsSpan().SequenceEqual(k))) dayKeys.Add(k);
             var trackerKey = _peerTracker.GetPeer(sig.SignerNodeId)?.Identity?.PublicVerifyKey;
             var keys = new List<byte[]>(dayKeys);
             if (trackerKey?.Length > 0 && !keys.Any(k => k.AsSpan().SequenceEqual(trackerKey))) keys.Add(trackerKey);
@@ -1110,6 +1116,16 @@ public class ConsensusSessionManager : IConsensusSessionManager
 
             if (!ok)
             {
+                if (observations != null && observations.IsContested(sig.SignerNodeId))
+                {
+                    // Several keys claim the signer today (its id is being forged): which key is really its own is
+                    // not settled, so a link that fails cannot be blamed on whoever passed the chain on - that framed
+                    // honest nodes whose chains held a link of a forgery victim.
+                    _logger.LogInformation("[Session Manager] Chain link {Order} {Signer}->{Target}: {Signer} is claimed by several keys today; not counted against anyone.",
+                        sig.Order, sig.SignerNodeId, sig.TargetNodeId, sig.SignerNodeId);
+                    if (!unconfirmed.Contains(sig.SignerNodeId, StringComparer.OrdinalIgnoreCase)) unconfirmed.Add(sig.SignerNodeId);
+                    continue;
+                }
                 if (dayKeys.Count == 0)
                 {
                     // Only an older key to compare with: the signer may simply have rotated keys since

@@ -150,6 +150,10 @@ public class MeshOrchestratorService : BackgroundService
             ? _generalSettings.CurrentValue.ActiveNodeSecondsBackupPeriod
             : 300; // default to 5 minutes of total silence before kick
 
+        // Heartbeats run side by side, one task per link. They used to run one after another in this loop: a slow
+        // link (5 s ping, channel restart, 10-15 s patient ping) held up the checks of every other link behind it,
+        // so on a busy node a whole round of heartbeats could take minutes.
+        var heartbeats = new List<Task>();
         foreach (var conn in activeConnections)
         {
             var peer = _peerService.GetPeer(conn.NodeId);
@@ -183,7 +187,10 @@ public class MeshOrchestratorService : BackgroundService
 
             // attempt reconnections
             if(conn.ConnectionTypes.Contains("outbound"))
+            heartbeats.Add(Task.Run(async () =>
             {
+              try
+              {
                 var isalive = await _management.SendHeartbeatAsync(conn.NodeId);
                 if (!isalive && _connectionManager.HeardFromRecently(conn.NodeId, TimeSpan.FromSeconds(20)))
                 {
@@ -222,7 +229,12 @@ public class MeshOrchestratorService : BackgroundService
                     }
                 }
                 await _management.CheckEndpointsALiveAsync(conn.NodeId);
-            }
+              }
+              catch (Exception ex)
+              {
+                _logger.LogWarning(ex, "[P2P Mesh Management] Heartbeat check of {NodeId} failed.", conn.NodeId);
+              }
+            }));
 
             // Direct active connection inactivity watchdog
             if (conn.ConnectionTypes.Contains("outbound") || conn.ConnectionTypes.Contains("inbound"))
@@ -238,6 +250,7 @@ public class MeshOrchestratorService : BackgroundService
                 }
             }
         }
+        await Task.WhenAll(heartbeats);
     }
 
     /// <summary>

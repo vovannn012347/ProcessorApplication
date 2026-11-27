@@ -91,6 +91,7 @@ def table(group, runs):
     for n in sorted(by_n):
         rs = by_n[n]
         t = mean_sd([num(r["t_conv_s"]) for r in rs])
+        t95 = mean_sd([num(r.get("t95_s")) for r in rs])
         mpn = mean_sd([num(r["merges_per_node"]) for r in rs])
         depth = mean_sd([num(r["chain_depth"]) for r in rs])
         kb = mean_sd([(num(r["bytes_per_node"]) or 0) / 1024 for r in rs])
@@ -99,13 +100,13 @@ def table(group, runs):
         rows.append({
             "N": n, "runs": len(rs),
             "merges_per_node": fmt(*mpn, 1), "chain_depth": fmt(*depth, 1),
-            "t_conv": fmt(*t, 2), "kb_per_node": fmt(*kb, 1), "omega": fmt(*omega, 1),
+            "t_conv": fmt(*t, 2), "t95": fmt(*t95, 2), "kb_per_node": fmt(*kb, 1), "omega": fmt(*omega, 1),
             "consistency": fmt(*cons, 1),
-            "_t": t,
+            "_t": t, "_t95": t95,
         })
     heads = ["Кількість вузлів (N)", "Прогонів", "Парних злиттів на вузол", "Глибина ланцюга підписів (раунди)",
-             "Час повної збіжності Tconv, с", "Трафік консенсусу на вузол, КБ", "Накладний коефіцієнт Ω", "Досягнута узгодженість, %"]
-    keys = ["N", "runs", "merges_per_node", "chain_depth", "t_conv", "kb_per_node", "omega", "consistency"]
+             "Час повної збіжності Tconv, с", "Час до 95 % усіх записів T95, с", "Трафік консенсусу на вузол, КБ", "Накладний коефіцієнт Ω", "Досягнута узгодженість, %"]
+    keys = ["N", "runs", "merges_per_node", "chain_depth", "t_conv", "t95", "kb_per_node", "omega", "consistency"]
     with open(group / "table_4_x.csv", "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f, delimiter=";")
         w.writerow(heads)
@@ -176,16 +177,24 @@ def figure(group, rows, rep):
 
     # (a) convergence time vs N
     pts = [(r["N"], r["_t"][0], r["_t"][1]) for r in rows if r["_t"][0] is not None]
+    pts95 = [(r["N"], r["_t95"][0], r["_t95"][1]) for r in rows if r["_t95"][0] is not None]
+    if pts95:
+        # 95 % of all records held: dashed, labelled at its end (lazy runs may never reach exactly 100 %)
+        x5, m5, s5 = zip(*pts95)
+        ax1.errorbar(x5, m5, yerr=s5, color=INK2, lw=1.6, ls=(0, (5, 3)), marker="s", ms=5, capsize=3, elinewidth=1,
+                     markeredgecolor="white", markeredgewidth=1.2, zorder=2, label="95 % усіх записів у мережі (T95)")
     if pts:
         xs, ms, sds = zip(*pts)
         ax1.errorbar(xs, ms, yerr=sds, color=HONEST, lw=2, marker="o", ms=7, capsize=4, elinewidth=1.2,
-                     markeredgecolor="white", markeredgewidth=1.5, zorder=3)
-        for x, m in ((xs[0], ms[0]), (xs[-1], ms[-1])):
-            ax1.annotate(f"{m:.1f} с", (x, m), textcoords="offset points", xytext=(0, 10), ha="center", color=INK, fontsize=9)
+                     markeredgecolor="white", markeredgewidth=1.5, zorder=3, label="усі записи в усіх (Tconv)")
+        ax1.annotate(f"{ms[-1]:.1f} с", (xs[-1], ms[-1]), textcoords="offset points", xytext=(-8, 8), ha="right", color=INK, fontsize=9)
         ax1.set_xticks(xs)
-        ax1.set_ylim(bottom=0, top=max(m + s for m, s in zip(ms, sds)) * 1.25)
+        ax1.set_ylim(bottom=0, top=max([m + s for m, s in zip(ms, sds)] + [m + s for _, m, s in pts95]) * 1.25)
+
     else:
         ax1.text(0.5, 0.5, "немає прогонів без атак\n(swarm.bat bench)", ha="center", va="center", color=INK2, transform=ax1.transAxes)
+    if pts or pts95:
+        ax1.legend(loc="upper left", frameon=False, fontsize=9)
     ax1.set_xlabel("Кількість вузлів N")
     ax1.set_ylabel("Час повної збіжності, с")
     ax1.set_title("а) збіжність епідемічного консенсусу", loc="left", color=INK, fontsize=10)

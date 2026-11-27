@@ -1341,14 +1341,14 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                             if (!ReferenceEquals(conn.PeerConnection, pc))
                             {
                                 // The other node's dial won the tie-break while ours was in flight: keep theirs
-                                try { pc.close(); } catch { }
-                                if (previousPc != null && !ReferenceEquals(previousPc, conn.PeerConnection)) { try { previousPc.close(); } catch { } }
+                                try { ClosePeerConnection(pc); } catch { }
+                                if (previousPc != null && !ReferenceEquals(previousPc, conn.PeerConnection)) { try { ClosePeerConnection(previousPc); } catch { } }
                                 return conn;
                             }
 
                             // Answered: from here on the new connection is the one; the old one goes
                             ForgetInbound(nodeId);
-                            if (previousPc != null && !ReferenceEquals(previousPc, pc)) { try { previousPc.close(); } catch { } }
+                            if (previousPc != null && !ReferenceEquals(previousPc, pc)) { try { ClosePeerConnection(previousPc); } catch { } }
                             pc.setRemoteDescription(new RTCSessionDescriptionInit { sdp = answer.Sdp, type = RTCSdpType.answer });
                             RememberLinkKey(nodeId, handshakeId.Value);
                             MarkOnline(nodeId);
@@ -1366,7 +1366,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                 }
 
                 _dialsInProgress.TryRemove(nodeId, out _);
-                pc.close();
+                ClosePeerConnection(pc);
 
                 if (previousPc != null && ReferenceEquals(conn.PeerConnection, pc))
                 {
@@ -1380,7 +1380,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                         _logger.LogInformation("[P2P Transport] {NodeId} did not take the new connection; keeping the one we already had with it.", nodeId);
                         return prevState == RTCPeerConnectionState.connected ? conn : null;
                     }
-                    try { previousPc.close(); } catch { }
+                    try { ClosePeerConnection(previousPc); } catch { }
                 }
             }
 
@@ -1532,7 +1532,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
         }
         catch
         {
-            pc.close();
+            ClosePeerConnection(pc);
             _connections.TryRemove(targetNodeId, out _);
             return null;
         }
@@ -1581,6 +1581,17 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
         await ConnectPeerAsync(nodeId, signalingEndpoints, "outbound");
     }
 
+    /// <summary>
+    /// close() alone left each RTCPeerConnection's RTP channel/sockets and buffers to the finalizer; with links
+    /// re-dialled dozens of times per node in a big swarm that piled up. Close, then dispose.
+    /// </summary>
+    private static void ClosePeerConnection(RTCPeerConnection? pc)
+    {
+        if (pc == null) return;
+        try { pc.close(); } catch { }
+        try { (pc as IDisposable)?.Dispose(); } catch { }
+    }
+
     public bool HeardFromRecently(string nodeId, TimeSpan within) =>
         _lastInboundUtc.TryGetValue(nodeId, out var last) && DateTime.UtcNow - last <= within;
 
@@ -1608,7 +1619,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
                 foreach (var dc in conn.DataChannels.Values) try { dc.close(); } catch { }
                 conn.DataChannels.Clear();
                 try { 
-                    conn.PeerConnection?.close(); 
+                    ClosePeerConnection(conn.PeerConnection); 
                 } catch { }
             }
             catch { }
@@ -1660,7 +1671,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
             }
             // Its id is smaller: its offer wins, our own dial is dropped
             _logger.LogInformation("[P2P Transport] {NodeId} dialled us while we dial it; its dial wins (smaller id). Dropping ours.", senderNodeId);
-            try { conn.PeerConnection.close(); } catch { }
+            try { ClosePeerConnection(conn.PeerConnection); } catch { }
         }
         else
         if(conn.PeerConnection.connectionState == RTCPeerConnectionState.connected)
@@ -1676,7 +1687,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
             _logger.LogWarning("[P2P Transport] {NodeId} dialled again and nothing has arrived from it for {Seconds}s on the current connection. Replacing it.",
                 senderNodeId, (int)SilentConnectionLimit.TotalSeconds);
-            try { conn.PeerConnection.close(); } catch { }
+            try { ClosePeerConnection(conn.PeerConnection); } catch { }
         }
 
         var configuration = new RTCConfiguration { iceServers = _settings.CurrentValue.StunServers?.Select(stun => new RTCIceServer { urls = stun }).ToList() ?? new List<RTCIceServer>() };
@@ -1717,7 +1728,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
             return answer.sdp;
         }
         catch { 
-            pc.close(); 
+            ClosePeerConnection(pc); 
 
             return null; 
         }
@@ -1805,7 +1816,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
 
         }
         catch {
-            pc.close();
+            ClosePeerConnection(pc);
         }
     }
 
@@ -1833,7 +1844,7 @@ public class PeerConnectionManager : IPeerConnectionManager, IDisposable
         _settingsChangeListener?.Dispose();
         _handshakeTimeoutTimer?.Dispose();
         _timeSyncPulseTimer?.Dispose();
-        foreach (var conn in _connections.Values) try { conn.PeerConnection?.close(); } catch { }
+        foreach (var conn in _connections.Values) try { ClosePeerConnection(conn.PeerConnection); } catch { }
         _connections.Clear();
     }
 }

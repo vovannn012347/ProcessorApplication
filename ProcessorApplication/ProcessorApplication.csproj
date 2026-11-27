@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
@@ -11,9 +11,12 @@
     <ModuleKey>main</ModuleKey>
     <Version>1.0.0.0</Version>
 
-    <!--memory optimization-->
-    <ServerGarbageCollector>false</ServerGarbageCollector>
+    <!--memory optimization. The property is ServerGarbageCollection: the old name ("ServerGarbageCollector")
+        did nothing, so the Web SDK default (server GC: a heap per CPU core, collected lazily) stayed on and swarm
+        nodes grew to ~500 MB each. Workstation GC keeps a node small.-->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <TieredPGO>false</TieredPGO>
   </PropertyGroup>
 
   <ItemGroup>

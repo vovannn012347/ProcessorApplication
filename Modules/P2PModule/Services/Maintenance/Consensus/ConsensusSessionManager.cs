@@ -82,6 +82,9 @@ public enum DeltaRegistration
 public class ConsensusMergeSession
 {
     public Guid SessionId { get; set; } = Guid.NewGuid();
+    public DateTime StartedUtc { get; set; } = DateTime.UtcNow;
+    /// <summary>How often each missing node's record was asked for; after a few tries it is left to the next round.</summary>
+    public ConcurrentDictionary<string, int> MissingAsks { get; } = new(StringComparer.OrdinalIgnoreCase);
     public string TargetSyncDate { get; set; } = DateTime.UtcNow.ToString("yyyy-MM-dd");
     public string InitiatorNodeId { get; set; } = string.Empty;
 

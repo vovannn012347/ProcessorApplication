@@ -439,6 +439,18 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                     await EchoRoundAsync(session, ct);
                     await CorroborateAsync(session, ct);
 
+                    // Lazy finish: every neighbour has held exactly what we hold for a minute (6 quiet echo rounds).
+                    // Whatever is still missing somewhere far away is not worth keeping this node busy for - the
+                    // neighbours carry it on, and the next daily round catches the rest.
+                    if (session.QuietEchoRounds >= LazyQuietRounds && DateTime.UtcNow - session.StartedUtc > TimeSpan.FromMinutes(2) &&
+                        !_sessionManager.HasPendingDeltas() && !_sessionManager.HasNodesToVisit())
+                    {
+                        _logger.LogInformation("[Consensus Protocol] Neighbours identical for {Rounds} echo rounds: finishing (lazy).", session.QuietEchoRounds);
+                        await BroadcastConsensusFinishedAsync(session);
+                        await CompleteAndFinalizeSessionAsync("quiet");
+                        return;
+                    }
+
                     if (_sessionManager.HasPendingDeltas())
                     {
                         _logger.LogInformation("[Consensus Protocol] Pending deltas detected during idling. Ingesting...");
@@ -1665,6 +1677,8 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
     #region Echo rounds (anti-entropy between neighbours)
 
     private const int EchoIntervalSeconds = 10;
+    private const int LazyQuietRounds = 6;
+    private const int MaxMissingAsks = 3;
 
     /// <summary>
     /// What we hold, as id -> version fingerprint (identity hash + signature; trust scores are left out because the
@@ -1905,6 +1919,9 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         var single = op.Observations.SingleSource().Where(x => !x.NodeId.Equals(_identity.NodeId, StringComparison.OrdinalIgnoreCase)).ToList();
         var missing = session.UnconfirmedSigners.Keys.Concat(session.KnownIds.Keys).Distinct(StringComparer.OrdinalIgnoreCase)
             .Where(id => !held.Contains(id) && !id.Equals(_identity.NodeId, StringComparison.OrdinalIgnoreCase)).ToList();
+        // Lazy: a record asked for MaxMissingAsks times without success is left to the echo rounds and the next day
+        var givenUp = missing.Where(id => session.MissingAsks.TryGetValue(id, out var n) && n >= MaxMissingAsks).ToList();
+        if (givenUp.Count > 0) missing = missing.Except(givenUp, StringComparer.OrdinalIgnoreCase).ToList();
         if (single.Count == 0 && missing.Count == 0) return;
 
         // Single-source records: asked once per distinct set. Missing records are normally pushed to us by deltas
@@ -1921,6 +1938,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         if (askMissing) session.LastMissingPullUtc = DateTime.UtcNow;
         if (!askSingle) single = new List<(string NodeId, string Source)>();
         if (!askMissing) missing = new List<string>();
+        foreach (var id in missing) session.MissingAsks.AddOrUpdate(id, 1, (_, n) => n + 1);
         if (missing.Count > 0)
             _logger.LogInformation("[Consensus Protocol] Holding {Held} of {Known} known node(s); missing: {Missing} (round {Round}).",
                 held.Count, session.KnownIds.Count, string.Join(", ", missing.Take(12)), session.MissingPullRounds + 1);

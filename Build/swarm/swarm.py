@@ -695,7 +695,7 @@ def _parse_t(t):
 
 
 RUNS_COLUMNS = ["run", "nodes", "evil", "attacks", "merges", "merges_per_node", "deltas", "pulls", "chain_depth",
-                "t_conv_s", "bytes_total", "bytes_per_node", "rec_bytes", "omega", "consistency_pct", "caught", "false_positives"]
+                "t_conv_s", "t95_s", "t99_s", "bytes_total", "bytes_per_node", "rec_bytes", "omega", "consistency_pct", "caught", "false_positives"]
 
 
 def run_metrics(events, names, evil_nodes):
@@ -730,6 +730,16 @@ def run_metrics(events, names, evil_nodes):
     rec = sorted(e.get("rec_bytes") for e in events if e["ev"] == "finish" and e.get("rec_bytes"))
     rec_bytes = rec[len(rec) // 2] if rec else None
     total = sum(max(0, b) for b in bytes_at.values())
+    # coverage over time: share of all (node, other node) pairs held, from each node's latest progress line
+    t_q = {}
+    latest = {}
+    for e in events:
+        if e["ev"] == "progress" and e.get("held") is not None:
+            latest[e["_node"]] = max(latest.get(e["_node"], 0), e["held"])
+            cov = sum(latest.values()) / max(1, n * (n - 1))
+            for q in (0.95, 0.99):
+                if q not in t_q and cov >= q:
+                    t_q[q] = (_parse_t(e["t"]) - t0).total_seconds()
     complete = sum(1 for x in names if x in done_at)
     t_conv = (max(done_at.values()) - t0).total_seconds() if complete == n else None
     found = [e for e in events if e["ev"] == "evidence"]
@@ -740,6 +750,8 @@ def run_metrics(events, names, evil_nodes):
         "pulls": sum(1 for e in events if e["ev"] == "pull"),
         "chain_depth": depth,
         "t_conv_s": round(t_conv, 2) if t_conv is not None else "",
+        "t95_s": round(t_q[0.95], 2) if 0.95 in t_q else "",
+        "t99_s": round(t_q[0.99], 2) if 0.99 in t_q else "",
         "bytes_total": total, "bytes_per_node": round(total / n) if n else 0,
         "rec_bytes": rec_bytes or "",
         "omega": round(total / (n * (n - 1) * rec_bytes), 2) if rec_bytes and n > 1 else "",
@@ -811,10 +823,15 @@ def analyze(args):
             if evil_line0:
                 m["attacks"] = "+".join(evil_line0.get("attacks", []))
             print(f"\n  run: N={m['nodes']}, merges {m['merges']} ({m['merges_per_node']}/node), deltas {m['deltas']}, pulls {m['pulls']}, "
-                  f"chain depth {m['chain_depth']}, T_conv {m['t_conv_s'] or 'not converged'} s, consensus traffic {m['bytes_total'] / 1024:.1f} KB "
+                  f"chain depth {m['chain_depth']}, T_conv {m['t_conv_s'] or 'not converged'} s (95 %: {m['t95_s'] or '-'} s, 99 %: {m['t99_s'] or '-'} s), consensus traffic {m['bytes_total'] / 1024:.1f} KB "
                   f"({m['bytes_per_node'] / 1024:.1f} KB/node), record {m['rec_bytes'] or '?'} B, omega {m['omega'] or '?'}, consistency {m['consistency_pct']} %")
             if getattr(args, "record", False):
                 runs = out_dir / "runs.csv"
+                if runs.exists():
+                    with open(runs, encoding="utf-8") as f:
+                        head = f.readline().strip().split(",")
+                    if head != RUNS_COLUMNS:   # columns changed: keep the old file aside, start a new one
+                        runs.rename(out_dir / f"runs_old_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
                 new = not runs.exists()
                 with open(runs, "a", newline="", encoding="utf-8") as f:
                     w = csv.DictWriter(f, fieldnames=RUNS_COLUMNS)
@@ -1032,12 +1049,25 @@ def test(args):
     print(f"=== 7/7 watch convergence every {args.interval:.0f} s (max {args.timeout:.0f} min)")
     log = convergence_log(args.rid)
     end = time.time() + args.timeout * 60
+    good = getattr(args, "good_enough", 0.99)
+    stall_s = getattr(args, "stall", 4.0) * 60
+    last_avg, last_change = None, time.time()
     while True:
         snap = snapshot(args.rid)
         append_line(log, snap)
         print_snapshot(snap, verbose=False)
-        if snap["complete_consensus"] == snap["nodes"]:
+        n = snap["nodes"]
+        coverage = snap["avg_consensus"] / max(1, n - 1)
+        if snap["avg_consensus"] != last_avg:
+            last_avg, last_change = snap["avg_consensus"], time.time()
+        if snap["complete_consensus"] == n:
             print("Converged.")
+            break
+        if coverage >= good and time.time() - last_change > 60:
+            print(f"Good enough: {coverage:.1%} of all records held and no change for 60 s (--good-enough {good}).")
+            break
+        if time.time() - last_change > stall_s:
+            print(f"Stalled: no change for {stall_s / 60:.0f} min at {coverage:.1%}.")
             break
         if time.time() > end:
             print("Timeout: not converged.")
@@ -1208,6 +1238,8 @@ def main():
                         "a big number = wait for a full mesh, capped at count-1)")
     p.add_argument("--interval", type=float, default=15, help="seconds between convergence snapshots (default 15)")
     p.add_argument("--timeout", type=float, default=30, help="minutes to wait for convergence (default 30)")
+    p.add_argument("--good-enough", type=float, default=0.99, help="stop watching once this share of all records is held and nothing changed for 60 s (default 0.99)")
+    p.add_argument("--stall", type=float, default=4, help="stop watching after this many minutes without any change (default 4)")
     p.add_argument("--no-record", action="store_true", help="don't append this run's numbers to <group>/runs.csv")
     p.add_argument("--no-archive", action="store_true", help="don't copy this run's logs out of the node homes")
     p.add_argument("--archive-dir", default="", help="where run folders go (default <group>/runs)")
@@ -1231,6 +1263,8 @@ def main():
     p.add_argument("--min-known", type=int, default=1)
     p.add_argument("--interval", type=float, default=5)
     p.add_argument("--timeout", type=float, default=15)
+    p.add_argument("--good-enough", type=float, default=0.99)
+    p.add_argument("--stall", type=float, default=4)
     p = sub.add_parser("analyze")
     p.add_argument("--record", action="store_true", help="append this run's numbers to <group>/runs.csv")
     p.add_argument("--all", action="store_true", help="everything in the logs, not only since the last trigger")

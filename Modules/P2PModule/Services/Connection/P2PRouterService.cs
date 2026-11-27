@@ -43,6 +43,13 @@ public class RouteSettings
     public string NodeIdExclude { get; set; } = string.Empty;
 
     /// <summary>
+    /// Called with the answer's payload if it arrives AFTER the request timed out (up to 5 minutes later). The
+    /// caller has already been told "timed out"; this lets it still claim what came instead of throwing it away.
+    /// Not called after a cooperative cancellation.
+    /// </summary>
+    public Action<string>? OnLateAnswer { get; set; }
+
+    /// <summary>
     /// Cooperative cancellation token propagated down to async network tasks.
     /// </summary>
     public CancellationToken CancellationToken { get; set; } = default;
@@ -119,6 +126,7 @@ public class P2PRouterService : IP2PRouterService, IDisposable
     private readonly ConcurrentDictionary<Guid, TaskCompletionSource<string>> _pendingRequests = new();
     /// <summary>Requests that gave up waiting: id -> (when we sent it, how long we waited).</summary>
     private readonly ConcurrentDictionary<Guid, (DateTime SentUtc, TimeSpan Waited)> _timedOutRequests = new();
+    private readonly ConcurrentDictionary<Guid, Action<string>> _lateAnswerHandlers = new();
     private readonly ConcurrentDictionary<Guid, ProgressiveTransferContext> _progressiveTransfers = new();
     private readonly ConcurrentDictionary<string, Func<string, P2PPacketEnvelope, CancellationToken, Task<string>>> _commandHandlers = new();
 
@@ -284,8 +292,19 @@ public class P2PRouterService : IP2PRouterService, IDisposable
             // really timed out is reported, with how long after OUR request it came (the old "arrived N ms after
             // it was sent" was the answer's own travel time, which is why it said 0 ms).
             if (!_timedOutRequests.TryRemove(frame.MessageId, out var timedOut)) return;
-            _logger.LogInformation("[P2P Router] Late answer {Command} from {Sender}: came {Ms} ms after we sent the request; we had waited {Waited} ms and given up.",
-                frame.CommandType, senderNodeId, (int)(DateTime.UtcNow - timedOut.SentUtc).TotalMilliseconds, (int)timedOut.Waited.TotalMilliseconds);
+            bool claimed = _lateAnswerHandlers.TryRemove(frame.MessageId, out var lateHandler) && string.IsNullOrEmpty(frame.ErrorMessage);
+            _logger.LogInformation("[P2P Router] Late answer {Command} from {Sender}: came {Ms} ms after we sent the request; we had waited {Waited} ms{What}.",
+                frame.CommandType, senderNodeId, (int)(DateTime.UtcNow - timedOut.SentUtc).TotalMilliseconds, (int)timedOut.Waited.TotalMilliseconds,
+                claimed ? "; taken anyway" : " and given up");
+            if (claimed)
+            {
+                var payload = frame.SerializedPayload ?? string.Empty;
+                _ = Task.Run(() =>
+                {
+                    try { lateHandler!(payload); }
+                    catch (Exception ex) { _logger.LogWarning(ex, "[P2P Router] Handling the late answer {Command} from {Sender} failed.", frame.CommandType, senderNodeId); }
+                });
+            }
             return;
         }
 
@@ -528,6 +547,8 @@ public class P2PRouterService : IP2PRouterService, IDisposable
                 _pendingRequests.TryRemove(envelope.MessageId, out _);
                 CleanupDedicatedChannelDeferred(targetNodeId, channelLabel, activeSettings.UseDedicatedChannel);
                 RememberTimedOut(envelope.MessageId, envelope.CreatedUtc, activeSettings.Timeout);
+                if (activeSettings.OnLateAnswer != null && !activeSettings.CancellationToken.IsCancellationRequested)
+                    _lateAnswerHandlers[envelope.MessageId] = activeSettings.OnLateAnswer;
                 return new RouterResult { Error = activeSettings.CancellationToken.IsCancellationRequested ? "Cooperative cancellation triggered." : "Request timed out." };
             }
         }
@@ -618,7 +639,10 @@ public class P2PRouterService : IP2PRouterService, IDisposable
         {
             var now = DateTime.UtcNow;
             foreach (var old in _timedOutRequests.Where(kv => now - kv.Value.SentUtc > TimeSpan.FromMinutes(5)).Select(kv => kv.Key).ToList())
+            {
                 _timedOutRequests.TryRemove(old, out _);
+                _lateAnswerHandlers.TryRemove(old, out _);
+            }
         }
     }
 

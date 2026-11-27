@@ -1912,30 +1912,77 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
     private async Task<(int Got, bool Answered)> PullNodesWithStatusAsync(string fromNodeId, List<string> nodeIds, ConsensusMergeSession session, CancellationToken ct)
     {
         if (session.StagingOperation == null || nodeIds.Count == 0) return (0, false);
+        // Ids this node still owes us from a pull that timed out: its late answer is awaited, not asked for again
+        var now = DateTime.UtcNow;
+        var asked = nodeIds.Where(id => !(_latePullsAwaited.TryGetValue($"{fromNodeId}|{id}", out var since) && now - since < LatePullPatience))
+            .Take(MaxPullIds).ToList();
+        if (asked.Count == 0) return (0, false);
         try
         {
             var result = await _routerService.SendRequestAsync(fromNodeId, "ConsensusNodePull",
-                JsonSerializer.Serialize(new ConsensusNodePullRequest { NodeIds = nodeIds.Take(MaxPullIds).ToList() }),
-                new RouteSettings { Timeout = TimeSpan.FromSeconds(30), CancellationToken = ct });
-            if (!result.IsSuccess || string.IsNullOrEmpty(result.Payload) || !result.Payload.TrimStart().StartsWith("[")) return (0, false);
-            var nodes = JsonSerializer.Deserialize<List<PeerNodeTransferred>>(result.Payload) ?? new List<PeerNodeTransferred>();
+                JsonSerializer.Serialize(new ConsensusNodePullRequest { NodeIds = asked }),
+                new RouteSettings
+                {
+                    Timeout = TimeSpan.FromSeconds(30), CancellationToken = ct,
+                    // A busy node still answers, just late (the answer queues behind other traffic on the link).
+                    // We stop waiting so the loop goes on, but whatever arrives later is still taken in.
+                    OnLateAnswer = payload => _ = ClaimLatePullAsync(fromNodeId, asked, payload, session)
+                });
+            if (!result.IsSuccess || string.IsNullOrEmpty(result.Payload) || !result.Payload.TrimStart().StartsWith("["))
+            {
+                if (result.Error == "Request timed out.")
+                    foreach (var id in asked) _latePullsAwaited[$"{fromNodeId}|{id}"] = DateTime.UtcNow;
+                return (0, false);
+            }
+            return (await IngestPulledAsync(fromNodeId, asked, result.Payload, session), true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Consensus Protocol] Pull from {From} failed.", fromNodeId);
+            return (0, false);
+        }
+    }
+
+    private readonly ConcurrentDictionary<string, DateTime> _latePullsAwaited = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>How long a timed-out pull's late answer is waited for before the same ids are asked again.</summary>
+    private static readonly TimeSpan LatePullPatience = TimeSpan.FromMinutes(2);
+
+    /// <summary>An answer to a pull that had already timed out: staged like any other, and passed on as a delta.</summary>
+    private async Task ClaimLatePullAsync(string fromNodeId, List<string> nodeIds, string payload, ConsensusMergeSession session)
+    {
+        foreach (var id in nodeIds) _latePullsAwaited.TryRemove($"{fromNodeId}|{id}", out _);
+        try
+        {
+            if (!ReferenceEquals(_sessionManager.GetActiveSession(), session) || session.StagingOperation == null) return;
+            if (string.IsNullOrEmpty(payload) || !payload.TrimStart().StartsWith("[")) return;
+            int got = await IngestPulledAsync(fromNodeId, nodeIds, payload, session);
+            if (got <= 0) return;
+            _logger.LogInformation("[Consensus Protocol] Late answer to our pull from {From} taken in: {Count} record(s).", fromNodeId, got);
+            await CreateAndBroadcastLocalDeltaAsync(session, CancellationToken.None);
+            await FinalizeIterationAndReportAsync(session);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "[Consensus Protocol] Late pull answer from {From} could not be taken in.", fromNodeId);
+        }
+    }
+
+    private async Task<int> IngestPulledAsync(string fromNodeId, List<string> nodeIds, string payload, ConsensusMergeSession session)
+    {
+        {
+            var nodes = JsonSerializer.Deserialize<List<PeerNodeTransferred>>(payload) ?? new List<PeerNodeTransferred>();
             nodes = nodes.Where(n => n?.Identity?.NodeId != null && nodeIds.Contains(n.Identity.NodeId, StringComparer.OrdinalIgnoreCase)).ToList();
             if (nodes.Count == 0)
             {
                 _logger.LogInformation("[Consensus Protocol] {From} has none of the {Count} record(s) we asked for ({Ids}).", fromNodeId, nodeIds.Count, string.Join(", ", nodeIds.Take(8)));
-                return (0, true);
+                return 0;
             }
             await _mergeEngine.StageIncomingNodeSetAsync(session.StagingOperation, fromNodeId, nodes);
             session.IterationSources.TryAdd(fromNodeId, 0);
             foreach (var n in nodes) await _peerTracker.UpdatePeerWasSeenByAsync(n.Identity.NodeId, fromNodeId);
             _logger.LogInformation("[Consensus Protocol] Pulled {Count} record(s) from {From}: {Nodes}.", nodes.Count, fromNodeId, string.Join(", ", nodes.Select(n => n.Identity.NodeId).Take(8)));
             LogConsensusEvent("pull", new Dictionary<string, object?> { ["peer"] = fromNodeId, ["nodes"] = nodes.Select(n => n.Identity.NodeId).ToList() });
-            return (nodes.Count, true);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "[Consensus Protocol] Pull from {From} failed.", fromNodeId);
-            return (0, false);
+            return nodes.Count;
         }
     }
 

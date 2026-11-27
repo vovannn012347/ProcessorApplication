@@ -447,13 +447,35 @@ public class ManagementService : BackgroundService, IMeshManagementService, IDis
         return string.Empty;
     }
 
+    public HashSet<string> GetCaredForNodeIds()
+    {
+        var outbound = _connectionManager.GetActiveConnections()
+            .Where(c => c?.NodeId != null && c.ConnectionTypes.Contains(OutboundConnectionType) &&
+                        c.PeerConnection?.connectionState == SIPSorcery.Net.RTCPeerConnectionState.connected)
+            .OrderBy(c => c.ConnectedAt)
+            .ToList();
+        int slots = Math.Max(1, _settings.CurrentValue.TargetOutboundConnections);
+        var cared = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var tracker = outbound.FirstOrDefault(c => _peerTracker.GetPeer(c.NodeId)?.Identity.Roles.Contains("tracker") == true);
+        if (tracker != null) cared.Add(tracker.NodeId);
+        foreach (var c in outbound)
+        {
+            if (cared.Count >= slots + (tracker != null ? 1 : 0)) break;
+            cared.Add(c.NodeId);
+        }
+        return cared;
+    }
+
     public async Task PingNodesAsync()
     {
-        var activeConnections = _connectionManager.GetActiveConnections().ToList();
-        foreach (var conn in activeConnections)
+        // Keep-alive only for the links we care for (mesh slots), and only when they have been quiet: a link that
+        // carried data in the last 15 s needs no keep-alive, and on a busy swarm these pings only queued behind
+        // consensus data. The other links (opened for a merge, a delta, a pull) are left to go idle; the inactivity
+        // watchdog closes them unless the other side keeps them.
+        foreach (var nodeId in GetCaredForNodeIds())
         {
-            if (conn != null && conn.PeerConnection != null && conn.PeerConnection.connectionState == SIPSorcery.Net.RTCPeerConnectionState.connected)
-                await _p2pRouter.SendMessage(conn.NodeId, "Ping", "{}", new RouteSettings { Timeout = TimeSpan.FromSeconds(4) });
+            if (_connectionManager.HeardFromRecently(nodeId, TimeSpan.FromSeconds(15))) continue;
+            await _p2pRouter.SendMessage(nodeId, "Ping", "{}", new RouteSettings { Timeout = TimeSpan.FromSeconds(4) });
         }
     }
 

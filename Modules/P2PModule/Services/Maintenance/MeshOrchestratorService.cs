@@ -154,6 +154,11 @@ public class MeshOrchestratorService : BackgroundService
         // link (5 s ping, channel restart, 10-15 s patient ping) held up the checks of every other link behind it,
         // so on a busy node a whole round of heartbeats could take minutes.
         var heartbeats = new List<Task>();
+        // Only the links we care for (mesh slots: a tracker + the oldest outbound links) are heartbeated and re-dialled
+        // when they fail. Links opened for consensus, deltas or pulls are also "outbound", and heartbeating all of
+        // them (10+ per node on a 20-node run) put a ping on every busy link and re-dialled the ones that answered
+        // late. Those links close by themselves: ICE notices a dead peer, the inactivity watchdog an idle one.
+        var caredFor = _management.GetCaredForNodeIds();
         foreach (var conn in activeConnections)
         {
             var peer = _peerService.GetPeer(conn.NodeId);
@@ -186,7 +191,7 @@ public class MeshOrchestratorService : BackgroundService
             }
 
             // attempt reconnections
-            if(conn.ConnectionTypes.Contains("outbound"))
+            if(conn.ConnectionTypes.Contains("outbound") && caredFor.Contains(conn.NodeId))
             heartbeats.Add(Task.Run(async () =>
             {
               try

@@ -61,6 +61,9 @@ public interface IMeshManagementService
     Task MaintainOutboundConnectionsAsync();
     Task<bool> DiscoverNewConsensus();
     Task PingNodesAsync();
+    /// <summary>The links this node keeps alive and checks: its mesh slots (a tracker + the oldest outbound links,
+    /// up to TargetOutboundConnections). Links opened for consensus, deltas or pulls are not among them.</summary>
+    HashSet<string> GetCaredForNodeIds();
     Task<bool> SendHeartbeatAsync(string nodeId, int timeoutSeconds = 5);
     Task<bool> CheckEndpointsALiveAsync(string nodeId);
 }

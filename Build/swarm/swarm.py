@@ -469,7 +469,7 @@ def start(args):
                "--urls", f"http://localhost:{info['Port']}", f"--SettingsIngest:Mode={args.reingest}"]
         # Console logging costs CPU (every line is drawn in its window) and the PC is CPU-bound with 20+ nodes;
         # the measurements come from the event logs (*.jsonl), which are written at any log level.
-        level = getattr(args, "log_level", "Warning")
+        level = getattr(args, "log_level", "Information")
         cmd += [f"--Logging:LogLevel:Default={level}", f"--Logging:LogLevel:Microsoft.AspNetCore={level}",
                 f"--Logging:LogLevel:Microsoft.Hosting.Lifetime={level}"]
         kwargs = {"cwd": str(home)}
@@ -1249,9 +1249,9 @@ def main():
         p.add_argument("--window", choices=["normal", "minimized", "hidden"], default="normal",
                        help="console window per node (default normal: open, titled with the node name)")
         p.add_argument("--delay", type=float, default=1.0, help="seconds between node starts (default 1)")
-        p.add_argument("--log-level", default="Warning", choices=["Trace", "Debug", "Information", "Warning", "Error"],
-                       help="node console log level (default Warning: console output costs CPU; the measured event "
-                            "logs are written regardless). Information = the full console log for debugging")
+        p.add_argument("--log-level", default="Information", choices=["Trace", "Debug", "Information", "Warning", "Error"],
+                       help="node console log level (default Information; Warning saves CPU - console output is drawn per window; the measured event "
+                            "logs are written regardless)")
         p.add_argument("--only", type=int, default=0, help="start only the first N homes")
 
     sub.add_parser("build")

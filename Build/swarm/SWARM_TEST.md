@@ -37,7 +37,7 @@ Useful options:
 - `--yes`: don't ask before wiping.
 - `--admin-password <pw>` (or environment variable `SWARM_ADMIN_PASSWORD`): don't ask for the password.
 - `--window minimized`: start the consoles minimized (default: open). `--window hidden` costs the least CPU.
-- `--log-level Warning` (default): nodes print only warnings and errors. With 20+ nodes on one PC the CPU is the limit, and drawing every node's log in its window costs a noticeable share of it. The measurements come from the `*.jsonl` event logs, which are written at any level. Use `--log-level Information` for the full console log when debugging.
+- `--log-level Information` (default): the full console log. `--log-level Warning` prints only warnings and errors, which saves CPU with 20+ nodes on one PC (every line is drawn in its window). The measurements come from the `*.jsonl` event logs, which are written at any level.
 - `--settle 120`, `--interval 10`, `--timeout 45`: longer settle time, more frequent snapshots, longer maximum wait.
 - `--min-known 4`: trigger only when every node already knows 4 other nodes (with 5 nodes: a full mesh). The default 1 starts from a thin mesh, which is the harder case for consensus.
 

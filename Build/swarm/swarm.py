@@ -426,9 +426,27 @@ def pid_alive(pid):
         return False
 
 
+def running_app_pids():
+    """PIDs of all running ProcessorApplication processes, from ONE process listing. (Asking tasklist once per
+    node took ~1-3 s each on a loaded PC: a 20-node snapshot sat silent for a minute.)"""
+    if os.name != "nt":
+        return None
+    out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq ProcessorApplication.exe", "/FO", "CSV", "/NH"],
+                         capture_output=True, text=True).stdout
+    pids = set()
+    for line in out.splitlines():
+        parts = [p.strip('"') for p in line.split('","')]
+        if len(parts) > 1 and parts[1].strip('"').isdigit():
+            pids.add(int(parts[1].strip('"')))
+    return pids
+
+
 def alive_pids(rid):
     entries = read_json(pid_file(rid), []) or []
-    return [e for e in entries if pid_alive(int(e["Pid"]))]
+    running = running_app_pids()
+    if running is None:
+        return [e for e in entries if pid_alive(int(e["Pid"]))]
+    return [e for e in entries if int(e["Pid"]) in running]
 
 
 def start(args):
@@ -601,6 +619,26 @@ def read_lines(path):
     return out
 
 
+def last_line(path, chunk=16384):
+    """The last JSON line of a file, reading only its tail (event logs grow to megabytes)."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - chunk))
+            tail = f.read().decode("utf-8", errors="ignore")
+        for line in reversed(tail.splitlines()):
+            line = line.strip().lstrip("\ufeff")
+            if line:
+                try:
+                    return json.loads(line)
+                except ValueError:
+                    continue
+    except OSError:
+        pass
+    return None
+
+
 def p2p_dir(home):
     return home / "Module_Data" / "P2P"
 
@@ -633,8 +671,7 @@ def snapshot(rid):
         name = info["Name"]
         live = known_live(home)
         cons, day = known_consensus(home)
-        events = read_lines(p2p_dir(home) / "consensus_events.jsonl")
-        last = events[-1] if events else None
+        last = last_line(p2p_dir(home) / "consensus_events.jsonl")
         others = set(names) - {name}
         per_node[name] = {
             "running": name in running,
@@ -1053,9 +1090,13 @@ def test(args):
     stall_s = getattr(args, "stall", 4.0) * 60
     last_avg, last_change = None, time.time()
     while True:
+        t0 = time.time()
         snap = snapshot(args.rid)
         append_line(log, snap)
         print_snapshot(snap, verbose=False)
+        took = time.time() - t0
+        if took > 3:
+            print(f"    (snapshot took {took:.0f} s)")
         n = snap["nodes"]
         coverage = snap["avg_consensus"] / max(1, n - 1)
         if snap["avg_consensus"] != last_avg:

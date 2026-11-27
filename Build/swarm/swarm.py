@@ -470,8 +470,9 @@ def start(args):
         # Console logging costs CPU (every line is drawn in its window) and the PC is CPU-bound with 20+ nodes;
         # the measurements come from the event logs (*.jsonl), which are written at any log level.
         level = getattr(args, "log_level", "Information")
-        cmd += [f"--Logging:LogLevel:Default={level}", f"--Logging:LogLevel:Microsoft.AspNetCore={level}",
-                f"--Logging:LogLevel:Microsoft.Hosting.Lifetime={level}"]
+        if level != "Information":   # Information = the appsettings as they are (ASP.NET Core stays at Warning there)
+            cmd += [f"--Logging:LogLevel:Default={level}", f"--Logging:LogLevel:Microsoft.AspNetCore={level}",
+                    f"--Logging:LogLevel:Microsoft.Hosting.Lifetime={level}"]
         kwargs = {"cwd": str(home)}
         if os.name == "nt":
             if args.window == "hidden":

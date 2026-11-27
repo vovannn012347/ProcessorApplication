@@ -342,7 +342,15 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
             ? _identity.PrivateSignatureKey
             : _identity.GetPrivateCertificate(day);
 
-        // Fallback to active static private signature key if requested day is current or missing
+        // A past day we hold no key for (we did not exist yet, or our history was reset): say nothing. Signing it
+        // with today's key could only fail against the verifier's record of that day and count as a FAILED check;
+        // an omitted day counts as unknown.
+        bool requestedToday = day == DateTime.UtcNow.ToString("yyyy-MM-dd");
+        if ((privateKey == null || privateKey.Length == 0) && !requestedToday)
+        {
+            _logger.LogInformation("[Blind Challenge] No key of ours for {Day}: that day is left unanswered.", day);
+            return null;
+        }
         if (privateKey == null || privateKey.Length == 0)
         {
             privateKey = _identity.PrivateSignatureKey;
@@ -714,15 +722,24 @@ public class DoubleBlindChallengeService : IChallengeService, IDisposable
         if (signatures == null || !signatures.TryGetValue(day, out var envelope) || envelope?.Nonce == null || envelope.Nonce.Length != 32)
             return null;
 
-        byte[]? verifyKey = isToday
-            ? identity.PublicVerifyKey
-            : _archiveStore.GetHistoricalPeer(day, peerNodeId)?.Identity?.PublicVerifyKey;
+        var recorded = isToday ? null : _archiveStore.GetHistoricalPeer(day, peerNodeId)?.Identity;
+        byte[]? verifyKey = isToday ? identity.PublicVerifyKey : recorded?.PublicVerifyKey;
         if (verifyKey == null || verifyKey.Length == 0) return null;
 
         byte[] signed = new byte[32 + identityHash.Length];
         Buffer.BlockCopy(envelope.Nonce, 0, signed, 0, 32);
         Buffer.BlockCopy(identityHash, 0, signed, 32, identityHash.Length);
-        return SafeTestSignature(signed, verifyKey, envelope.Signature);
+        bool ok = SafeTestSignature(signed, verifyKey, envelope.Signature);
+        // Our record "of that day" can hold the node's key from an earlier day (the day partition keeps the newest
+        // identity we had then, which may not have rotated yet). A signature that fails against such a record says
+        // nothing about the node: unknown, not failed.
+        if (!ok && recorded != null && recorded.SignatureTime.ToString("yyyy-MM-dd") != day)
+        {
+            _logger.LogInformation("[Handshake Security] {NodeId}: our record for {Day} carries a key from {KeyDay}; that check is not counted.",
+                peerNodeId, day, recorded.SignatureTime.ToString("yyyy-MM-dd"));
+            return null;
+        }
+        return ok;
     }
 
     // A malformed key or signature from a peer counts as a failed check, not an exception

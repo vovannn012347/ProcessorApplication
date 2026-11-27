@@ -123,6 +123,11 @@ public class ConsensusMergeSession
     /// <summary>Missing records: when we last asked for them, and how many rounds we asked neighbours without success.</summary>
     public DateTime LastMissingPullUtc { get; set; } = DateTime.MinValue;
     public int MissingPullRounds { get; set; }
+    /// <summary>Echo rounds: when the last one ran, how many in a row found every neighbour identical, and which
+    /// (peer, node, version) pulls were already tried (a version the other side keeps rejecting is not pulled again).</summary>
+    public DateTime LastEchoUtc { get; set; } = DateTime.MinValue;
+    public int QuietEchoRounds { get; set; }
+    public ConcurrentDictionary<string, byte> EchoPullsTried { get; } = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Who sent us the deltas/records folded into the current iteration: our next delta does not go back to them.</summary>
     public ConcurrentDictionary<string, byte> IterationSources { get; } = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>How often a node was put back into the queue because it was busy (see RequeueNodeForRetry).</summary>

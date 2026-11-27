@@ -122,6 +122,13 @@ public class ConsensusSignatureRequestPayload
 /// <summary>
 /// Notification ping carrying delta availability and source/sending signature chains.
 /// </summary>
+/// <summary>Echo round: which record (id -> short version fingerprint) a node holds, and a digest over all of them.</summary>
+public class ConsensusEcho
+{
+    public string Digest { get; set; } = string.Empty;
+    public Dictionary<string, string> Records { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+}
+
 public class ConsensusNodePullRequest
 {
     public List<string> NodeIds { get; set; } = new();
@@ -429,6 +436,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
                         break;
                     }
 
+                    await EchoRoundAsync(session, ct);
                     await CorroborateAsync(session, ct);
 
                     if (_sessionManager.HasPendingDeltas())
@@ -1654,6 +1662,170 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         });
     }
 
+    #region Echo rounds (anti-entropy between neighbours)
+
+    private const int EchoIntervalSeconds = 10;
+
+    /// <summary>
+    /// What we hold, as id -> version fingerprint (identity hash + signature; trust scores are left out because the
+    /// opinion fusion moves them a little on every merge and they would never match), plus one digest over the set.
+    /// </summary>
+    private async Task<ConsensusEcho> BuildEchoAsync(ConsensusMergeSession session)
+    {
+        var echo = new ConsensusEcho();
+        var op = session.StagingOperation;
+        if (op == null) return echo;
+        using (await op.LockAsync())
+        {
+            foreach (var dir in new[] { op.MergeDir, op.IterDir })   // IterDir is newer: it overrides
+            {
+                if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) continue;
+                foreach (var file in Directory.GetFiles(dir, "*.json"))
+                {
+                    try
+                    {
+                        var h = ConsensusNodeJson.ReadHistoric(await File.ReadAllTextAsync(file));
+                        if (h?.Identity?.NodeId == null) continue;
+                        var bytes = h.Identity.GetNodeDataHash().Concat(h.Identity.Signature ?? Array.Empty<byte>()).ToArray();
+                        echo.Records[h.Identity.NodeId] = Convert.ToHexString(SHA256.HashData(bytes)).Substring(0, 12);
+                    }
+                    catch { }
+                }
+            }
+        }
+        echo.Digest = XorDigest(echo.Records);
+        return echo;
+    }
+
+    /// <summary>
+    /// Checksum of a record set: XOR of a hash of every "id:version". Order does not matter and it can be kept up to
+    /// date one record at a time; two nodes with the same digest hold the same records in the same versions.
+    /// (A plain XOR of the ids would miss a record held in another version, and two different ids can cancel each
+    /// other out - hashing each entry first avoids both.)
+    /// </summary>
+    private static string XorDigest(Dictionary<string, string> records)
+    {
+        var acc = new byte[16];
+        foreach (var (id, version) in records)
+        {
+            var h = SHA256.HashData(Encoding.UTF8.GetBytes(id.ToLowerInvariant() + ":" + version));
+            for (int i = 0; i < acc.Length; i++) acc[i] ^= h[i];
+        }
+        return Convert.ToHexString(acc);
+    }
+
+    /// <summary>Ids the other side holds that we don't, or holds in another version.</summary>
+    private static List<string> EchoDiff(ConsensusEcho mine, ConsensusEcho theirs) =>
+        theirs.Records.Where(kv => !mine.Records.TryGetValue(kv.Key, out var v) || v != kv.Value).Select(kv => kv.Key).ToList();
+
+    /// <summary>
+    /// Echo round: every EchoIntervalSeconds, compare digests with each live neighbour. Equal: nothing to do.
+    /// Different: each side pulls what it lacks (or holds in another version) from the other, and whatever is
+    /// new goes on as a delta - so a difference found anywhere spreads by itself. Quiet rounds (all neighbours
+    /// identical) are counted and logged: a connected swarm where every node is quiet has converged.
+    /// </summary>
+    private async Task EchoRoundAsync(ConsensusMergeSession session, CancellationToken ct)
+    {
+        if (DateTime.UtcNow - session.LastEchoUtc < TimeSpan.FromSeconds(EchoIntervalSeconds)) return;
+        session.LastEchoUtc = DateTime.UtcNow;
+        var neighbours = _connectionManager.GetActiveConnections()
+            .Where(c => c?.NodeId != null && c.PeerConnection?.connectionState == SIPSorcery.Net.RTCPeerConnectionState.connected)
+            .Select(c => c.NodeId).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (neighbours.Count == 0) return;
+
+        var mine = await BuildEchoAsync(session);
+        // Step 1 carries only the checksum (a few bytes); lists travel only when the checksums differ
+        string payload = JsonSerializer.Serialize(new ConsensusEcho { Digest = mine.Digest });
+        string fullPayload = JsonSerializer.Serialize(mine);
+        int same = 0, differ = 0, pulled = 0;
+        foreach (var neighbour in neighbours)
+        {
+            if (ct.IsCancellationRequested) break;
+            try
+            {
+                var result = await _routerService.SendRequestAsync(neighbour, "ConsensusEcho", payload,
+                    new RouteSettings { Timeout = TimeSpan.FromSeconds(10), CancellationToken = ct });
+                if (!result.IsSuccess || string.IsNullOrEmpty(result.Payload) || !result.Payload.TrimStart().StartsWith("{")) continue;
+                var theirs = JsonSerializer.Deserialize<ConsensusEcho>(result.Payload);
+                if (theirs == null) continue;
+                if (theirs.Digest == mine.Digest) { same++; continue; }
+                differ++;
+                var lack = EchoDiff(mine, theirs)
+                    .Where(id => !id.Equals(_identity.NodeId, StringComparison.OrdinalIgnoreCase))
+                    .Where(id => session.EchoPullsTried.TryAdd($"{neighbour}|{id}|{theirs.Records[id]}", 0))
+                    .Take(MaxPullIds).ToList();
+                int theyLack = EchoDiff(theirs, mine).Count;
+                _logger.LogInformation("[Consensus Protocol] Echo with {Neighbour}: digests differ; we lack {Lack} (pulling), it lacks {TheyLack} (it pulls).",
+                    neighbour, lack.Count, theyLack);
+                LogConsensusEvent("echo", new Dictionary<string, object?> { ["peer"] = neighbour, ["lack"] = lack.Count, ["they_lack"] = theyLack });
+                if (lack.Count > 0) pulled += await PullNodesAsync(neighbour, lack, session, ct);
+                if (theyLack > 0)
+                    // Step 2: our list, so the neighbour pulls its side of the difference
+                    _ = _routerService.SendRequestAsync(neighbour, "ConsensusEcho", fullPayload,
+                        new RouteSettings { Timeout = TimeSpan.FromSeconds(10), CancellationToken = ct });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "[Consensus Protocol] Echo with {Neighbour} failed.", neighbour);
+            }
+        }
+
+        if (pulled > 0)
+        {
+            await CreateAndBroadcastLocalDeltaAsync(session, ct);   // what the echo brought in goes on
+            await FinalizeIterationAndReportAsync(session);
+            await SyncMergeDirToConsensusStoreAsync(session);
+        }
+
+        if (differ == 0 && same > 0)
+        {
+            if (++session.QuietEchoRounds == 2)
+            {
+                _logger.LogInformation("[Consensus Protocol] Echo: all {Count} neighbour(s) hold exactly what we hold ({Records} records), twice in a row.", same, mine.Records.Count);
+                LogConsensusEvent("echo_quiet", new Dictionary<string, object?> { ["neighbours"] = same, ["records"] = mine.Records.Count });
+            }
+        }
+        else session.QuietEchoRounds = 0;
+    }
+
+    private async Task<string> HandleIncomingEchoAsync(string senderNodeId, P2PPacketEnvelope frame, CancellationToken ct)
+    {
+        var session = _sessionManager.GetActiveSession();
+        if (session == null) return "NO_SESSION_WTF";
+        ConsensusEcho? theirs = null;
+        try { theirs = JsonSerializer.Deserialize<ConsensusEcho>(frame.SerializedPayload ?? string.Empty); } catch { }
+        var mine = await BuildEchoAsync(session);
+        if (theirs != null && theirs.Digest == mine.Digest)
+            return JsonSerializer.Serialize(new ConsensusEcho { Digest = mine.Digest });   // same: no lists
+        if (theirs != null && theirs.Records.Count > 0)
+        {
+            foreach (var id in theirs.Records.Keys) session.KnownIds.TryAdd(id, 0);
+            // Our side of the exchange: pull what the asker has and we don't, then pass it on
+            var lack = EchoDiff(mine, theirs)
+                .Where(id => !id.Equals(_identity.NodeId, StringComparison.OrdinalIgnoreCase))
+                .Where(id => session.EchoPullsTried.TryAdd($"{senderNodeId}|{id}|{theirs.Records[id]}", 0))
+                .Take(MaxPullIds).ToList();
+            if (lack.Count > 0)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        if (await PullNodesAsync(senderNodeId, lack, session, ct) > 0)
+                        {
+                            await CreateAndBroadcastLocalDeltaAsync(session, ct);
+                            await FinalizeIterationAndReportAsync(session);
+                        }
+                    }
+                    catch (Exception ex) { _logger.LogDebug(ex, "[Consensus Protocol] Echo pull from {Sender} failed.", senderNodeId); }
+                });
+            }
+        }
+        return JsonSerializer.Serialize(mine);
+    }
+
+    #endregion
+
     #region Neighbours, pulls and corroboration (no full mesh)
 
     private bool IsConnected(string nodeId) =>
@@ -1839,6 +2011,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         _routerService.RegisterCommandHandler("ConsensusDeltaDownload", HandleIncomingDeltaDownloadAsync);
         _routerService.RegisterCommandHandler("ConsensusFinished", HandleIncomingConsensusFinishedAsync);
         _routerService.RegisterCommandHandler("ConsensusNodePull", HandleIncomingNodePullAsync);
+        _routerService.RegisterCommandHandler("ConsensusEcho", HandleIncomingEchoAsync);
     }
 
     private void UnregisterConsensusNetworkHandlers()
@@ -1850,6 +2023,7 @@ public class ConsensusProtocolHandler : IConsensusProtocolHandler, IHostedServic
         _routerService.UnregisterCommandHandler("ConsensusDeltaDownload");
         _routerService.UnregisterCommandHandler("ConsensusFinished");
         _routerService.UnregisterCommandHandler("ConsensusNodePull");
+        _routerService.UnregisterCommandHandler("ConsensusEcho");
     }
 
     /// <summary>Appends a line to consensus_events.jsonl (see <see cref="ConsensusEventLog"/>).</summary>
